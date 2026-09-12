@@ -48,9 +48,13 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         finally { gate.Release(); }
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public Task StartAsync(CancellationToken cancellationToken = default) => StartAsync([], cancellationToken);
+
+    public async Task StartAsync(IEnumerable<string> disabledPackageIds, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(disabledPackageIds);
+        var disabled = disabledPackageIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -59,24 +63,41 @@ public sealed class ExtensionRuntime : IAsyncDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 var slot = slots[index];
                 if (slot.Snapshot.Package.Manifest.Type != PackageType.Plugin || slot.Snapshot.State != PackageState.Validated) continue;
-                try
+                if (disabled.Contains(slot.Snapshot.Package.Manifest.Id))
                 {
-                    await StartOneAsync(slot, cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                catch (Exception exception)
-                {
-                    logger.LogError(exception, "Extension {PackageId} failed during startup.", slot.Snapshot.Package.Manifest.Id);
-                    await CleanupFailedSlotAsync(slot).ConfigureAwait(false);
-                    slot.Snapshot = slot.Snapshot with
-                    {
-                        State = PackageState.Failed,
-                        Instance = null,
-                        FailureCode = "plugin-start-failed",
-                        FailureMessage = exception.Message
-                    };
+                    slot.Snapshot = slot.Snapshot with { State = PackageState.Disabled };
                     EntriesChanged?.Invoke(this, EventArgs.Empty);
+                    continue;
                 }
+                await TryStartOneAsync(slot, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task SetEnabledAsync(string packageId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var slot = slots.FirstOrDefault(x => string.Equals(x.Snapshot.Package.Manifest.Id, packageId, StringComparison.OrdinalIgnoreCase))
+                ?? throw new KeyNotFoundException($"Extension '{packageId}' was not discovered.");
+            if (slot.Snapshot.Package.Manifest.Type != PackageType.Plugin)
+                throw new InvalidOperationException("Only plugin packages can be enabled or disabled.");
+
+            if (enabled)
+            {
+                if (slot.Snapshot.State == PackageState.Running) return;
+                slot.Snapshot = slot.Snapshot with { State = PackageState.Validated, FailureCode = null, FailureMessage = null };
+                EntriesChanged?.Invoke(this, EventArgs.Empty);
+                await TryStartOneAsync(slot, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                if (slot.Snapshot.State == PackageState.Disabled) return;
+                await StopOneAsync(slot, PackageState.Disabled, cancellationToken).ConfigureAwait(false);
             }
         }
         finally { gate.Release(); }
@@ -90,27 +111,8 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             for (var index = slots.Count - 1; index >= 0; index--)
             {
                 var slot = slots[index];
-                if (slot.Snapshot.Instance is null || slot.Snapshot.State is PackageState.Stopped or PackageState.Validated) continue;
-                slot.Snapshot = slot.Snapshot with { State = PackageState.Stopping };
-                EntriesChanged?.Invoke(this, EventArgs.Empty);
-                try
-                {
-                    await slot.Snapshot.Instance.StopAsync(cancellationToken).ConfigureAwait(false);
-                    await DisposeInstanceAsync(slot.Snapshot.Instance).ConfigureAwait(false);
-                    slot.Snapshot = slot.Snapshot with { State = PackageState.Stopped, Instance = null };
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                catch (Exception exception)
-                {
-                    logger.LogError(exception, "Extension {PackageId} failed during shutdown.", slot.Snapshot.Package.Manifest.Id);
-                    slot.Snapshot = slot.Snapshot with { State = PackageState.Failed, Instance = null, FailureCode = "plugin-stop-failed", FailureMessage = exception.Message };
-                }
-                finally
-                {
-                    slot.LoadContext?.Unload();
-                    slot.LoadContext = null;
-                    EntriesChanged?.Invoke(this, EventArgs.Empty);
-                }
+                if (slot.Snapshot.State == PackageState.Disabled) continue;
+                await StopOneAsync(slot, PackageState.Stopped, cancellationToken).ConfigureAwait(false);
             }
         }
         finally { gate.Release(); }
@@ -149,6 +151,59 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         await plugin.StartAsync(cancellationToken).ConfigureAwait(false);
         slot.Snapshot = slot.Snapshot with { State = PackageState.Running };
         EntriesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task TryStartOneAsync(RuntimeSlot slot, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await StartOneAsync(slot, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Extension {PackageId} failed during startup.", slot.Snapshot.Package.Manifest.Id);
+            await CleanupFailedSlotAsync(slot).ConfigureAwait(false);
+            slot.Snapshot = slot.Snapshot with
+            {
+                State = PackageState.Failed,
+                Instance = null,
+                FailureCode = "plugin-start-failed",
+                FailureMessage = exception.Message
+            };
+            EntriesChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task StopOneAsync(RuntimeSlot slot, PackageState finalState, CancellationToken cancellationToken)
+    {
+        if (slot.Snapshot.Instance is null)
+        {
+            slot.Snapshot = slot.Snapshot with { State = finalState, FailureCode = null, FailureMessage = null };
+            EntriesChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        slot.Snapshot = slot.Snapshot with { State = PackageState.Stopping };
+        EntriesChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            await slot.Snapshot.Instance.StopAsync(cancellationToken).ConfigureAwait(false);
+            await DisposeInstanceAsync(slot.Snapshot.Instance).ConfigureAwait(false);
+            slot.Snapshot = slot.Snapshot with { State = finalState, Instance = null, FailureCode = null, FailureMessage = null };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Extension {PackageId} failed during shutdown.", slot.Snapshot.Package.Manifest.Id);
+            slot.Snapshot = slot.Snapshot with { State = PackageState.Failed, Instance = null, FailureCode = "plugin-stop-failed", FailureMessage = exception.Message };
+        }
+        finally
+        {
+            slot.LoadContext?.Unload();
+            slot.LoadContext = null;
+            EntriesChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private static async Task CleanupFailedSlotAsync(RuntimeSlot slot)

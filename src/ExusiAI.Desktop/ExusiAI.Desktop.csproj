@@ -26,4 +26,11 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\package.json" DestinationFolder="$(SamplePackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(SamplePackageDir)" />
   </Target>
+  <Target Name="CopySamplePackageToPublish" AfterTargets="Publish">
+    <PropertyGroup><SamplePublishPackageDir>$(PublishDir)packages\exusiai.sample</SamplePublishPackageDir></PropertyGroup>
+    <MakeDir Directories="$(SamplePublishPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.Sample.dll" DestinationFolder="$(SamplePublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\package.json" DestinationFolder="$(SamplePublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(SamplePublishPackageDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

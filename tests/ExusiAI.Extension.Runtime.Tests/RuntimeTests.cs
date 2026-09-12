@@ -106,6 +106,29 @@ public sealed class RuntimeTests
         Assert.False(loadContext.IsAlive);
     }
 
+    [Fact]
+    public async Task DisabledPluginCanBeEnabledAndDisabledWithoutRestartingHost()
+    {
+        using var root = new TemporaryDirectory();
+        var package = Path.Combine(root.Path, "sample");
+        await WriteManifestAsync(package, ValidManifest);
+        File.Copy(typeof(SamplePlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Plugin.Sample.dll"));
+        File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
+        await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
+        await runtime.DiscoverAsync(root.Path);
+
+        await runtime.StartAsync(["exusiai.sample"]);
+        Assert.Equal(PackageState.Disabled, Assert.Single(runtime.Entries).State);
+
+        await runtime.SetEnabledAsync("exusiai.sample", true);
+        Assert.Equal(PackageState.Running, Assert.Single(runtime.Entries).State);
+
+        await runtime.SetEnabledAsync("exusiai.sample", false);
+        var disabled = Assert.Single(runtime.Entries);
+        Assert.Equal(PackageState.Disabled, disabled.State);
+        Assert.Null(disabled.Instance);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static async Task<WeakReference> LoadAndStopSamplePluginAsync(string rootPath)
     {

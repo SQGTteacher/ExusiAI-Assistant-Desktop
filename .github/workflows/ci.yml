@@ -16,6 +16,6 @@ jobs:
       - name: Restore
         run: dotnet restore ExusiAI.sln
       - name: Build
-        run: dotnet build ExusiAI.sln --no-restore --configuration Release
+        run: dotnet build ExusiAI.sln --no-restore --configuration Release -p:BuildNumber=${{ github.run_number }}
       - name: Test
         run: dotnet test ExusiAI.sln --no-build --configuration Release

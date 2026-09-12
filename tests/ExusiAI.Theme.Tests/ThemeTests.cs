@@ -9,8 +9,9 @@ public sealed class ThemeTests
     {
         var system = new TestSystemThemeProvider { IsDark = true };
         using var service = new ThemeService(system);
-        service.Apply(ThemeSelection.Light);
-        Assert.Same(ThemeService.Light, service.Current);
+        service.Apply("paper");
+        Assert.Same(ThemeCatalog.Find("paper").Palette, service.Current);
+        Assert.False(service.IsDark);
     }
 
     [Fact]
@@ -20,7 +21,17 @@ public sealed class ThemeTests
         using var service = new ThemeService(system);
         system.IsDark = true;
         system.RaiseChanged();
-        Assert.Same(ThemeService.Dark, service.Current);
+        Assert.Same(ThemeCatalog.Dark, service.Current);
+        Assert.True(service.IsDark);
+    }
+
+    [Fact]
+    public void UnknownThemeFallsBackToSystem()
+    {
+        using var service = new ThemeService(new TestSystemThemeProvider());
+        service.Apply("does-not-exist");
+        Assert.Equal("system", service.SelectedThemeId);
+        Assert.True(service.AvailableThemes.Count >= 8);
     }
 
     private sealed class TestSystemThemeProvider : ISystemThemeProvider

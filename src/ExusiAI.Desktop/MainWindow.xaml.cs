@@ -1,11 +1,28 @@
 using System.Windows;
 using System.Windows.Input;
+using ExusiAI.Theme;
 
 namespace ExusiAI.Desktop;
 
 public partial class MainWindow : Window
 {
-    public MainWindow() => InitializeComponent();
+    private readonly IThemeService theme;
+    private readonly IWindowBackdropService backdrop;
+
+    public MainWindow(IThemeService theme, IWindowBackdropService backdrop)
+    {
+        this.theme = theme;
+        this.backdrop = backdrop;
+        InitializeComponent();
+        SourceInitialized += (_, _) => ApplyWindowAppearance();
+        theme.Changed += Appearance_OnChanged;
+        backdrop.Changed += Appearance_OnChanged;
+        Closed += (_, _) =>
+        {
+            theme.Changed -= Appearance_OnChanged;
+            backdrop.Changed -= Appearance_OnChanged;
+        };
+    }
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -17,4 +34,6 @@ public partial class MainWindow : Window
     private void Maximize_OnClick(object sender, RoutedEventArgs e) => ToggleMaximize();
     private void Close_OnClick(object sender, RoutedEventArgs e) => Close();
     private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Appearance_OnChanged(object? sender, EventArgs e) => Dispatcher.InvokeAsync(ApplyWindowAppearance);
+    private void ApplyWindowAppearance() => backdrop.ApplyTo(this, theme.IsDark);
 }

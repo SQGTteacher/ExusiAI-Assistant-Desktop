@@ -1,25 +1,31 @@
 <UserControl x:Class="ExusiAI.Desktop.HomePage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
-            <Border Background="{DynamicResource AccentBrush}" CornerRadius="18" Padding="28">
+            <TextBlock Text="版本首页" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="当前桌面端版本与运行状态。" Style="{StaticResource PageSubtitle}" />
+            <Border Background="{DynamicResource AccentSoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="26" Margin="0,24,0,0">
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="早上好，老师" Foreground="White" FontSize="30" FontWeight="SemiBold" />
-                        <TextBlock Text="ExusiAI 已准备好承载你的课堂扩展。" Foreground="#DDE2FF" FontSize="15" Margin="0,9,0,0" />
+                        <TextBlock Text="{Binding ProductName}" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                        <TextBlock Text="{Binding Version}" FontSize="38" FontWeight="SemiBold" Margin="0,12,0,0" />
+                        <TextBlock Text="先行预览版本" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" />
                     </StackPanel>
-                    <TextBlock Grid.Column="1" Text="✦" Foreground="#AEB9FF" FontSize="58" VerticalAlignment="Center" Margin="30,0,8,0" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                        <TextBlock Text="BUILD" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" />
+                        <TextBlock Text="{Binding BuildNumber}" FontSize="23" FontWeight="SemiBold" Margin="0,4,0,0" HorizontalAlignment="Right" />
+                    </StackPanel>
                 </Grid>
             </Border>
-            <TextBlock Text="平台概览" Style="{StaticResource PageTitle}" FontSize="20" Margin="0,26,0,14" />
+            <TextBlock Text="运行概览" FontSize="18" FontWeight="SemiBold" Margin="0,25,0,12" />
             <UniformGrid Columns="3">
-                <Border Style="{StaticResource Card}" Margin="0,0,10,0"><StackPanel><TextBlock Text="已发现扩展" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding InstalledCount}" FontSize="32" FontWeight="SemiBold" Margin="0,10,0,0" /></StackPanel></Border>
-                <Border Style="{StaticResource Card}" Margin="5,0"><StackPanel><TextBlock Text="正在运行" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding RunningCount}" Foreground="{DynamicResource SuccessBrush}" FontSize="32" FontWeight="SemiBold" Margin="0,10,0,0" /></StackPanel></Border>
-                <Border Style="{StaticResource Card}" Margin="10,0,0,0"><StackPanel><TextBlock Text="异常记录" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding FailedCount}" Foreground="{DynamicResource DangerBrush}" FontSize="32" FontWeight="SemiBold" Margin="0,10,0,0" /></StackPanel></Border>
+                <Border Style="{StaticResource Card}" Margin="0,0,8,0"><StackPanel><TextBlock Text="已发现扩展" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding InstalledCount}" FontSize="28" FontWeight="SemiBold" Margin="0,9,0,0" /></StackPanel></Border>
+                <Border Style="{StaticResource Card}" Margin="4,0"><StackPanel><TextBlock Text="正在运行" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding RunningCount}" Foreground="{DynamicResource SuccessBrush}" FontSize="28" FontWeight="SemiBold" Margin="0,9,0,0" /></StackPanel></Border>
+                <Border Style="{StaticResource Card}" Margin="8,0,0,0"><StackPanel><TextBlock Text="异常记录" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding FailedCount}" Foreground="{DynamicResource DangerBrush}" FontSize="28" FontWeight="SemiBold" Margin="0,9,0,0" /></StackPanel></Border>
             </UniformGrid>
-            <Border Style="{StaticResource Card}" Margin="0,20,0,0">
-                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition /></Grid.ColumnDefinitions>
-                    <Border Width="38" Height="38" CornerRadius="11" Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top"><TextBlock Text="" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentBrush}" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                    <StackPanel Grid.Column="1"><TextBlock Text="第一阶段平台基线" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="当前专注于可靠的扩展加载、主题、设置和桌面壳。教学功能将在后续以独立扩展交付。" TextWrapping="Wrap" Margin="0,7,0,0" Foreground="{DynamicResource TextSecondaryBrush}" /></StackPanel>
+            <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="38" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <Path Data="M12,3 V21 M3,12 H21 M5.6,5.6 L18.4,18.4 M18.4,5.6 L5.6,18.4" Width="20" Height="20" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5" VerticalAlignment="Top" />
+                    <StackPanel Grid.Column="1"><TextBlock Text="第二阶段：可用功能迭代" FontSize="16" FontWeight="SemiBold" /><TextBlock Text="当前加入原生窗口材质、多套主题、独立插件工作台与插件启停管理。" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}" /></StackPanel>
                 </Grid>
             </Border>
         </StackPanel>
