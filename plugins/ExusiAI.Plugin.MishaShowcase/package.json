@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "exusiai.misha-showcase",
+  "type": "plugin",
+  "name": "米沙平台兼容范本",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "publisher": "ExusiAI",
+  "description": "参考 ClassIsland 2.x 米沙平台组件理念的独立插件范本，用于测试多页面、定时刷新、主题资源和生命周期。",
+  "minimumHostVersion": "0.1.0",
+  "entryPoint": {
+    "assembly": "ExusiAI.Plugin.MishaShowcase.dll",
+    "type": "ExusiAI.Plugin.MishaShowcase.MishaShowcasePlugin"
+  },
+  "permissions": [],
+  "assets": {
+    "files": ["README.md", "THIRD_PARTY_NOTICES.md"]
+  }
+}
