@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 using ExusiAI.Extension.Abstractions;
 using Microsoft.Extensions.Logging;
 
@@ -97,7 +98,8 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             else
             {
                 if (slot.Snapshot.State == PackageState.Disabled) return;
-                await StopOneAsync(slot, PackageState.Disabled, cancellationToken).ConfigureAwait(false);
+                var unloadReference = await StopOneAsync(slot, PackageState.Disabled, cancellationToken).ConfigureAwait(false);
+                CollectUnloadedContext(unloadReference);
             }
         }
         finally { gate.Release(); }
@@ -112,7 +114,8 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             {
                 var slot = slots[index];
                 if (slot.Snapshot.State == PackageState.Disabled) continue;
-                await StopOneAsync(slot, PackageState.Stopped, cancellationToken).ConfigureAwait(false);
+                var unloadReference = await StopOneAsync(slot, PackageState.Stopped, cancellationToken).ConfigureAwait(false);
+                CollectUnloadedContext(unloadReference);
             }
         }
         finally { gate.Release(); }
@@ -175,15 +178,16 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         }
     }
 
-    private async Task StopOneAsync(RuntimeSlot slot, PackageState finalState, CancellationToken cancellationToken)
+    private async Task<WeakReference?> StopOneAsync(RuntimeSlot slot, PackageState finalState, CancellationToken cancellationToken)
     {
         if (slot.Snapshot.Instance is null)
         {
             slot.Snapshot = slot.Snapshot with { State = finalState, FailureCode = null, FailureMessage = null };
             EntriesChanged?.Invoke(this, EventArgs.Empty);
-            return;
+            return UnloadContext(slot);
         }
 
+        WeakReference? unloadReference = null;
         slot.Snapshot = slot.Snapshot with { State = PackageState.Stopping };
         EntriesChanged?.Invoke(this, EventArgs.Empty);
         try
@@ -200,9 +204,28 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         }
         finally
         {
-            slot.LoadContext?.Unload();
-            slot.LoadContext = null;
+            unloadReference = UnloadContext(slot);
             EntriesChanged?.Invoke(this, EventArgs.Empty);
+        }
+        return unloadReference;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference? UnloadContext(RuntimeSlot slot)
+    {
+        var context = slot.LoadContext;
+        slot.LoadContext = null;
+        if (context is null) return null;
+        context.Unload();
+        return new WeakReference(context);
+    }
+
+    private static void CollectUnloadedContext(WeakReference? reference)
+    {
+        for (var attempt = 0; reference is { IsAlive: true } && attempt < 5; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
         }
     }
 
