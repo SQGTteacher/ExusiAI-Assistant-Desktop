@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 using ExusiAI.Extension.Abstractions;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.SDK;
@@ -96,19 +97,36 @@ public sealed class RuntimeTests
     public async Task SamplePluginLoadsInCollectibleContextAndStarts()
     {
         using var root = new TemporaryDirectory();
-        var package = Path.Combine(root.Path, "sample");
+        var loadContext = await LoadAndStopSamplePluginAsync(root.Path);
+        for (var attempt = 0; attempt < 5 && loadContext.IsAlive; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+        Assert.False(loadContext.IsAlive);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task<WeakReference> LoadAndStopSamplePluginAsync(string rootPath)
+    {
+        var package = Path.Combine(rootPath, "sample");
         await WriteManifestAsync(package, ValidManifest);
         File.Copy(typeof(SamplePlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Plugin.Sample.dll"));
         File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
-        await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
-        await runtime.DiscoverAsync(root.Path);
+        var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
+        await runtime.DiscoverAsync(rootPath);
         await runtime.StartAsync();
         var entry = Assert.Single(runtime.Entries);
         Assert.Equal(PackageState.Running, entry.State);
         Assert.NotNull(entry.Instance);
-        Assert.NotEqual(System.Runtime.Loader.AssemblyLoadContext.Default, System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(entry.Instance!.GetType().Assembly));
+        var context = System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(entry.Instance!.GetType().Assembly);
+        Assert.NotNull(context);
+        Assert.NotEqual(System.Runtime.Loader.AssemblyLoadContext.Default, context);
         var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
         Assert.Equal("sample.hello", Assert.Single(navigation.GetNavigationPages()).Route);
+        var weakReference = new WeakReference(context);
+        await runtime.DisposeAsync();
+        return weakReference;
     }
 
     private static PackageDiscoveryService CreateDiscovery() => new(new(), new(), NullLogger<PackageDiscoveryService>.Instance);
@@ -129,7 +147,24 @@ public sealed class RuntimeTests
     {
         public TemporaryDirectory() { Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "exusiai-tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(Path); }
         public string Path { get; }
-        public void Dispose() { try { Directory.Delete(Path, true); } catch (IOException) { } }
+        public void Dispose()
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    Directory.Delete(Path, true);
+                    return;
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt == 4) throw;
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    Thread.Sleep(25);
+                }
+            }
+        }
     }
 }
 
