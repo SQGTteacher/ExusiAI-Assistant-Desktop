@@ -35,7 +35,7 @@ public partial class App : Application
             backdrop.Apply(backdropSelection);
             runtime = host.Services.GetRequiredService<ExtensionRuntime>();
             var paths = host.Services.GetRequiredService<IAppPaths>();
-            await runtime.DiscoverAsync(Path.Combine(paths.ApplicationDirectory, "packages"));
+            await runtime.DiscoverAsync([Path.Combine(paths.ApplicationDirectory, "packages"), paths.PackagesDirectory]);
             await runtime.StartAsync(settings.DisabledPackages ?? []);
             wpfExtensions = host.Services.GetRequiredService<WpfExtensionCoordinator>();
             wpfExtensions.Start();
@@ -90,7 +90,8 @@ public partial class App : Application
         builder.Services.AddSingleton<IThemeService, ThemeService>();
         builder.Services.AddSingleton<IWindowBackdropService, WindowBackdropService>();
         builder.Services.AddSingleton<ISettingsService, SettingsService>();
-        builder.Services.AddSingleton<IPackageCatalog, PlaceholderPackageCatalog>();
+        builder.Services.AddSingleton<IPackageCatalog>(services =>
+            new LocalPackageCatalog(() => services.GetRequiredService<ExtensionRuntime>().Entries.Select(x => x.Package.Manifest)));
         builder.Services.AddSingleton<PageFactory>();
         builder.Services.AddSingleton<ShellViewModel>();
         builder.Services.AddSingleton<MainWindow>();

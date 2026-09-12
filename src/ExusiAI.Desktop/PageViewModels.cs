@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -29,10 +31,55 @@ public sealed class HomeViewModel
     public int FailedCount { get; }
 }
 
-public sealed class MarketplaceViewModel(IPackageCatalog catalog)
+public sealed partial class MarketplaceViewModel : ObservableObject
 {
-    public string Status => catalog is PlaceholderPackageCatalog ? "市场服务尚未接入" : "扩展市场";
-    public string Detail => "第二阶段保留安全边界；联网、签名校验和安装将在后续迭代接入。";
+    private readonly IPackageCatalog catalog;
+    [ObservableProperty] private string searchText = string.Empty;
+    [ObservableProperty] private int packageCount;
+    [ObservableProperty] private int publisherCount;
+    [ObservableProperty] private bool isBusy;
+    [ObservableProperty] private string? errorMessage;
+
+    public MarketplaceViewModel(IPackageCatalog catalog)
+    {
+        this.catalog = catalog;
+        Packages = [];
+        _ = RefreshAsync();
+    }
+
+    public ObservableCollection<CatalogPackageViewModel> Packages { get; }
+
+    partial void OnSearchTextChanged(string value) => _ = RefreshAsync();
+
+    [RelayCommand]
+    private async Task RefreshAsync()
+    {
+        IsBusy = true;
+        ErrorMessage = null;
+        try
+        {
+            var result = await catalog.SearchAsync(SearchText);
+            Packages.Clear();
+            foreach (var package in result) Packages.Add(new(package));
+            PackageCount = Packages.Count;
+            PublisherCount = Packages.Select(x => x.Publisher).Distinct(StringComparer.CurrentCultureIgnoreCase).Count();
+        }
+        catch (Exception exception) { ErrorMessage = exception.Message; }
+        finally { IsBusy = false; }
+    }
+}
+
+public sealed class CatalogPackageViewModel(PackageManifest manifest)
+{
+    public string Name => manifest.DisplayName;
+    public string PackageId => manifest.Id;
+    public string Version => manifest.Version;
+    public string Publisher => manifest.Publisher;
+    public string Description => manifest.Description;
+    public string Type => manifest.Type.ToString();
+    public string ApiVersion => manifest.ApiVersion;
+    public int PermissionCount => manifest.Permissions.Length;
+    public int DependencyCount => manifest.Dependencies.Length;
 }
 
 public sealed partial class PluginManagerViewModel : ObservableObject, IDisposable
@@ -255,11 +302,42 @@ public sealed partial class ThemeViewModel : ObservableObject
     }
 }
 
-public sealed class SoftwareSettingsViewModel
+public sealed partial class SoftwareSettingsViewModel : ObservableObject
 {
+    private readonly IAppPaths paths;
+    [ObservableProperty] private string? lastActionMessage;
+
+    public SoftwareSettingsViewModel(IAppPaths paths, ExtensionRuntime runtime)
+    {
+        this.paths = paths;
+        InstalledPackageCount = runtime.Entries.Count;
+    }
+
     public string Version => ApplicationInfo.Version;
     public string BuildNumber => ApplicationInfo.BuildNumber;
+    public string Runtime => RuntimeInformation.FrameworkDescription;
+    public string OperatingSystem => RuntimeInformation.OSDescription;
+    public string Architecture => RuntimeInformation.ProcessArchitecture.ToString();
+    public string DataDirectory => paths.UserDataDirectory;
+    public string PackagesDirectory => paths.PackagesDirectory;
+    public string LogsDirectory => paths.LogsDirectory;
+    public int InstalledPackageCount { get; }
     public string DataPolicy => "设置与日志仅保存在当前 Windows 用户的本地目录。";
+
+    [RelayCommand] private void OpenDataDirectory() => OpenDirectory(paths.UserDataDirectory);
+    [RelayCommand] private void OpenPackagesDirectory() => OpenDirectory(paths.PackagesDirectory);
+    [RelayCommand] private void OpenLogsDirectory() => OpenDirectory(paths.LogsDirectory);
+
+    private void OpenDirectory(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            LastActionMessage = $"已打开：{path}";
+        }
+        catch (Exception exception) { LastActionMessage = $"无法打开目录：{exception.Message}"; }
+    }
 }
 
 public sealed record DiscoveryFailureViewModel(string Path, string Code, string Message)

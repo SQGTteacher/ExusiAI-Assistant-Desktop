@@ -50,6 +50,19 @@ public sealed class RuntimeTests
     }
 
     [Fact]
+    public async Task DiscoveryCombinesBundledAndUserPackageRoots()
+    {
+        using var bundled = new TemporaryDirectory();
+        using var user = new TemporaryDirectory();
+        await WriteManifestAsync(Path.Combine(bundled.Path, "one"), ValidManifest);
+        await WriteManifestAsync(Path.Combine(user.Path, "two"), ValidManifest with { Id = "exusiai.user" });
+        await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
+        await runtime.DiscoverAsync([bundled.Path, user.Path]);
+        Assert.Equal(2, runtime.Entries.Count);
+        Assert.Empty(runtime.DiscoveryFailures);
+    }
+
+    [Fact]
     public async Task BadAssemblyFailsWithoutCrashingRuntime()
     {
         using var root = new TemporaryDirectory();

@@ -30,19 +30,35 @@ public sealed class ExtensionRuntime : IAsyncDisposable
     public ImmutableArray<PackageDiscoveryFailure> DiscoveryFailures { get; private set; } = [];
     public event EventHandler? EntriesChanged;
 
-    public async Task DiscoverAsync(string packagesRoot, CancellationToken cancellationToken = default)
+    public Task DiscoverAsync(string packagesRoot, CancellationToken cancellationToken = default) =>
+        DiscoverAsync([packagesRoot], cancellationToken);
+
+    public async Task DiscoverAsync(IEnumerable<string> packageRoots, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(packageRoots);
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (slots.Any(x => x.Snapshot.State is PackageState.Loaded or PackageState.Initialized or PackageState.Running))
                 throw new InvalidOperationException("Stop loaded extensions before running discovery again.");
 
-            var result = await discovery.DiscoverAsync(packagesRoot, cancellationToken).ConfigureAwait(false);
+            var packages = new List<DiscoveredPackage>();
+            var failures = ImmutableArray.CreateBuilder<PackageDiscoveryFailure>();
+            var packageIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var root in packageRoots.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var result = await discovery.DiscoverAsync(root, cancellationToken).ConfigureAwait(false);
+                failures.AddRange(result.Failures);
+                foreach (var package in result.Packages)
+                {
+                    if (packageIds.Add(package.Manifest.Id)) packages.Add(package);
+                    else failures.Add(new(package.RootPath, "duplicate-id", $"Package id '{package.Manifest.Id}' was already discovered in another package root."));
+                }
+            }
             slots.Clear();
-            slots.AddRange(result.Packages.Select(x => new RuntimeSlot(new(x, PackageState.Validated, null, null, null))));
-            DiscoveryFailures = result.Failures;
+            slots.AddRange(packages.Select(x => new RuntimeSlot(new(x, PackageState.Validated, null, null, null))));
+            DiscoveryFailures = failures.ToImmutable();
             EntriesChanged?.Invoke(this, EventArgs.Empty);
         }
         finally { gate.Release(); }

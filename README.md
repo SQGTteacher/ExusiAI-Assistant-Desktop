@@ -15,7 +15,7 @@
 - Windows 11 原生 Mica / Acrylic 材质与 DWM 窗口圆角；
 - 独立插件工作台，插件页面不再挤占主菜单；
 - 插件可在运行时启用、禁用和重试，偏好会跨启动保留；
-- 离线市场占位边界、扩展管理页面和官方示例插件；
+- 可搜索的本地资源库、双包目录发现、扩展管理页面和官方示例插件；
 - Windows GitHub Actions 构建及单元测试。
 
 ## 构建与运行
@@ -31,6 +31,19 @@ dotnet run --project src/ExusiAI.Desktop
 
 构建或发布 Desktop 时，示例包会复制到输出目录的 `packages/exusiai.sample`。运行后它应处于“运行中”状态，并出现在“插件工作台”的选择列表中，页面显示 `Hello from ExusiAI Plugin!`。
 
+创建可分发的 Windows x64 目录：
+
+```powershell
+dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
+  --configuration Release `
+  --runtime win-x64 `
+  --self-contained true `
+  -p:PublishSingleFile=false `
+  --output artifacts/ExusiAI-win-x64
+```
+
+发布目标会自动带上示例插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户自行安装的包放在软件设置页显示的“用户插件包”目录中。
+
 ## 代码边界
 
 | 项目 | 职责 |
@@ -41,7 +54,7 @@ dotnet run --project src/ExusiAI.Desktop
 | `ExusiAI.Extension.Wpf` | 仅供 WPF UI 扩展使用的贡献协议 |
 | `ExusiAI.Theme` | 与 WPF 无关的主题选择和设计令牌 |
 | `ExusiAI.Infrastructure` | 本地路径、设置、日志和 Windows 适配器 |
-| `ExusiAI.Marketplace` | 市场领域边界；第一阶段不联网 |
+| `ExusiAI.Marketplace` | 可查询的本地包目录；不负责加载代码 |
 | `ExusiAI.Desktop` | WPF 表现层和唯一组合根 |
 
 设计与安全说明见 [`docs/architecture`](docs/architecture)，包规范见 [`docs/package-spec/package-manifest.md`](docs/package-spec/package-manifest.md)。
