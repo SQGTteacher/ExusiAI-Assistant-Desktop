@@ -5,6 +5,7 @@ using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.SDK;
 using ExusiAI.Extension.Wpf;
 using ExusiAI.Plugin.Sample;
+using ExusiAI.Plugin.MishaShowcase;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ExusiAI.Extension.Runtime.Tests;
@@ -140,6 +141,35 @@ public sealed class RuntimeTests
         var disabled = Assert.Single(runtime.Entries);
         Assert.Equal(PackageState.Disabled, disabled.State);
         Assert.Null(disabled.Instance);
+    }
+
+    [Fact]
+    public async Task MishaShowcaseLoadsAsIndependentTwoPageNavigationPlugin()
+    {
+        using var root = new TemporaryDirectory();
+        var package = Path.Combine(root.Path, "misha-showcase");
+        var manifest = ValidManifest with
+        {
+            Id = "exusiai.misha-showcase",
+            DisplayName = "米沙平台兼容范本",
+            EntryPoint = new()
+            {
+                Assembly = "ExusiAI.Plugin.MishaShowcase.dll",
+                Type = "ExusiAI.Plugin.MishaShowcase.MishaShowcasePlugin"
+            }
+        };
+        await WriteManifestAsync(package, manifest);
+        File.Copy(typeof(MishaShowcasePlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Plugin.MishaShowcase.dll"));
+        File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
+        await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
+
+        await runtime.DiscoverAsync(root.Path);
+        await runtime.StartAsync();
+
+        var entry = Assert.Single(runtime.Entries);
+        Assert.Equal(PackageState.Running, entry.State);
+        var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
+        Assert.Equal(new[] { "misha.dashboard", "misha.reference" }, navigation.GetNavigationPages().Select(page => page.Route));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
