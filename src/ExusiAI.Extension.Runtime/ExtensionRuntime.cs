@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Runtime.CompilerServices;
 using ExusiAI.Extension.Abstractions;
 using Microsoft.Extensions.Logging;
 
@@ -98,8 +97,7 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             else
             {
                 if (slot.Snapshot.State == PackageState.Disabled) return;
-                var unloadReference = await StopOneAsync(slot, PackageState.Disabled, cancellationToken).ConfigureAwait(false);
-                CollectUnloadedContext(unloadReference);
+                await StopOneAsync(slot, PackageState.Disabled, cancellationToken).ConfigureAwait(false);
             }
         }
         finally { gate.Release(); }
@@ -114,8 +112,7 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             {
                 var slot = slots[index];
                 if (slot.Snapshot.State == PackageState.Disabled) continue;
-                var unloadReference = await StopOneAsync(slot, PackageState.Stopped, cancellationToken).ConfigureAwait(false);
-                CollectUnloadedContext(unloadReference);
+                await StopOneAsync(slot, PackageState.Stopped, cancellationToken).ConfigureAwait(false);
             }
         }
         finally { gate.Release(); }
@@ -138,7 +135,7 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             throw new FileNotFoundException("The plugin assembly does not exist inside its package.", entryPoint.Assembly);
 
         slot.LoadContext = new(assemblyPath, SharedAssemblies);
-        var assembly = slot.LoadContext.LoadFromAssemblyPath(assemblyPath);
+        var assembly = slot.LoadContext.LoadMainAssembly();
         var type = assembly.GetType(entryPoint.Type, throwOnError: true, ignoreCase: false)
             ?? throw new TypeLoadException($"Entry point '{entryPoint.Type}' was not found.");
         if (type.IsAbstract || !typeof(IExusiAIPlugin).IsAssignableFrom(type))
@@ -178,16 +175,17 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         }
     }
 
-    private async Task<WeakReference?> StopOneAsync(RuntimeSlot slot, PackageState finalState, CancellationToken cancellationToken)
+    private async Task StopOneAsync(RuntimeSlot slot, PackageState finalState, CancellationToken cancellationToken)
     {
         if (slot.Snapshot.Instance is null)
         {
             slot.Snapshot = slot.Snapshot with { State = finalState, FailureCode = null, FailureMessage = null };
             EntriesChanged?.Invoke(this, EventArgs.Empty);
-            return UnloadContext(slot);
+            slot.LoadContext?.Unload();
+            slot.LoadContext = null;
+            return;
         }
 
-        WeakReference? unloadReference = null;
         slot.Snapshot = slot.Snapshot with { State = PackageState.Stopping };
         EntriesChanged?.Invoke(this, EventArgs.Empty);
         try
@@ -204,28 +202,9 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         }
         finally
         {
-            unloadReference = UnloadContext(slot);
+            slot.LoadContext?.Unload();
+            slot.LoadContext = null;
             EntriesChanged?.Invoke(this, EventArgs.Empty);
-        }
-        return unloadReference;
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static WeakReference? UnloadContext(RuntimeSlot slot)
-    {
-        var context = slot.LoadContext;
-        slot.LoadContext = null;
-        if (context is null) return null;
-        context.Unload();
-        return new WeakReference(context);
-    }
-
-    private static void CollectUnloadedContext(WeakReference? reference)
-    {
-        for (var attempt = 0; reference is { IsAlive: true } && attempt < 5; attempt++)
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
         }
     }
 
