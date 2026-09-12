@@ -129,7 +129,24 @@ public sealed class RuntimeTests
     {
         public TemporaryDirectory() { Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "exusiai-tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(Path); }
         public string Path { get; }
-        public void Dispose() { try { Directory.Delete(Path, true); } catch (IOException) { } }
+        public void Dispose()
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    Directory.Delete(Path, true);
+                    return;
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt == 4) throw;
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    Thread.Sleep(25);
+                }
+            }
+        }
     }
 }
 
