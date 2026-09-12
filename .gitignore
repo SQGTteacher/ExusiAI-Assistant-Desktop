@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.nupkg
+packages/
+settings/
+logs/
+/artifacts/
+/release/

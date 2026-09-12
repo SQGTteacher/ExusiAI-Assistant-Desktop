@@ -1,0 +1,90 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Core", "src\ExusiAI.Core\ExusiAI.Core.csproj", "{11111111-1111-4111-8111-111111111111}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Extension.Abstractions", "src\ExusiAI.Extension.Abstractions\ExusiAI.Extension.Abstractions.csproj", "{22222222-2222-4222-8222-222222222222}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Extension.Runtime", "src\ExusiAI.Extension.Runtime\ExusiAI.Extension.Runtime.csproj", "{33333333-3333-4333-8333-333333333333}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Extension.SDK", "src\ExusiAI.Extension.SDK\ExusiAI.Extension.SDK.csproj", "{44444444-4444-4444-8444-444444444444}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Extension.Wpf", "src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj", "{55555555-5555-4555-8555-555555555555}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Infrastructure", "src\ExusiAI.Infrastructure\ExusiAI.Infrastructure.csproj", "{66666666-6666-4666-8666-666666666666}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Marketplace", "src\ExusiAI.Marketplace\ExusiAI.Marketplace.csproj", "{77777777-7777-4777-8777-777777777777}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Theme", "src\ExusiAI.Theme\ExusiAI.Theme.csproj", "{88888888-8888-4888-8888-888888888888}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Desktop", "src\ExusiAI.Desktop\ExusiAI.Desktop.csproj", "{99999999-9999-4999-8999-999999999999}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Plugin.Sample", "plugins\ExusiAI.Plugin.Sample\ExusiAI.Plugin.Sample.csproj", "{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Core.Tests", "tests\ExusiAI.Core.Tests\ExusiAI.Core.Tests.csproj", "{BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Extension.Runtime.Tests", "tests\ExusiAI.Extension.Runtime.Tests\ExusiAI.Extension.Runtime.Tests.csproj", "{CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Theme.Tests", "tests\ExusiAI.Theme.Tests\ExusiAI.Theme.Tests.csproj", "{DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{11111111-1111-4111-8111-111111111111}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-1111-4111-8111-111111111111}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-1111-4111-8111-111111111111}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-1111-4111-8111-111111111111}.Release|Any CPU.Build.0 = Release|Any CPU
+		{22222222-2222-4222-8222-222222222222}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{22222222-2222-4222-8222-222222222222}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{22222222-2222-4222-8222-222222222222}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{22222222-2222-4222-8222-222222222222}.Release|Any CPU.Build.0 = Release|Any CPU
+		{33333333-3333-4333-8333-333333333333}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{33333333-3333-4333-8333-333333333333}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{33333333-3333-4333-8333-333333333333}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{33333333-3333-4333-8333-333333333333}.Release|Any CPU.Build.0 = Release|Any CPU
+		{44444444-4444-4444-8444-444444444444}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44444444-4444-4444-8444-444444444444}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44444444-4444-4444-8444-444444444444}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44444444-4444-4444-8444-444444444444}.Release|Any CPU.Build.0 = Release|Any CPU
+		{55555555-5555-4555-8555-555555555555}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{55555555-5555-4555-8555-555555555555}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{55555555-5555-4555-8555-555555555555}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{55555555-5555-4555-8555-555555555555}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66666666-6666-4666-8666-666666666666}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66666666-6666-4666-8666-666666666666}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66666666-6666-4666-8666-666666666666}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66666666-6666-4666-8666-666666666666}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77777777-7777-4777-8777-777777777777}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77777777-7777-4777-8777-777777777777}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{77777777-7777-4777-8777-777777777777}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{77777777-7777-4777-8777-777777777777}.Release|Any CPU.Build.0 = Release|Any CPU
+		{88888888-8888-4888-8888-888888888888}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{88888888-8888-4888-8888-888888888888}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{88888888-8888-4888-8888-888888888888}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{88888888-8888-4888-8888-888888888888}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99999999-9999-4999-8999-999999999999}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99999999-9999-4999-8999-999999999999}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99999999-9999-4999-8999-999999999999}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99999999-9999-4999-8999-999999999999}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

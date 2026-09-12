@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup><Using Include="Xunit" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ExusiAI.Extension.Runtime\ExusiAI.Extension.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
+    <ProjectReference Include="..\..\src\ExusiAI.Extension.SDK\ExusiAI.Extension.SDK.csproj" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.Sample\ExusiAI.Plugin.Sample.csproj" />
+  </ItemGroup>
+</Project>

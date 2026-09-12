@@ -1,0 +1,22 @@
+<UserControl x:Class="ExusiAI.Desktop.PluginManagerPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <StackPanel><TextBlock Text="扩展管理" Style="{StaticResource PageTitle}" /><TextBlock Text="运行时只展示通过清单验证的本地扩展。" Style="{StaticResource PageSubtitle}" /></StackPanel>
+        <ScrollViewer Grid.Row="1" Margin="0,24,0,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <ItemsControl ItemsSource="{Binding Entries}"><ItemsControl.ItemTemplate><DataTemplate>
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="50" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <Border Width="40" Height="40" CornerRadius="12" Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top"><TextBlock Text="" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentBrush}" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                            <StackPanel Grid.Column="1"><TextBlock Text="{Binding Name}" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" /><StackPanel Orientation="Horizontal" Margin="0,10,0,0"><TextBlock Text="{Binding PackageId}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text=" · " Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding Version}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text=" · " Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding Publisher}" Foreground="{DynamicResource TextSecondaryBrush}" /></StackPanel></StackPanel>
+                            <Border Grid.Column="2" Background="{DynamicResource AccentSoftBrush}" CornerRadius="999" Padding="12,6" VerticalAlignment="Top"><TextBlock Text="{Binding State}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" /></Border>
+                        </Grid>
+                    </Border>
+                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                <TextBlock Text="被拒绝的包" FontSize="16" FontWeight="SemiBold" Margin="0,14,0,10" />
+                <ItemsControl ItemsSource="{Binding Failures}"><ItemsControl.ItemTemplate><DataTemplate>
+                    <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="10" Padding="14" Margin="0,0,0,8"><StackPanel><TextBlock Text="{Binding Code}" Foreground="{DynamicResource DangerBrush}" FontWeight="SemiBold" /><TextBlock Text="{Binding Message}" Margin="0,4,0,0" TextWrapping="Wrap" /></StackPanel></Border>
+                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

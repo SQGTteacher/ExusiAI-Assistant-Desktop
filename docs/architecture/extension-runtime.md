@@ -1,0 +1,14 @@
+# Extension runtime
+
+Discovery enumerates package directories and reads `package.json`. Validation
+checks schema, package id, semantic versions, API compatibility, host
+compatibility, entry points, dependencies, permissions, and safe relative
+paths. Invalid packages are recorded as failures rather than terminating the
+host.
+
+Plugin assemblies are loaded with a collectible `PackageLoadContext`.
+`ExusiAI.Extension.Abstractions` and `ExusiAI.Extension.Wpf` are resolved from
+the default context so contract type identity is shared. The SDK remains a
+private plugin dependency. Plugin load,
+initialize, start, stop, and dispose boundaries are isolated and represented
+by a single `PackageState` state machine.

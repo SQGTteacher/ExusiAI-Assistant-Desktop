@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ExusiAI.Core\ExusiAI.Core.csproj" />
+    <ProjectReference Include="..\ExusiAI.Extension.Abstractions\ExusiAI.Extension.Abstractions.csproj" />
+    <ProjectReference Include="..\ExusiAI.Extension.Runtime\ExusiAI.Extension.Runtime.csproj" />
+    <ProjectReference Include="..\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
+    <ProjectReference Include="..\ExusiAI.Infrastructure\ExusiAI.Infrastructure.csproj" />
+    <ProjectReference Include="..\ExusiAI.Marketplace\ExusiAI.Marketplace.csproj" />
+    <ProjectReference Include="..\ExusiAI.Theme\ExusiAI.Theme.csproj" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.Sample\ExusiAI.Plugin.Sample.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+  <Target Name="CopySamplePackage" AfterTargets="Build">
+    <PropertyGroup><SamplePackageDir>$(TargetDir)packages\exusiai.sample</SamplePackageDir></PropertyGroup>
+    <MakeDir Directories="$(SamplePackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.Sample.dll" DestinationFolder="$(SamplePackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\package.json" DestinationFolder="$(SamplePackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(SamplePackageDir)" />
+  </Target>
+</Project>
