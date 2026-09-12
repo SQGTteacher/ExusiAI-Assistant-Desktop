@@ -15,14 +15,17 @@ features directly to the host.
 - A searchable local resource catalog with package compatibility metadata.
 - Runtime, build, architecture, data-directory, package-directory, and log diagnostics.
 - Build-number stamping and automatic sample-package inclusion in publish output.
+- An independent Misha-platform-inspired classroom showcase plugin with two
+  navigation pages, live schedule state, clock, countdown, reminders, compact
+  mode, theme resources, and a documented lifecycle boundary.
 
 ## Next increments
 
 1. A transactional local package installer with staging, validation, rollback,
    and explicit conflict reporting.
 2. Package update and removal flows that preserve per-plugin settings.
-3. The first classroom-facing extension, kept outside the desktop host and built
-   against the stable extension contracts.
+3. Evolve the classroom showcase into data-provider-backed schedules and
+   notifications while keeping it outside the desktop host.
 4. Keyboard navigation, accessibility names, high-contrast validation, and a
    Windows visual smoke-test checklist.
 5. Signed update metadata and an online catalog only after the local installer
