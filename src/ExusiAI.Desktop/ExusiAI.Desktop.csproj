@@ -13,6 +13,7 @@
     <ProjectReference Include="..\ExusiAI.Marketplace\ExusiAI.Marketplace.csproj" />
     <ProjectReference Include="..\ExusiAI.Theme\ExusiAI.Theme.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.Sample\ExusiAI.Plugin.Sample.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
@@ -26,11 +27,25 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\package.json" DestinationFolder="$(SamplePackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(SamplePackageDir)" />
   </Target>
+  <Target Name="CopyMishaShowcasePackage" AfterTargets="Build">
+    <PropertyGroup><MishaPackageDir>$(TargetDir)packages\exusiai.misha-showcase</MishaPackageDir></PropertyGroup>
+    <MakeDir Directories="$(MishaPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.MishaShowcase.dll" DestinationFolder="$(MishaPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\THIRD_PARTY_NOTICES.md" DestinationFolder="$(MishaPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(MishaPackageDir)" />
+  </Target>
   <Target Name="CopySamplePackageToPublish" AfterTargets="Publish">
     <PropertyGroup><SamplePublishPackageDir>$(PublishDir)packages\exusiai.sample</SamplePublishPackageDir></PropertyGroup>
     <MakeDir Directories="$(SamplePublishPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.Sample.dll" DestinationFolder="$(SamplePublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\package.json" DestinationFolder="$(SamplePublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(SamplePublishPackageDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyMishaShowcasePackageToPublish" AfterTargets="Publish">
+    <PropertyGroup><MishaPublishPackageDir>$(PublishDir)packages\exusiai.misha-showcase</MishaPublishPackageDir></PropertyGroup>
+    <MakeDir Directories="$(MishaPublishPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.MishaShowcase.dll" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\THIRD_PARTY_NOTICES.md" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>
