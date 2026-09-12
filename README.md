@@ -16,6 +16,7 @@
 - 独立插件工作台，插件页面不再挤占主菜单；
 - 插件可在运行时启用、禁用和重试，偏好会跨启动保留；
 - 可搜索的本地资源库、双包目录发现、扩展管理页面和官方示例插件；
+- 内置“米沙平台兼容范本”插件，覆盖实时课表、时钟、倒计时、提醒、紧凑模式和多页面贡献；
 - Windows GitHub Actions 构建及单元测试。
 
 ## 构建与运行
@@ -29,7 +30,7 @@ dotnet test ExusiAI.sln --no-build --configuration Release
 dotnet run --project src/ExusiAI.Desktop
 ```
 
-构建或发布 Desktop 时，示例包会复制到输出目录的 `packages/exusiai.sample`。运行后它应处于“运行中”状态，并出现在“插件工作台”的选择列表中，页面显示 `Hello from ExusiAI Plugin!`。
+构建或发布 Desktop 时，基础示例包与米沙兼容范本会分别复制到输出目录的 `packages/exusiai.sample` 和 `packages/exusiai.misha-showcase`。运行后它们应处于“运行中”状态，并出现在“插件工作台”的选择列表中；米沙范本提供仪表板和详细的实现说明两个页面。
 
 创建可分发的 Windows x64 目录：
 
@@ -42,7 +43,7 @@ dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
   --output artifacts/ExusiAI-win-x64
 ```
 
-发布目标会自动带上示例插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户自行安装的包放在软件设置页显示的“用户插件包”目录中。
+发布目标会自动带上两个范本插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户自行安装的包放在软件设置页显示的“用户插件包”目录中。
 
 ## 代码边界
 
