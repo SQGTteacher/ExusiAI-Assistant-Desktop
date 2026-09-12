@@ -10,6 +10,8 @@ and loads code packages in collectible `AssemblyLoadContext` instances.
 `ExusiAI.Extension.Wpf` adds the WPF navigation page contract without making
 the core extension protocol WPF-specific.
 
-Phase 1 uses in-process loading with explicit failure isolation. A future
-out-of-process host remains possible because extensions receive capabilities,
-not the desktop host or its service provider.
+Phase 2 adds runtime enable/disable, separate bundled and user package roots,
+a searchable local catalog, a single-page plugin workspace, persistent visual
+preferences, and native DWM window materials. An out-of-process host remains
+possible because extensions receive capabilities, not the desktop host or its
+service provider.

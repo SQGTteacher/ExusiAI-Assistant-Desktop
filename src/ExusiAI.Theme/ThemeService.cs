@@ -1,7 +1,5 @@
 namespace ExusiAI.Theme;
 
-public enum ThemeSelection { System, Light, Dark }
-
 public sealed record ThemePalette(
     string Background,
     string Surface,
@@ -15,12 +13,47 @@ public sealed record ThemePalette(
     string Warning,
     string Danger);
 
+public sealed record ThemeDefinition(
+    string Id,
+    string Name,
+    string Description,
+    bool IsDark,
+    ThemePalette Palette,
+    ThemePalette? DarkPalette = null)
+{
+    public bool FollowsSystem => DarkPalette is not null;
+}
+
+public static class ThemeCatalog
+{
+    public static ThemePalette Light { get; } = new("#EDF3F5F6", "#F7FFFFFF", "#DDE9EDF2", "#171A23", "#667085", "#8FD7DCE4", "#5268E5", "#DCE5E9FF", "#159A6A", "#D88A14", "#D34A5A");
+    public static ThemePalette Dark { get; } = new("#E8101119", "#E9181A25", "#D9212431", "#F3F4F8", "#A4A9B8", "#703E4353", "#8796FF", "#8A292F57", "#50C99A", "#F0AE4A", "#F17382");
+
+    public static IReadOnlyList<ThemeDefinition> All { get; } =
+    [
+        new("system", "跟随系统", "自动匹配 Windows 深浅色", false, Light, Dark),
+        new("paper", "Paper", "克制清晰的暖白工作区", false, new("#EDF7F5F0", "#F9FFFDF8", "#E8EEE9E1", "#24231F", "#706E66", "#9ED8D3C8", "#3568D4", "#D8E4EDFF", "#2E8B68", "#B97818", "#C84B55")),
+        new("graphite", "Graphite", "中性的深灰编辑器配色", true, new("#EA17191C", "#EA202327", "#DC292D32", "#F2F4F7", "#AAB0BA", "#70464B53", "#7DA2F8", "#87314360", "#55C59A", "#E8B15B", "#ED7784")),
+        new("nord", "Nord", "冷静的极地蓝灰色调", true, new("#EA242933", "#EA2E3440", "#DC3B4252", "#ECEFF4", "#B7C0D0", "#705C667A", "#88C0D0", "#70455D68", "#A3BE8C", "#EBCB8B", "#BF616A")),
+        new("tokyo-night", "Tokyo Night", "高对比靛蓝夜间主题", true, new("#EA15161E", "#EA1A1B26", "#DC24283B", "#C0CAF5", "#9AA5CE", "#70414868", "#7AA2F7", "#73304168", "#9ECE6A", "#E0AF68", "#F7768E")),
+        new("dracula", "Dracula", "紫色强调的经典暗色方案", true, new("#EA21222C", "#EA282A36", "#DC343746", "#F8F8F2", "#B7B8C3", "#705A5D72", "#BD93F9", "#71463264", "#50FA7B", "#F1FA8C", "#FF5555")),
+        new("catppuccin", "Catppuccin", "柔和低刺激的摩卡色板", true, new("#EA181825", "#EA1E1E2E", "#DC313244", "#CDD6F4", "#A6ADC8", "#70585B70", "#CBA6F7", "#704B3E63", "#A6E3A1", "#F9E2AF", "#F38BA8")),
+        new("solarized", "Solarized Light", "适合长时间阅读的低对比浅色", false, new("#EDFDF6E3", "#F9FFFBED", "#E8EEE8D5", "#586E75", "#7C8B8E", "#9ECBC4B4", "#268BD2", "#D8DCEAF0", "#2AA198", "#B58900", "#DC322F"))
+    ];
+
+    public static ThemeDefinition Find(string? id) =>
+        All.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase)) ?? All[0];
+}
+
 public interface IThemeService
 {
-    ThemeSelection Selection { get; }
+    string SelectedThemeId { get; }
+    ThemeDefinition SelectedTheme { get; }
     ThemePalette Current { get; }
+    bool IsDark { get; }
+    IReadOnlyList<ThemeDefinition> AvailableThemes { get; }
     event EventHandler? Changed;
-    void Apply(ThemeSelection selection);
+    void Apply(string themeId);
 }
 
 public interface ISystemThemeProvider
@@ -31,28 +64,31 @@ public interface ISystemThemeProvider
 
 public sealed class ThemeService : IThemeService, IDisposable
 {
-    public static ThemePalette Light { get; } = new("#F5F6FA", "#FFFFFF", "#F0F2F7", "#171A23", "#697083", "#E1E4EB", "#5268E5", "#E8ECFF", "#159A6A", "#D88A14", "#D34A5A");
-    public static ThemePalette Dark { get; } = new("#101119", "#181A25", "#212431", "#F3F4F8", "#A4A9B8", "#303443", "#8796FF", "#292F57", "#50C99A", "#F0AE4A", "#F17382");
-
     private readonly ISystemThemeProvider systemTheme;
     private bool disposed;
 
     public ThemeService(ISystemThemeProvider? systemTheme = null)
     {
         this.systemTheme = systemTheme ?? new LightSystemThemeProvider();
-        Current = this.systemTheme.IsDark ? Dark : Light;
+        SelectedTheme = ThemeCatalog.All[0];
+        Current = Resolve(SelectedTheme);
         this.systemTheme.Changed += SystemTheme_OnChanged;
     }
 
-    public ThemeSelection Selection { get; private set; } = ThemeSelection.System;
+    public string SelectedThemeId => SelectedTheme.Id;
+    public ThemeDefinition SelectedTheme { get; private set; }
     public ThemePalette Current { get; private set; }
+    public bool IsDark => SelectedTheme.FollowsSystem ? systemTheme.IsDark : SelectedTheme.IsDark;
+    public IReadOnlyList<ThemeDefinition> AvailableThemes => ThemeCatalog.All;
     public event EventHandler? Changed;
 
-    public void Apply(ThemeSelection selection)
+    public void Apply(string themeId)
     {
-        if (Selection == selection && Current == Resolve(selection)) return;
-        Selection = selection;
-        Current = Resolve(selection);
+        var definition = ThemeCatalog.Find(themeId);
+        var palette = Resolve(definition);
+        if (ReferenceEquals(SelectedTheme, definition) && Current == palette) return;
+        SelectedTheme = definition;
+        Current = palette;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -64,12 +100,13 @@ public sealed class ThemeService : IThemeService, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private ThemePalette Resolve(ThemeSelection selection) => selection == ThemeSelection.Dark || (selection == ThemeSelection.System && systemTheme.IsDark) ? Dark : Light;
+    private ThemePalette Resolve(ThemeDefinition definition) =>
+        definition.FollowsSystem && systemTheme.IsDark ? definition.DarkPalette! : definition.Palette;
 
     private void SystemTheme_OnChanged(object? sender, EventArgs e)
     {
-        if (Selection != ThemeSelection.System) return;
-        Current = Resolve(Selection);
+        if (!SelectedTheme.FollowsSystem) return;
+        Current = Resolve(SelectedTheme);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

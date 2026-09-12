@@ -2,7 +2,7 @@
 
 面向中小学课堂设备的、扩展优先的 Windows 桌面平台。ExusiAI 本体只提供桌面壳、扩展运行时、设置、主题、日志和市场边界；屏幕批注、点名、课件管理等教学能力将以独立扩展交付。
 
-> 当前版本为 `0.1.0` 第一阶段架构基线，不是可用于生产课堂的完整产品。
+> 当前版本为 `0.2.0-preview.1` 第二阶段先行版本，不是可用于生产课堂的完整产品。
 
 ## 当前能力
 
@@ -11,8 +11,11 @@
 - 清单严格解析、兼容性检查、重复 ID 检测和包路径逃逸防护；
 - 可回收 `AssemblyLoadContext`、插件初始化/启动/停止生命周期和故障隔离；
 - 与通用扩展协议分离的 WPF 导航扩展点；
-- System / Light / Dark 主题、本地版本化设置和文件日志；
-- 离线市场占位边界、扩展管理页面和官方示例插件；
+- 8 套编辑器风格配色、System 自动切换、本地版本化设置和文件日志；
+- Windows 11 原生 Mica / Acrylic 材质与 DWM 窗口圆角；
+- 独立插件工作台，插件页面不再挤占主菜单；
+- 插件可在运行时启用、禁用和重试，偏好会跨启动保留；
+- 可搜索的本地资源库、双包目录发现、扩展管理页面和官方示例插件；
 - Windows GitHub Actions 构建及单元测试。
 
 ## 构建与运行
@@ -26,7 +29,20 @@ dotnet test ExusiAI.sln --no-build --configuration Release
 dotnet run --project src/ExusiAI.Desktop
 ```
 
-构建 Desktop 时，示例包会复制到输出目录的 `packages/exusiai.sample`。运行后它应处于“运行中”状态并注册“示例插件”页面，页面显示 `Hello from ExusiAI Plugin!`。
+构建或发布 Desktop 时，示例包会复制到输出目录的 `packages/exusiai.sample`。运行后它应处于“运行中”状态，并出现在“插件工作台”的选择列表中，页面显示 `Hello from ExusiAI Plugin!`。
+
+创建可分发的 Windows x64 目录：
+
+```powershell
+dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
+  --configuration Release `
+  --runtime win-x64 `
+  --self-contained true `
+  -p:PublishSingleFile=false `
+  --output artifacts/ExusiAI-win-x64
+```
+
+发布目标会自动带上示例插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户自行安装的包放在软件设置页显示的“用户插件包”目录中。
 
 ## 代码边界
 
@@ -38,14 +54,14 @@ dotnet run --project src/ExusiAI.Desktop
 | `ExusiAI.Extension.Wpf` | 仅供 WPF UI 扩展使用的贡献协议 |
 | `ExusiAI.Theme` | 与 WPF 无关的主题选择和设计令牌 |
 | `ExusiAI.Infrastructure` | 本地路径、设置、日志和 Windows 适配器 |
-| `ExusiAI.Marketplace` | 市场领域边界；第一阶段不联网 |
+| `ExusiAI.Marketplace` | 可查询的本地包目录；不负责加载代码 |
 | `ExusiAI.Desktop` | WPF 表现层和唯一组合根 |
 
 设计与安全说明见 [`docs/architecture`](docs/architecture)，包规范见 [`docs/package-spec/package-manifest.md`](docs/package-spec/package-manifest.md)。
 
 ## 明确不包含
 
-第一阶段不包含真实在线市场、云同步、AI/OCR、账号、遥测、自动更新、安装器、数据库或 ClassIsland 集成。
+当前 Preview 不包含真实在线市场、云同步、AI/OCR、账号、遥测、自动更新或安装器。
 
 ## License
 

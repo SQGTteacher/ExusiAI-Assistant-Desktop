@@ -37,14 +37,16 @@ internal sealed class SamplePage : UserControl
 {
     public SamplePage()
     {
+        var badgeText = new TextBlock { Text = "SAMPLE EXTENSION", FontWeight = FontWeights.SemiBold };
+        badgeText.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
         var badge = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(232, 238, 255)),
-            CornerRadius = new CornerRadius(999),
-            Padding = new Thickness(12, 6, 12, 6),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(10, 5, 10, 5),
             HorizontalAlignment = HorizontalAlignment.Left,
-            Child = new TextBlock { Text = "SAMPLE EXTENSION", Foreground = new SolidColorBrush(Color.FromRgb(66, 91, 199)), FontWeight = FontWeights.SemiBold }
+            Child = badgeText
         };
+        badge.SetResourceReference(Border.BackgroundProperty, "AccentSoftBrush");
         var panel = new StackPanel { MaxWidth = 680, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
         panel.Children.Add(badge);
         panel.Children.Add(new TextBlock { Text = "Hello from ExusiAI Plugin!", FontSize = 34, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 20, 0, 10) });

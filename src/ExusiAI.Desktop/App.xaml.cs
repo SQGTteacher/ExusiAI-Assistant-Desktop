@@ -27,16 +27,18 @@ public partial class App : Application
             await host.StartAsync();
             var theme = host.Services.GetRequiredService<IThemeService>();
             var settings = await host.Services.GetRequiredService<ISettingsService>().LoadAsync();
-            if (!Enum.TryParse<ThemeSelection>(settings.Theme, true, out var selection)) selection = ThemeSelection.System;
-            theme.Apply(selection);
+            theme.Apply(settings.Theme);
             ApplyTheme(theme.Current);
             theme.Changed += (_, _) => Dispatcher.InvokeAsync(() => ApplyTheme(theme.Current));
+            var backdrop = host.Services.GetRequiredService<IWindowBackdropService>();
+            if (!Enum.TryParse<WindowBackdropKind>(settings.Backdrop, true, out var backdropSelection)) backdropSelection = WindowBackdropKind.Mica;
+            backdrop.Apply(backdropSelection);
             runtime = host.Services.GetRequiredService<ExtensionRuntime>();
             var paths = host.Services.GetRequiredService<IAppPaths>();
-            await runtime.DiscoverAsync(Path.Combine(paths.ApplicationDirectory, "packages"));
-            await runtime.StartAsync();
+            await runtime.DiscoverAsync([Path.Combine(paths.ApplicationDirectory, "packages"), paths.PackagesDirectory]);
+            await runtime.StartAsync(settings.DisabledPackages ?? []);
             wpfExtensions = host.Services.GetRequiredService<WpfExtensionCoordinator>();
-            wpfExtensions.Attach(runtime.Entries);
+            wpfExtensions.Start();
 
             var window = host.Services.GetRequiredService<MainWindow>();
             window.DataContext = host.Services.GetRequiredService<ShellViewModel>();
@@ -55,7 +57,7 @@ public partial class App : Application
     {
         try
         {
-            wpfExtensions?.DetachAll();
+            wpfExtensions?.Dispose();
             if (runtime is not null) await runtime.DisposeAsync();
             if (host is not null)
             {
@@ -86,8 +88,10 @@ public partial class App : Application
         builder.Services.AddSingleton<SystemThemeProvider>();
         builder.Services.AddSingleton<ISystemThemeProvider>(x => x.GetRequiredService<SystemThemeProvider>());
         builder.Services.AddSingleton<IThemeService, ThemeService>();
+        builder.Services.AddSingleton<IWindowBackdropService, WindowBackdropService>();
         builder.Services.AddSingleton<ISettingsService, SettingsService>();
-        builder.Services.AddSingleton<IPackageCatalog, PlaceholderPackageCatalog>();
+        builder.Services.AddSingleton<IPackageCatalog>(services =>
+            new LocalPackageCatalog(() => services.GetRequiredService<ExtensionRuntime>().Entries.Select(x => x.Package.Manifest)));
         builder.Services.AddSingleton<PageFactory>();
         builder.Services.AddSingleton<ShellViewModel>();
         builder.Services.AddSingleton<MainWindow>();

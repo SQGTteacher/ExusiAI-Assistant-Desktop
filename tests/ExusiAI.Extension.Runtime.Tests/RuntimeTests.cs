@@ -50,6 +50,19 @@ public sealed class RuntimeTests
     }
 
     [Fact]
+    public async Task DiscoveryCombinesBundledAndUserPackageRoots()
+    {
+        using var bundled = new TemporaryDirectory();
+        using var user = new TemporaryDirectory();
+        await WriteManifestAsync(Path.Combine(bundled.Path, "one"), ValidManifest);
+        await WriteManifestAsync(Path.Combine(user.Path, "two"), ValidManifest with { Id = "exusiai.user" });
+        await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
+        await runtime.DiscoverAsync([bundled.Path, user.Path]);
+        Assert.Equal(2, runtime.Entries.Count);
+        Assert.Empty(runtime.DiscoveryFailures);
+    }
+
+    [Fact]
     public async Task BadAssemblyFailsWithoutCrashingRuntime()
     {
         using var root = new TemporaryDirectory();
@@ -104,6 +117,29 @@ public sealed class RuntimeTests
             GC.WaitForPendingFinalizers();
         }
         Assert.False(loadContext.IsAlive);
+    }
+
+    [Fact]
+    public async Task DisabledPluginCanBeEnabledAndDisabledWithoutRestartingHost()
+    {
+        using var root = new TemporaryDirectory();
+        var package = Path.Combine(root.Path, "sample");
+        await WriteManifestAsync(package, ValidManifest);
+        File.Copy(typeof(SamplePlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Plugin.Sample.dll"));
+        File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
+        await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
+        await runtime.DiscoverAsync(root.Path);
+
+        await runtime.StartAsync(["exusiai.sample"]);
+        Assert.Equal(PackageState.Disabled, Assert.Single(runtime.Entries).State);
+
+        await runtime.SetEnabledAsync("exusiai.sample", true);
+        Assert.Equal(PackageState.Running, Assert.Single(runtime.Entries).State);
+
+        await runtime.SetEnabledAsync("exusiai.sample", false);
+        var disabled = Assert.Single(runtime.Entries);
+        Assert.Equal(PackageState.Disabled, disabled.State);
+        Assert.Null(disabled.Instance);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
