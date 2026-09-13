@@ -196,15 +196,17 @@ public sealed partial class PluginEntryViewModel : ObservableObject
 public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDisposable
 {
     private readonly WpfNavigationRegistry registry;
+    private readonly ICrashReporter crashReporter;
     private readonly Dictionary<string, FrameworkElement> pageCache = new(StringComparer.OrdinalIgnoreCase);
 
     [ObservableProperty] private PluginPageOption? selectedPage;
     [ObservableProperty] private FrameworkElement? currentPage;
     [ObservableProperty] private bool hasPages;
 
-    public PluginWorkspaceViewModel(WpfNavigationRegistry registry)
+    public PluginWorkspaceViewModel(WpfNavigationRegistry registry, ICrashReporter crashReporter)
     {
         this.registry = registry;
+        this.crashReporter = crashReporter;
         Pages = [];
         Rebuild();
         registry.Changed += Registry_OnChanged;
@@ -217,7 +219,8 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
         if (value is null) { CurrentPage = null; return; }
         if (!pageCache.TryGetValue(value.Route, out var view))
         {
-            view = value.CreateView();
+            try { view = value.CreateView(); }
+            catch (Exception exception) { view = crashReporter.CreateErrorPage(exception, $"创建插件页面 {value.PackageId}/{value.Route}"); }
             pageCache[value.Route] = view;
         }
         CurrentPage = view;

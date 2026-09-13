@@ -6,10 +6,13 @@ namespace ExusiAI.Plugin.MishaShowcase;
 
 public sealed class MishaShowcasePlugin : ExtensionPluginBase, IWpfNavigationExtension
 {
+    private MishaPlatformStore store = null!;
+
     public override async Task InitializeAsync(IExtensionContext context, CancellationToken cancellationToken)
     {
         await base.InitializeAsync(context, cancellationToken);
-        context.Logger.Information("Misha platform showcase initialized from the independent ExusiAI implementation.");
+        store = new MishaPlatformStore();
+        context.Logger.Information("ClassIsland Misha feature port initialized; porter: SQGTteacher.");
     }
 
     public override Task StartAsync(CancellationToken cancellationToken)
@@ -26,7 +29,12 @@ public sealed class MishaShowcasePlugin : ExtensionPluginBase, IWpfNavigationExt
 
     public IReadOnlyCollection<WpfNavigationPage> GetNavigationPages() =>
     [
-        new("misha.dashboard", "米沙仪表板", "◫", static () => new MishaDashboardPage()),
-        new("misha.reference", "范本说明", "◇", static () => new MishaReferencePage())
+        new("misha.dashboard", "课表信息岛", "◫", () => new MishaDashboardPage(store)),
+        new("misha.schedule", "课表与时间表", "▦", () => new MishaSchedulePage(store)),
+        new("misha.components", "组件与显示", "◩", () => new MishaComponentsPage(store)),
+        new("misha.automation", "提醒与自动化", "⚡", () => new MishaAutomationPage(store)),
+        new("misha.extensions", "内置扩展", "⊞", () => new MishaExtensionsPage(store)),
+        new("misha.data", "档案与数据", "⇄", () => new MishaDataPage(store)),
+        new("misha.about", "关于与开源", "ⓘ", static () => new MishaAboutPage())
     ];
 }

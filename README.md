@@ -2,7 +2,7 @@
 
 面向中小学课堂设备的、扩展优先的 Windows 桌面平台。ExusiAI 本体只提供桌面壳、扩展运行时、设置、主题、日志和市场边界；屏幕批注、点名、课件管理等教学能力将以独立扩展交付。
 
-> 当前版本为 `0.2.0-preview.1` 第二阶段先行版本，不是可用于生产课堂的完整产品。
+> 当前版本为 `0.2.0-preview.2` 第二阶段先行版本，不是可用于生产课堂的完整产品。
 
 ## 当前能力
 
@@ -16,7 +16,7 @@
 - 独立插件工作台，插件页面不再挤占主菜单；
 - 插件可在运行时启用、禁用和重试，偏好会跨启动保留；
 - 可搜索的本地资源库、双包目录发现、扩展管理页面和官方示例插件；
-- 内置“米沙平台兼容范本”插件，覆盖实时课表、时钟、倒计时、提醒、紧凑模式和多页面贡献；
+- 内置 ClassIsland 2.2 Misha 功能移植插件，覆盖课表/时间表、组件、提醒与自动化、内置扩展、档案导入导出及完整开源署名；
 - Windows GitHub Actions 构建及单元测试。
 
 ## 构建与运行
@@ -30,7 +30,7 @@ dotnet test ExusiAI.sln --no-build --configuration Release
 dotnet run --project src/ExusiAI.Desktop
 ```
 
-构建或发布 Desktop 时，基础示例包与米沙兼容范本会分别复制到输出目录的 `packages/exusiai.sample` 和 `packages/exusiai.misha-showcase`。运行后它们应处于“运行中”状态，并出现在“插件工作台”的选择列表中；米沙范本提供仪表板和详细的实现说明两个页面。
+构建或发布 Desktop 时，基础示例包与 ClassIsland Misha 功能移植会分别复制到输出目录的 `packages/exusiai.sample` 和 `packages/exusiai.misha-showcase`。运行后它们应处于“运行中”状态，并出现在“插件工作台”的选择列表中；移植插件提供七个独立功能页面。
 
 创建可分发的 Windows x64 目录：
 
