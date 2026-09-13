@@ -3,7 +3,7 @@ namespace ExusiAI.Core;
 public static class ApplicationInfo
 {
     public const string ProductName = "ExusiAI Assistant Desktop";
-    public const string Version = "0.2.0-preview.3";
+    public const string Version = "0.2.0-preview.4";
     public const string ExtensionApiVersion = "1";
 
     public static string BuildNumber
