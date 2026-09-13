@@ -144,7 +144,7 @@ public sealed class RuntimeTests
     }
 
     [Fact]
-    public async Task MishaShowcaseLoadsAsIndependentTwoPageNavigationPlugin()
+    public async Task MishaFeaturePortLoadsAndRegistersAllNavigationAreas()
     {
         using var root = new TemporaryDirectory();
         var package = Path.Combine(root.Path, "misha-showcase");
@@ -169,7 +169,11 @@ public sealed class RuntimeTests
         var entry = Assert.Single(runtime.Entries);
         Assert.Equal(PackageState.Running, entry.State);
         var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
-        Assert.Equal(new[] { "misha.dashboard", "misha.reference" }, navigation.GetNavigationPages().Select(page => page.Route));
+        Assert.Equal(new[]
+        {
+            "misha.dashboard", "misha.schedule", "misha.components", "misha.automation",
+            "misha.extensions", "misha.data", "misha.about"
+        }, navigation.GetNavigationPages().Select(page => page.Route));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
