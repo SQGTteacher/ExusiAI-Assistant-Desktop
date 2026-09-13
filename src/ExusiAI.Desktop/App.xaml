@@ -35,7 +35,7 @@
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="18" />
         </Style>
         <Style TargetType="Button">
@@ -48,7 +48,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -80,7 +80,7 @@
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
                                     <Grid>
-                                        <Border x:Name="Item" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" CornerRadius="5"><ContentPresenter /></Border>
+                                        <Border x:Name="Item" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" CornerRadius="8"><ContentPresenter /></Border>
                                         <Border x:Name="Marker" Width="3" Height="18" CornerRadius="1.5" Background="{DynamicResource AccentBrush}" HorizontalAlignment="Left" Visibility="Collapsed" />
                                     </Grid>
                                     <ControlTemplate.Triggers>
