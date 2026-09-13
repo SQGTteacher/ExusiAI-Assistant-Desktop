@@ -64,6 +64,6 @@ dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
 
 当前 Preview 不包含真实在线市场、云同步、AI/OCR、账号、遥测、自动更新或安装器。
 
-## License
+## 开源许可证
 
-公开发布前仍需由项目所有者确定正式开源许可证；当前 `LICENSE` 文件不授予开源许可。
+本项目整体以 [GNU General Public License v3.0 only](LICENSE)（SPDX: `GPL-3.0-only`）发布。ClassIsland 相关移植保留其原作者、贡献者及许可证声明；详情见插件内的 `THIRD_PARTY_NOTICES.md`。参与开发前请阅读 [贡献指南](CONTRIBUTING.md)。
