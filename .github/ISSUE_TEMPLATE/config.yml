@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Issue 提交须知
+    url: https://github.com/SQGTteacher/ExusiAI-Assistant-Desktop/blob/main/.github/ISSUE_GUIDELINES.md
+    about: 提交缺陷前请完整阅读格式、日志和隐私要求
