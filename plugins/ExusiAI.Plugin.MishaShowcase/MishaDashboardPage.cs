@@ -8,14 +8,15 @@ namespace ExusiAI.Plugin.MishaShowcase;
 
 internal sealed class MishaDashboardPage : UserControl
 {
-    private readonly MishaDashboardViewModel viewModel = new();
+    private readonly MishaDashboardViewModel viewModel;
     private readonly DispatcherTimer timer;
     private readonly StackPanel detailArea;
     private readonly Button compactButton;
     private bool compact;
 
-    public MishaDashboardPage()
+    public MishaDashboardPage(MishaPlatformStore store)
     {
+        viewModel = new(store);
         DataContext = viewModel;
         timer = new() { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => viewModel.Tick(DateTime.Now);
@@ -43,8 +44,8 @@ internal sealed class MishaDashboardPage : UserControl
         grid.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         var title = new StackPanel();
-        title.Children.Add(Text("米沙平台兼容范本", 26, FontWeights.SemiBold));
-        title.Children.Add(Text("独立实现 · 用于验证 ExusiAI 插件工作台与生命周期", 12, FontWeights.Normal, "TextSecondaryBrush", new(0, 5, 0, 0)));
+        title.Children.Add(BoundText(nameof(MishaDashboardViewModel.SchoolName), 26, FontWeights.SemiBold));
+        title.Children.Add(Text("ClassIsland 2.2 Misha 功能移植 · 移植者 SQGTteacher", 12, FontWeights.Normal, "TextSecondaryBrush", new(0, 5, 0, 0)));
         grid.Children.Add(title);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         foreach (var action in actions) { action.Margin = new(6, 0, 0, 0); buttons.Children.Add(action); }
@@ -172,17 +173,18 @@ internal sealed class MishaDashboardPage : UserControl
     }
 }
 
-internal sealed class MishaReferencePage : UserControl
+internal sealed class MishaAboutPage : UserControl
 {
-    public MishaReferencePage()
+    public MishaAboutPage()
     {
         var content = new StackPanel();
-        content.Children.Add(Text("范本说明", 26, FontWeights.SemiBold));
-        content.Children.Add(Text("用于检验一个真实插件需要经过的完整宿主路径。", 12, FontWeights.Normal, "TextSecondaryBrush", new(0, 5, 0, 18)));
-        content.Children.Add(Section("来源基线", "参考 ClassIsland develop/v2/misha-alpha 分支在 b61a0353 提交中呈现的组件化课表理念。当前插件是独立 WPF 实现，不加载或复制 ClassIsland 程序代码。"));
-        content.Children.Add(Section("运行时覆盖", "清单发现 → 兼容性校验 → 无锁程序集加载 → 初始化与启动 → 两个页面注册 → 工作台切换 → 禁用与卸载。"));
-        content.Children.Add(Section("界面覆盖", "动态主题画刷、实时数据绑定、秒级 DispatcherTimer、课程状态计算、列表排版、进度显示、交互按钮和紧凑模式。"));
-        content.Children.Add(Section("维护边界", "范本没有联网、文件写入、遥测或 ClassIsland API 依赖。后续课堂扩展可以复制此项目结构，但应将业务模型和持久化服务拆分为独立文件。"));
+        content.Children.Add(Text("关于 ClassIsland 米沙功能移植", 26, FontWeights.SemiBold));
+        content.Children.Add(Text("完整保留原项目身份、作者和开源许可信息。", 12, FontWeights.Normal, "TextSecondaryBrush", new(0, 5, 0, 18)));
+        content.Children.Add(Section("原项目", "ClassIsland — 一款适用于班级多媒体屏幕的跨平台课表信息显示工具。项目名称灵感来自 iOS 灵动岛。官方网站：https://classisland.tech/；源代码：https://github.com/ClassIsland/ClassIsland"));
+        content.Children.Add(Section("原作者与贡献者", "创作者、主要作者及维护者：HelloWRC（HelloWRC.Dev）。ClassIsland 由 ClassIsland 开发团队及社区贡献者共同维护；完整且持续更新的贡献者名单以原仓库 README 的“致谢 / Contributors”章节为准。"));
+        content.Children.Add(Section("移植信息", "ExusiAI 插件移植者：SQGTteacher。移植基线：develop/v2/misha-alpha（2.2 Misha），参考提交 b61a0353282cc061dc4f498d515bfd3b9a38ca58。本插件并非 ClassIsland 官方发行版。"));
+        content.Children.Add(Section("开源许可", "ClassIsland 应用本体使用 GNU General Public License v3.0；ClassIsland.PluginSdk、ClassIsland.Core、ClassIsland.Shared.Ipc 与 ClassIsland.Shared 使用 GNU Lesser General Public License v3.0。版权归各原作者与贡献者所有，不因移植而转移。"));
+        content.Children.Add(Section("功能范围", "课表信息显示、课表与时间表、轮换周、临时调整入口、组件布局、提醒、自动化、天气设置、时间校准、隐藏与鼠标穿透、配置保护、内置扩展安装以及档案导入导出。"));
         Content = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
 
