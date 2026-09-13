@@ -37,8 +37,8 @@ internal static class MishaUi
         var button = new Button { Content = text, Padding = new(13, 7, 13, 7), Margin = new(0, 0, 7, 0) };
         if (secondary)
         {
-            button.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
-            button.SetResourceReference(Button.ForegroundProperty, "TextPrimaryBrush");
+            button.SetResourceReference(System.Windows.Controls.Button.BackgroundProperty, "SurfaceAltBrush");
+            button.SetResourceReference(System.Windows.Controls.Button.ForegroundProperty, "TextPrimaryBrush");
         }
         return button;
     }
