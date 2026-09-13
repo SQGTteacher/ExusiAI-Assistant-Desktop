@@ -168,7 +168,7 @@ internal sealed class MishaDataPage : UserControl
     public MishaDataPage(MishaPlatformStore store)
     {
         this.store = store;
-        var root = new StackPanel(); root.Children.Add(MishaUi.Header("档案与数据", "管理多周档案、天气和时间设置，并以 JSON 导入或导出完整配置。"));
+        var root = new StackPanel(); root.Children.Add(MishaUi.Header("档案与数据", "直接导入或导出 ClassIsland 2.2 原生 Profile JSON，并保留未识别字段。"));
         var settings = new StackPanel();
         settings.Children.Add(MishaUi.Text("天气位置", 12, FontWeights.SemiBold)); var city = new TextBox { Text = store.State.WeatherCity, Margin = new(0, 5, 0, 10) }; city.TextChanged += (_, _) => store.State.WeatherCity = city.Text; settings.Children.Add(city);
         var sync = new CheckBox { Content = "自动同步软件时间（也可手动对齐铃声）", IsChecked = store.State.TimeSync }; sync.Checked += (_, _) => store.State.TimeSync = true; sync.Unchecked += (_, _) => store.State.TimeSync = false; settings.Children.Add(sync);
@@ -178,20 +178,20 @@ internal sealed class MishaDataPage : UserControl
         var import = MishaUi.Button("导入档案", true); import.Click += Import_OnClick;
         var save = MishaUi.Button("保存设置"); save.Click += async (_, _) => { await store.SaveAsync(); status.Text = "设置已保存。"; };
         buttons.Children.Add(export); buttons.Children.Add(import); buttons.Children.Add(save); buttons.Children.Add(status); root.Children.Add(buttons);
-        root.Children.Add(MishaUi.Card(MishaUi.Text("表格/CSES 互操作由“CSES 互操作”内置扩展提供。本页 JSON 格式保存全部轮换周、课程、组件、自动化和扩展状态，写入采用临时文件替换以避免档案损坏。", 12, null, "TextSecondaryBrush"), new(0, 12, 0, 0)));
+        root.Children.Add(MishaUi.Card(MishaUi.Text("Profile JSON 使用 ClassIsland 的 Subjects、TimeLayouts、ClassPlans、TimeRule 与 GUID 引用结构，可在两端直接迁移。表格/CSES 互操作仍由对应模块处理；导入时未知的新版本字段会原样保留。", 12, null, "TextSecondaryBrush"), new(0, 12, 0, 0)));
         Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
 
     private async void Export_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog { Filter = "ExusiAI ClassIsland 档案 (*.json)|*.json", FileName = $"{store.State.ProfileName}.json" };
+        var dialog = new SaveFileDialog { Filter = "ClassIsland Profile (*.json)|*.json", FileName = $"{store.State.ProfileName}.json" };
         if (dialog.ShowDialog() != true) return;
         try { await store.ExportAsync(dialog.FileName); status.Text = "档案已导出。"; } catch (Exception exception) { status.Text = $"导出失败：{exception.Message}"; }
     }
 
     private async void Import_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Filter = "ExusiAI ClassIsland 档案 (*.json)|*.json" };
+        var dialog = new OpenFileDialog { Filter = "ClassIsland Profile (*.json)|*.json" };
         if (dialog.ShowDialog() != true) return;
         try { await store.ImportAsync(dialog.FileName); status.Text = "档案已导入；重新打开页面即可刷新内容。"; } catch (Exception exception) { status.Text = $"导入失败：{exception.Message}"; }
     }
