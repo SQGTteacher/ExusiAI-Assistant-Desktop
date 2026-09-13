@@ -110,7 +110,7 @@ internal sealed class MishaDashboardPage : UserControl
         time.Children.Add(BoundText(nameof(MishaDashboardViewModel.TimeText), 31, FontWeights.SemiBold));
         time.Children.Add(BoundText(nameof(MishaDashboardViewModel.DateText), 11, FontWeights.Normal, new(0, 4, 0, 0), "TextSecondaryBrush"));
         var progress = new ProgressBar { Height = 4, Minimum = 0, Maximum = 100, Margin = new(0, 13, 0, 0) };
-        progress.SetBinding(ProgressBar.ValueProperty, new Binding(nameof(MishaDashboardViewModel.DayProgress)));
+        progress.SetBinding(ProgressBar.ValueProperty, new Binding(nameof(MishaDashboardViewModel.DayProgress)) { Mode = BindingMode.OneWay });
         time.Children.Add(progress);
         side.Children.Add(Card(time, "SurfaceBrush"));
 
