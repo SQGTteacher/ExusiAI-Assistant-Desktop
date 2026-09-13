@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Nodes;
 using ExusiAI.Extension.Abstractions;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.SDK;
@@ -181,7 +182,17 @@ public sealed class RuntimeTests
         {
             try
             {
-                foreach (var page in pages) Assert.NotNull(page.CreateView());
+                foreach (var page in pages)
+                {
+                    var view = page.CreateView();
+                    Assert.NotNull(view);
+                    view.Measure(new System.Windows.Size(1280, 800));
+                    view.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
+                    view.UpdateLayout();
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                        System.Windows.Threading.DispatcherPriority.DataBind,
+                        new Action(() => { }));
+                }
             }
             catch (Exception exception) { pageFailure = exception; }
         });
@@ -189,6 +200,34 @@ public sealed class RuntimeTests
         pageThread.Start();
         Assert.True(pageThread.Join(TimeSpan.FromSeconds(15)), "WPF page smoke test timed out.");
         Assert.Null(pageFailure);
+    }
+
+    [Fact]
+    public void ClassIslandProfileInteropImportsExportsAndPreservesUnknownFields()
+    {
+        const string subjectId = "11111111-1111-4111-8111-111111111111";
+        const string layoutId = "22222222-2222-4222-8222-222222222222";
+        var json = """
+        {
+          "Name":"兼容性测试",
+          "FutureField":{"keep":true},
+          "Subjects":{"SUBJECT_ID":{"Name":"数学","Initial":"数","TeacherName":"周老师","IsOutDoor":false}},
+          "TimeLayouts":{"LAYOUT_ID":{"Name":"标准时间表","Layouts":[{"StartTime":"08:00:00","EndTime":"08:40:00","TimeType":0}]}},
+          "ClassPlans":{"33333333-3333-4333-8333-333333333333":{"Name":"周一","TimeLayoutId":"LAYOUT_ID","IsEnabled":true,"TimeRule":{"WeekCountDiv":1},"Classes":[{"SubjectId":"SUBJECT_ID","IsEnabled":true}]}}
+        }
+        """.Replace("SUBJECT_ID", subjectId, StringComparison.Ordinal).Replace("LAYOUT_ID", layoutId, StringComparison.Ordinal);
+        var state = MishaPlatformState.CreateDefault();
+
+        var original = ClassIslandProfileInterop.Parse(json, state);
+        var exported = JsonNode.Parse(ClassIslandProfileInterop.Write(state, original))!.AsObject();
+
+        Assert.Equal("兼容性测试", state.ProfileName);
+        Assert.Equal("数学", Assert.Single(state.Schedule).Subject);
+        Assert.Equal("08:00", Assert.Single(state.Schedule).Start);
+        Assert.True(exported["FutureField"]?["keep"]?.GetValue<bool>());
+        Assert.NotNull(exported["Subjects"]);
+        Assert.NotNull(exported["TimeLayouts"]);
+        Assert.NotNull(exported["ClassPlans"]);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

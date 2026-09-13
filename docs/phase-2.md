@@ -4,7 +4,7 @@ Phase 2 turns the verified platform foundation into a usable local extension
 desktop. Work is split into reviewable increments instead of adding classroom
 features directly to the host.
 
-## Delivered through 0.2.0-preview.3
+## Delivered through 0.2.0-preview.4
 
 - Native Windows 11 Mica and Acrylic backdrops with DWM-owned window corners.
 - Eight persistent editor-style color schemes, including system-following mode.
@@ -25,6 +25,11 @@ features directly to the host.
 - The ClassIsland Misha port now exposes seven functional areas: information
   display, schedule/timetable editing, component layout, reminders/automation,
   built-in modules, profile data, and complete upstream attribution.
+- ClassIsland 2.2 Profile JSON interoperability for `Subjects`, `TimeLayouts`,
+  `ClassPlans`, `TimeRule`, GUID relationships, and lossless preservation of
+  unknown upstream fields.
+- Layout/data-binding smoke tests that activate every contributed WPF page,
+  preventing deferred binding failures such as the read-only progress crash.
 
 ## Next increments
 

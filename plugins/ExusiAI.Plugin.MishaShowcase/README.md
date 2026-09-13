@@ -12,7 +12,7 @@ SQGTteacher。
 - 普通/强调提醒以及课程事件和定时自动化规则；
 - 天气位置、软件时间同步和设置认证选项；
 - 天气、倒计日、强调提醒、自动化和 CSES 等内置模块安装管理；
-- 完整档案的本地持久化、JSON 导入与导出；
+- ClassIsland 2.2 原生 Profile JSON 导入导出，保留未知字段并维持 GUID 关系；
 - 七个工作台页面及插件运行时启用、禁用和卸载。
 
 参考基线为 ClassIsland `develop/v2/misha-alpha` 分支的 2.2 Misha 早期开发版，

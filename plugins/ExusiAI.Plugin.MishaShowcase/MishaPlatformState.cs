@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace ExusiAI.Plugin.MishaShowcase;
 
@@ -91,6 +93,7 @@ internal sealed class MishaPlatformStore
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string filePath;
+    private readonly string nativeProfilePath;
 
     public MishaPlatformStore()
     {
@@ -98,10 +101,17 @@ internal sealed class MishaPlatformStore
             "ExusiAI Assistant Desktop", "extensions", "exusiai.misha-showcase");
         Directory.CreateDirectory(directory);
         filePath = Path.Combine(directory, "profile.json");
+        nativeProfilePath = Path.Combine(directory, "classisland-profile.json");
         State = LoadCore();
+        if (File.Exists(nativeProfilePath))
+        {
+            try { NativeProfile = ClassIslandProfileInterop.Parse(File.ReadAllText(nativeProfilePath), State); }
+            catch (Exception) { NativeProfile = null; }
+        }
     }
 
     public MishaPlatformState State { get; private set; }
+    [JsonIgnore] public JsonObject? NativeProfile { get; private set; }
     public event EventHandler? Changed;
 
     public async Task SaveAsync()
@@ -118,13 +128,15 @@ internal sealed class MishaPlatformStore
     }
 
     public async Task ExportAsync(string destination) =>
-        await File.WriteAllTextAsync(destination, JsonSerializer.Serialize(State, JsonOptions));
+        await File.WriteAllTextAsync(destination, ClassIslandProfileInterop.Write(State, NativeProfile));
 
     public async Task ImportAsync(string source)
     {
-        var imported = JsonSerializer.Deserialize<MishaPlatformState>(await File.ReadAllTextAsync(source), JsonOptions)
-            ?? throw new InvalidDataException("档案内容为空。");
-        State = imported;
+        var json = await File.ReadAllTextAsync(source);
+        var importedState = MishaPlatformState.CreateDefault();
+        NativeProfile = ClassIslandProfileInterop.Parse(json, importedState);
+        State = importedState;
+        await File.WriteAllTextAsync(nativeProfilePath, NativeProfile.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         await SaveAsync();
     }
 
