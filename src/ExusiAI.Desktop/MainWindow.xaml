@@ -6,10 +6,10 @@
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
         Background="Transparent">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="46" CornerRadius="0" GlassFrameThickness="0" ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
+        <shell:WindowChrome CaptionHeight="48" CornerRadius="12" GlassFrameThickness="0" ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
-    <Grid Background="{DynamicResource AppBackgroundBrush}">
-        <Grid.RowDefinitions><RowDefinition Height="46" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+    <Grid x:Name="ChromeRoot" Background="{DynamicResource AppBackgroundBrush}">
+        <Grid.RowDefinitions><RowDefinition Height="48" /><RowDefinition Height="*" /></Grid.RowDefinitions>
         <Grid Grid.Row="0" MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
@@ -25,8 +25,8 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="1" Margin="12,0,12,12">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="220" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+        <Grid Grid.Row="1" Margin="14,2,14,14">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="224" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
             <Border Grid.Column="0" Style="{StaticResource Card}" Padding="9">
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
@@ -51,7 +51,7 @@
                 </Grid>
             </Border>
             <Border Grid.Column="2" Style="{StaticResource Card}" Padding="0">
-                <ContentControl Content="{Binding CurrentPage}" Margin="28" />
+                <ContentControl Content="{Binding CurrentPage}" Margin="30" />
             </Border>
         </Grid>
     </Grid>
