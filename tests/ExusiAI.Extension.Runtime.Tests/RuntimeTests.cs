@@ -169,11 +169,26 @@ public sealed class RuntimeTests
         var entry = Assert.Single(runtime.Entries);
         Assert.Equal(PackageState.Running, entry.State);
         var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
+        var pages = navigation.GetNavigationPages().ToArray();
         Assert.Equal(new[]
         {
             "misha.dashboard", "misha.schedule", "misha.components", "misha.automation",
             "misha.extensions", "misha.data", "misha.about"
-        }, navigation.GetNavigationPages().Select(page => page.Route));
+        }, pages.Select(page => page.Route));
+
+        Exception? pageFailure = null;
+        var pageThread = new Thread(() =>
+        {
+            try
+            {
+                foreach (var page in pages) Assert.NotNull(page.CreateView());
+            }
+            catch (Exception exception) { pageFailure = exception; }
+        });
+        pageThread.SetApartmentState(ApartmentState.STA);
+        pageThread.Start();
+        Assert.True(pageThread.Join(TimeSpan.FromSeconds(15)), "WPF page smoke test timed out.");
+        Assert.Null(pageFailure);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
