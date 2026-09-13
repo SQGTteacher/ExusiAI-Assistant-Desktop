@@ -12,21 +12,21 @@ internal sealed class MishaDashboardViewModel : INotifyPropertyChanged
     private DateTime now;
     private int? simulatedLessonIndex;
 
-    public MishaDashboardViewModel()
+    private readonly MishaPlatformStore store;
+
+    public MishaDashboardViewModel(MishaPlatformStore store)
     {
-        Lessons = new([
-            new(1, "语文", "林老师", new(8, 0, 0), new(8, 40, 0)),
-            new(2, "数学", "周老师", new(8, 50, 0), new(9, 30, 0)),
-            new(3, "英语", "陈老师", new(9, 50, 0), new(10, 30, 0)),
-            new(4, "物理", "许老师", new(10, 40, 0), new(11, 20, 0)),
-            new(5, "历史", "赵老师", new(14, 0, 0), new(14, 40, 0)),
-            new(6, "信息技术", "王老师", new(14, 50, 0), new(15, 30, 0))
-        ]);
+        this.store = store;
+        Lessons = new(store.State.Schedule.Where(x => x.Enabled && x.Week == store.State.CycleWeek)
+            .Select(x => new LessonItem(x.Index, x.Subject, x.Teacher,
+                TimeSpan.TryParse(x.Start, out var start) ? start : TimeSpan.Zero,
+                TimeSpan.TryParse(x.End, out var end) ? end : TimeSpan.Zero)));
+        if (Lessons.Count == 0) Lessons.Add(new(1, "未安排课程", "", TimeSpan.Zero, TimeSpan.Zero));
         Tick(DateTime.Now);
     }
 
     public ObservableCollection<LessonItem> Lessons { get; }
-    public string SchoolName => "ExusiAI 实验课堂";
+    public string SchoolName => store.State.ProfileName;
     public string TimeText => now.ToString("HH:mm:ss");
     public string DateText => now.ToString("yyyy 年 M 月 d 日  dddd");
     public string CurrentSubject { get; private set; } = string.Empty;
