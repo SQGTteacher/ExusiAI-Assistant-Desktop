@@ -1,0 +1,86 @@
+name: 崩溃或缺陷报告
+description: 报告可复现的崩溃、页面异常或功能错误
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先完整阅读 [Issue 提交须知](https://github.com/SQGTteacher/ExusiAI-Assistant-Desktop/blob/main/.github/ISSUE_GUIDELINES.md)，并从崩溃窗口复制“关键日志”。公开提交前务必删除隐私和凭据。
+  - type: checkboxes
+    id: required-confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经完整阅读 Issue 提交须知，并按要求准备了必要信息。
+          required: true
+        - label: 我已经搜索现有 Issue，确认没有内容相同的未解决报告。
+          required: true
+        - label: 我已检查日志并删除密码、令牌、学生信息和其他敏感数据。
+          required: true
+        - label: 我已经完整阅读 Issue 提交须知且知道该选项不需要勾选。
+          required: false
+  - type: input
+    id: version
+    attributes:
+      label: Preview 版本与 build 号
+      description: 请填写左下角或崩溃窗口中显示的完整版本。
+      placeholder: 0.2.0-preview.3 · build 123
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows 环境
+      placeholder: Windows 11 24H2 x64
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 发生问题的区域
+      options:
+        - 首页
+        - 插件工作台
+        - 本地资源库
+        - 扩展管理
+        - 外观与主题
+        - 软件设置
+        - ClassIsland Misha 移植插件
+        - 启动或退出
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 启动程序
+        2. 点击……
+        3. 出现……
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: 预期行为与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: critical-log
+    attributes:
+      label: 崩溃关键日志
+      description: 点击崩溃窗口的“复制关键日志”后粘贴到这里；提交前删除敏感信息。
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 完整日志与补充材料
+      description: 可将 crash-*.log、截图或录屏拖入此处。不要上传敏感信息。
+  - type: textarea
+    id: additional
+    attributes:
+      label: 其他补充
