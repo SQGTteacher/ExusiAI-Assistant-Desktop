@@ -4,7 +4,7 @@ Phase 2 turns the verified platform foundation into a usable local extension
 desktop. Work is split into reviewable increments instead of adding classroom
 features directly to the host.
 
-## Delivered through 0.2.0-preview.2
+## Delivered through 0.2.0-preview.3
 
 - Native Windows 11 Mica and Acrylic backdrops with DWM-owned window corners.
 - Eight persistent editor-style color schemes, including system-following mode.
@@ -20,6 +20,8 @@ features directly to the host.
   local data import/export, and a documented lifecycle boundary.
 - Crash containment for host and plugin pages, global UI/background exception
   reporting, copyable diagnostics, and timestamped crash logs.
+- Developer-oriented crash summaries, full-log access, direct repository Issue
+  submission, and a structured GitHub Issue form with privacy safeguards.
 - The ClassIsland Misha port now exposes seven functional areas: information
   display, schedule/timetable editing, component layout, reminders/automation,
   built-in modules, profile data, and complete upstream attribution.
