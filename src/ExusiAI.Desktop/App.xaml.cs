@@ -17,6 +17,7 @@ public partial class App : Application
     private IHost? host;
     private ExtensionRuntime? runtime;
     private WpfExtensionCoordinator? wpfExtensions;
+    private ICrashReporter? crashReporter;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -24,6 +25,10 @@ public partial class App : Application
         try
         {
             host = BuildHost();
+            crashReporter = host.Services.GetRequiredService<ICrashReporter>();
+            DispatcherUnhandledException += App_DispatcherUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+            TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
             await host.StartAsync();
             var theme = host.Services.GetRequiredService<IThemeService>();
             var settings = await host.Services.GetRequiredService<ISettingsService>().LoadAsync();
@@ -69,7 +74,13 @@ public partial class App : Application
         {
             host?.Services.GetService<ILogger<App>>()?.LogError(exception, "Application shutdown was incomplete.");
         }
-        finally { base.OnExit(e); }
+        finally
+        {
+            DispatcherUnhandledException -= App_DispatcherUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
+            TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
+            base.OnExit(e);
+        }
     }
 
     private static IHost BuildHost()
@@ -90,12 +101,30 @@ public partial class App : Application
         builder.Services.AddSingleton<IThemeService, ThemeService>();
         builder.Services.AddSingleton<IWindowBackdropService, WindowBackdropService>();
         builder.Services.AddSingleton<ISettingsService, SettingsService>();
+        builder.Services.AddSingleton<ICrashReporter, CrashReporter>();
         builder.Services.AddSingleton<IPackageCatalog>(services =>
             new LocalPackageCatalog(() => services.GetRequiredService<ExtensionRuntime>().Entries.Select(x => x.Package.Manifest)));
         builder.Services.AddSingleton<PageFactory>();
         builder.Services.AddSingleton<ShellViewModel>();
         builder.Services.AddSingleton<MainWindow>();
         return builder.Build();
+    }
+
+    private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        crashReporter?.Report(e.Exception, "UI 线程未处理异常");
+        e.Handled = true;
+    }
+
+    private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception exception) crashReporter?.Report(exception, "进程级未处理异常", false);
+    }
+
+    private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        crashReporter?.Report(e.Exception, "后台任务未观察异常");
+        e.SetObserved();
     }
 
     public static void ApplyTheme(ThemePalette palette)
