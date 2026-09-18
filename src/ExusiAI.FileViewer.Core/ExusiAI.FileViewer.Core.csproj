@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>ExusiAI.FileViewer.Core</AssemblyName>
+    <Description>Safe, streaming document provider contracts for the ExusiAI file viewer.</Description>
+  </PropertyGroup>
+</Project>

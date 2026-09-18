@@ -14,6 +14,7 @@
     <ProjectReference Include="..\ExusiAI.Theme\ExusiAI.Theme.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.Sample\ExusiAI.Plugin.Sample.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
@@ -26,6 +27,13 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.Sample.dll" DestinationFolder="$(SamplePackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.Sample\package.json" DestinationFolder="$(SamplePackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(SamplePackageDir)" />
+  </Target>
+  <Target Name="CopyFileViewerPackage" AfterTargets="Build">
+    <PropertyGroup><FileViewerPackageDir>$(TargetDir)packages\exusiai.file-viewer</FileViewerPackageDir></PropertyGroup>
+    <MakeDir Directories="$(FileViewerPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.FileViewer.dll;$(MSBuildProjectDirectory)\..\ExusiAI.FileViewer.Core\bin\$(Configuration)\net8.0\ExusiAI.FileViewer.Core.dll" DestinationFolder="$(FileViewerPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\README.md" DestinationFolder="$(FileViewerPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(FileViewerPackageDir)" />
   </Target>
   <Target Name="CopyMishaShowcasePackage" AfterTargets="Build">
     <PropertyGroup><MishaPackageDir>$(TargetDir)packages\exusiai.misha-showcase</MishaPackageDir></PropertyGroup>
@@ -47,5 +55,12 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.MishaShowcase.dll" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\THIRD_PARTY_NOTICES.md" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyFileViewerPackageToPublish" AfterTargets="Publish">
+    <PropertyGroup><FileViewerPublishPackageDir>$(PublishDir)packages\exusiai.file-viewer</FileViewerPublishPackageDir></PropertyGroup>
+    <MakeDir Directories="$(FileViewerPublishPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.FileViewer.dll;$(MSBuildProjectDirectory)\..\ExusiAI.FileViewer.Core\bin\$(Configuration)\net8.0\ExusiAI.FileViewer.Core.dll" DestinationFolder="$(FileViewerPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\README.md" DestinationFolder="$(FileViewerPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(FileViewerPublishPackageDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>
