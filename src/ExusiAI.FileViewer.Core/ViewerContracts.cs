@@ -63,4 +63,4 @@ public sealed record CsvPage(long StartRow, ImmutableArray<ImmutableArray<string
 public sealed class UnsupportedFileFormatException(string extension)
     : NotSupportedException($"No enabled file viewer provider supports '{extension}'.");
 
-public sealed class FileRejectedException(string message) : InvalidDataException(message);
+public sealed class FileRejectedException(string message) : IOException(message);
