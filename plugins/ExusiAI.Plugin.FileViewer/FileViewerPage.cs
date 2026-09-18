@@ -176,7 +176,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 status.Text += " · 已达到 8 MiB 界面缓存上限，剩余内容未载入";
                 break;
             }
-            await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
         }
         textPreview.ScrollToHome();
     }
