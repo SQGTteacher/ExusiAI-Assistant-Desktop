@@ -1,10 +1,13 @@
 # ExusiAI Assistant Desktop
 
-![ExusiAI Assistant Desktop：课堂桌面新体验](docs/assets/exusiai-hero.png)
+![ExusiAI Assistant Desktop：课堂桌面新体验](https://raw.githubusercontent.com/SQGTteacher/ExusiAI-Assistant-Desktop/main/docs/assets/exusiai-hero.png)
 
-面向中小学课堂设备的、扩展优先的 Windows 桌面平台。ExusiAI 本体只提供桌面壳、扩展运行时、设置、主题、日志和市场边界；屏幕批注、点名、课件管理等教学能力将以独立扩展交付。
+**面向中小学课堂大屏的插件化 Windows 教学桌面平台。**
 
-> 当前版本为 `0.2.0-preview.4` 第二阶段先行版本，不是可用于生产课堂的完整产品。
+ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市场边界；屏幕批注、点名、课件管理、文件查看等教学能力以独立扩展交付，优先保证课堂可靠性、响应速度和可维护性。
+
+> 当前版本：`0.2.0-preview.4` · Windows 10/11 · .NET 8 / C# 12 / WPF · GPL-3.0-only  
+> 当前仍处于 Preview 阶段，不建议用于生产课堂环境。
 
 ## 当前能力
 
