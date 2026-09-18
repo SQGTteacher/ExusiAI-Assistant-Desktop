@@ -19,6 +19,7 @@
 - 插件可在运行时启用、禁用和重试，偏好会跨启动保留；
 - 可搜索的本地资源库、双包目录发现、扩展管理页面和官方示例插件；
 - 内置 ClassIsland 2.2 Misha 功能移植插件，覆盖课表/时间表、组件、提醒与自动化、内置扩展、原生 Profile JSON 迁移及完整开源署名；
+- 文件查看器阶段 1：TXT/Markdown 异步增量预览、CSV 分页解析与虚拟化列表，默认只读并设资源安全上限；
 - Windows GitHub Actions 构建及单元测试。
 
 ## 构建与运行
@@ -32,7 +33,7 @@ dotnet test ExusiAI.sln --no-build --configuration Release
 dotnet run --project src/ExusiAI.Desktop
 ```
 
-构建或发布 Desktop 时，基础示例包与 ClassIsland Misha 功能移植会分别复制到输出目录的 `packages/exusiai.sample` 和 `packages/exusiai.misha-showcase`。运行后它们应处于“运行中”状态，并出现在“插件工作台”的选择列表中；移植插件提供七个独立功能页面。
+构建或发布 Desktop 时，基础示例包、ClassIsland Misha 功能移植和文件查看器会分别复制到输出目录的 `packages/exusiai.sample`、`packages/exusiai.misha-showcase` 和 `packages/exusiai.file-viewer`。运行后它们应处于“运行中”状态，并出现在“插件工作台”的选择列表中；移植插件提供七个独立功能页面。
 
 创建可分发的 Windows x64 目录：
 
@@ -45,7 +46,7 @@ dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
   --output artifacts/ExusiAI-win-x64
 ```
 
-发布目标会自动带上两个范本插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户自行安装的包放在软件设置页显示的“用户插件包”目录中。
+发布目标会自动带上三个内置插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户自行安装的包放在软件设置页显示的“用户插件包”目录中。
 
 ## 代码边界
 
@@ -58,9 +59,10 @@ dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
 | `ExusiAI.Theme` | 与 WPF 无关的主题选择和设计令牌 |
 | `ExusiAI.Infrastructure` | 本地路径、设置、日志和 Windows 适配器 |
 | `ExusiAI.Marketplace` | 可查询的本地包目录；不负责加载代码 |
+| `ExusiAI.FileViewer.Core` | 无 WPF 依赖的查看器 Provider 契约、安全预算及流式解析 |
 | `ExusiAI.Desktop` | WPF 表现层和唯一组合根 |
 
-设计与安全说明见 [`docs/architecture`](docs/architecture)，包规范见 [`docs/package-spec/package-manifest.md`](docs/package-spec/package-manifest.md)。
+设计与安全说明见 [`docs/architecture`](docs/architecture)，包规范见 [`docs/package-spec/package-manifest.md`](docs/package-spec/package-manifest.md)。文件查看器的[路线图](docs/file-viewer/roadmap.md)与[兼容矩阵](docs/file-viewer/compatibility-matrix.md)会随每阶段更新。
 
 ## 明确不包含
 
