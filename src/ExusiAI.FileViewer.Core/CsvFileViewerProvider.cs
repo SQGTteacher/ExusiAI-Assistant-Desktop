@@ -20,7 +20,7 @@ public sealed class CsvFileViewerProvider : IFileViewerProvider
     }
 }
 
-public sealed class StreamingCsvDocument : ViewerDocument
+public sealed class StreamingCsvDocument : ViewerDocument, ITabularPreviewDocument
 {
     private readonly FileInfo file;
     private readonly ViewerOpenOptions options;

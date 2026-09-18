@@ -1,4 +1,5 @@
 using System.Text;
+using System.IO.Compression;
 using ExusiAI.FileViewer.Core;
 
 namespace ExusiAI.FileViewer.Core.Tests;
@@ -63,11 +64,57 @@ public sealed class FileViewerTests : IDisposable
         Assert.Throws<UnsupportedFileFormatException>(() => registry.Resolve("lesson.pptx"));
     }
 
+    [Fact]
+    public async Task Docx_provider_streams_body_text_without_rendering_external_content()
+    {
+        var path = Path.Combine(directory, "lesson.docx");
+        CreateDocx(path, "第一段", "第二段");
+        var registry = CreateRegistry();
+
+        await using var opened = await registry.OpenAsync(path);
+        var document = Assert.IsAssignableFrom<ITextPreviewDocument>(opened);
+        var text = new StringBuilder();
+        await foreach (var chunk in document.ReadChunksAsync()) text.Append(chunk.Text);
+
+        Assert.Contains("第一段", text.ToString());
+        Assert.Contains("第二段", text.ToString());
+        Assert.True(opened.Info.IsReadOnly);
+        Assert.Contains(opened.Info.Warnings, warning => warning.Contains("不承诺", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Docx_provider_rejects_excessive_compression_ratio()
+    {
+        var path = Path.Combine(directory, "compressed.docx");
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("word/document.xml", CompressionLevel.SmallestSize);
+            await using var stream = entry.Open();
+            await stream.WriteAsync(new byte[1024 * 1024]);
+        }
+
+        var registry = CreateRegistry();
+        await Assert.ThrowsAsync<FileRejectedException>(async () =>
+            await registry.OpenAsync(path, new ViewerOpenOptions { MaximumArchiveCompressionRatio = 10 }));
+    }
+
     private static FileViewerProviderRegistry CreateRegistry() => new(new IFileViewerProvider[]
     {
         new TextFileViewerProvider(),
-        new CsvFileViewerProvider()
+        new CsvFileViewerProvider(),
+        new DocxFileViewerProvider()
     });
+
+    private static void CreateDocx(string path, params string[] paragraphs)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        var entry = archive.CreateEntry("word/document.xml", CompressionLevel.NoCompression);
+        using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+        writer.Write("<?xml version=\"1.0\" encoding=\"utf-8\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>");
+        foreach (var paragraph in paragraphs)
+            writer.Write($"<w:p><w:r><w:t>{System.Security.SecurityElement.Escape(paragraph)}</w:t></w:r></w:p>");
+        writer.Write("</w:body></w:document>");
+    }
 
     public void Dispose()
     {
