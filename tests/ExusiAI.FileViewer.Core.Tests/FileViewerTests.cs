@@ -151,7 +151,7 @@ public sealed class FileViewerTests : IDisposable
             "\"/></Relationships>");
 
         WriteEntry(archive, "xl/sharedStrings.xml",
-            "<?xml version=\"1.0\"?><sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>姓名</t></si><si><t>分数</t></si><si><t>Alice</t></si></sst>");
+            "<?xml version=\"1.0\"?><sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>姓名</t></si><si><t>分数</t></si><si><r><t>Ali</t></r><r><t>ce</t></r></si></sst>");
 
         WriteEntry(archive, "xl/worksheets/sheet1.xml",
             "<?xml version=\"1.0\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" +
