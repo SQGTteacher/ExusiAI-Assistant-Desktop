@@ -47,6 +47,7 @@ public sealed class FileViewerRuntimeTests
                 NullLogger<ExtensionRuntime>.Instance))
             {
                 await runtime.DiscoverAsync(root);
+                Assert.Empty(runtime.DiscoveryFailures);
                 await runtime.StartAsync();
 
                 var entry = Assert.Single(runtime.Entries);

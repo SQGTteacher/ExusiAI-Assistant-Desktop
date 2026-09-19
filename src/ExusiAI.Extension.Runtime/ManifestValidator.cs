@@ -7,7 +7,7 @@ namespace ExusiAI.Extension.Runtime;
 public sealed partial class ManifestValidator
 {
     public const int SupportedSchemaVersion = 1;
-    public static readonly SemanticVersion CurrentHostVersion = new(0, 1, 0);
+    public static readonly SemanticVersion CurrentHostVersion = new(0, 2, 0, "preview.4");
     public static readonly ExtensionApiVersion CurrentApiVersion = new(1);
 
     [GeneratedRegex("^[a-z0-9]+(?:[.-][a-z0-9]+)+$", RegexOptions.CultureInvariant)]
