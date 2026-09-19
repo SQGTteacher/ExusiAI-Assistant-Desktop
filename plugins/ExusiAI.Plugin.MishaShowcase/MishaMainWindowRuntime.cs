@@ -11,7 +11,6 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using ExusiAI.Extension.Abstractions;
-using Forms = System.Windows.Forms;
 
 namespace ExusiAI.Plugin.MishaShowcase;
 
@@ -199,13 +198,14 @@ internal sealed class MishaMainWindow : Window
 
     public void Reposition(ClassIslandWorkspace workspace)
     {
-        var screens = Forms.Screen.AllScreens;
-        if (screens.Length == 0) return;
-        var index = Math.Clamp(workspace.GetInt("WindowDockingMonitorIndex"), 0, screens.Length - 1);
-        var screen = screens[index];
+        var monitors = NativeMonitor.GetMonitors();
+        if (monitors.Count == 0) return;
+
+        var index = Math.Clamp(workspace.GetInt("WindowDockingMonitorIndex"), 0, monitors.Count - 1);
+        var monitor = monitors[index];
         var areaPx = workspace.GetBool("IsIgnoreWorkAreaEnabled")
-            ? screen.Bounds
-            : screen.WorkingArea;
+            ? monitor.Bounds
+            : monitor.WorkArea;
 
         var dpi = VisualTreeHelper.GetDpi(this);
         var area = new Rect(
@@ -250,6 +250,60 @@ internal sealed class MishaMainWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+}
+
+internal static class NativeMonitor
+{
+    internal sealed record MonitorBounds(Int32Rect Bounds, Int32Rect WorkArea);
+
+    private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr hdcMonitor, IntPtr monitorRect, IntPtr data);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RectNative
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+
+        public Int32Rect ToInt32Rect() => new(Left, Top, Right - Left, Bottom - Top);
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public RectNative Monitor;
+        public RectNative Work;
+        public uint Flags;
+    }
+
+    public static IReadOnlyList<MonitorBounds> GetMonitors()
+    {
+        var monitors = new List<MonitorBounds>();
+        MonitorEnumProc callback = (monitor, _, _, _) =>
+        {
+            var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+            if (GetMonitorInfo(monitor, ref info))
+                monitors.Add(new MonitorBounds(info.Monitor.ToInt32Rect(), info.Work.ToInt32Rect()));
+            return true;
+        };
+
+        _ = EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
+        return monitors;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumDisplayMonitors(
+        IntPtr hdc,
+        IntPtr clipRect,
+        MonitorEnumProc callback,
+        IntPtr data);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo monitorInfo);
 }
 
 internal static class MishaNativeMainWindowRenderer
