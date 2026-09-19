@@ -3,7 +3,7 @@
   "id": "exusiai.file-viewer",
   "type": "plugin",
   "name": "文件查看器",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "apiVersion": "1",
   "publisher": "ExusiAI",
   "description": "面向课堂的快速、安全、渐进式文件预览器",
