@@ -32,6 +32,9 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
     private readonly FileInfo file;
     private readonly ViewerOpenOptions options;
     private readonly ImmutableArray<PptxSlide> slides;
+    private readonly Dictionary<int, SlidePreview> slideCache = [];
+    private readonly LinkedList<int> cacheLru = [];
+    private readonly object cacheGate = new();
     private int reading;
     private bool disposed;
 
@@ -54,6 +57,43 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
 
     public int SlideCount => slides.Length;
 
+    public async ValueTask<SlidePreview> ReadSlideAsync(int slideNumber, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (slideNumber < 1 || slideNumber > slides.Length)
+            throw new ArgumentOutOfRangeException(nameof(slideNumber), $"Slide number must be between 1 and {slides.Length:N0}.");
+
+        lock (cacheGate)
+        {
+            if (slideCache.TryGetValue(slideNumber, out var cached))
+            {
+                cacheLru.Remove(slideNumber);
+                cacheLru.AddFirst(slideNumber);
+                return cached;
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        using var package = OpenXmlPackageGuard.Open(file, options);
+        var text = await PptxPackageReader.ReadSlideTextAsync(package, slides[slideNumber - 1].PartName, options, cancellationToken).ConfigureAwait(false);
+        var preview = new SlidePreview(slideNumber, text, slideNumber == slides.Length);
+
+        lock (cacheGate)
+        {
+            slideCache[slideNumber] = preview;
+            cacheLru.Remove(slideNumber);
+            cacheLru.AddFirst(slideNumber);
+            while (cacheLru.Count > options.MaximumCachedSlides)
+            {
+                var oldest = cacheLru.Last!.Value;
+                cacheLru.RemoveLast();
+                slideCache.Remove(oldest);
+            }
+        }
+
+        return preview;
+    }
+
     public async IAsyncEnumerable<SlidePreview> ReadSlidesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -62,12 +102,10 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
 
         try
         {
-            using var package = OpenXmlPackageGuard.Open(file, options);
             for (var index = 0; index < slides.Length; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var text = await PptxPackageReader.ReadSlideTextAsync(package, slides[index].PartName, options, cancellationToken).ConfigureAwait(false);
-                yield return new(index + 1, text, index == slides.Length - 1);
+                yield return await ReadSlideAsync(index + 1, cancellationToken).ConfigureAwait(false);
             }
         }
         finally
@@ -79,6 +117,7 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
     public override ValueTask DisposeAsync()
     {
         disposed = true;
+        lock (cacheGate) { slideCache.Clear(); cacheLru.Clear(); }
         return ValueTask.CompletedTask;
     }
 }

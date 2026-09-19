@@ -154,6 +154,28 @@ public sealed class FileViewerTests : IDisposable
     }
 
     [Fact]
+    public async Task Pptx_provider_supports_random_slide_access()
+    {
+        var path = Path.Combine(directory, "jump.pptx");
+        CreatePptx(path);
+        var registry = CreateRegistry();
+
+        await using var opened = await registry.OpenAsync(path, new ViewerOpenOptions { MaximumCachedSlides = 1 });
+        var document = Assert.IsAssignableFrom<ISlidePreviewDocument>(opened);
+
+        var second = await document.ReadSlideAsync(2);
+        var first = await document.ReadSlideAsync(1);
+        var secondAgain = await document.ReadSlideAsync(2);
+
+        Assert.Equal(2, second.SlideNumber);
+        Assert.Contains("第二页", second.Text);
+        Assert.Equal(1, first.SlideNumber);
+        Assert.Contains("课堂标题", first.Text);
+        Assert.Equal(second.Text, secondAgain.Text);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await document.ReadSlideAsync(3));
+    }
+
+    [Fact]
     public async Task Pptx_provider_rejects_external_slide_relationship()
     {
         var path = Path.Combine(directory, "external.pptx");

@@ -40,12 +40,16 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly ObservableCollection<string> csvRows = [];
     private readonly ListBox csvPreview;
     private readonly Button loadMoreButton = new() { Content = "加载下一页", IsEnabled = false, Visibility = Visibility.Collapsed };
+    private readonly Button previousSlideButton = new() { Content = "上一页", IsEnabled = false, Visibility = Visibility.Collapsed };
+    private readonly Button nextSlideButton = new() { Content = "下一页", IsEnabled = false, Visibility = Visibility.Collapsed };
+    private readonly TextBox slideNumberBox = new() { Width = 58, Visibility = Visibility.Collapsed, ToolTip = "输入幻灯片页码并按 Enter" };
     private readonly Button cancelButton = new() { Content = "取消", IsEnabled = false };
     private readonly TextBox searchBox = new() { MinWidth = 180, ToolTip = "在已加载的文本中搜索" };
     private CancellationTokenSource? loadCancellation;
     private ViewerDocument? document;
     private IAsyncEnumerator<TabularPage>? csvPages;
     private IAsyncEnumerator<SlidePreview>? slidePages;
+    private int currentSlideNumber;
     private bool disposed;
 
     public FileViewerPage()
@@ -66,6 +70,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         openButton.Click += OpenButton_OnClick;
         cancelButton.Click += (_, _) => loadCancellation?.Cancel();
         loadMoreButton.Click += LoadMoreButton_OnClick;
+        previousSlideButton.Click += async (_, _) => await NavigateSlideAsync(currentSlideNumber - 1);
+        nextSlideButton.Click += async (_, _) => await NavigateSlideAsync(currentSlideNumber + 1);
+        slideNumberBox.KeyDown += async (_, args) =>
+        {
+            if (args.Key == Key.Enter && int.TryParse(slideNumberBox.Text, out var target))
+                await NavigateSlideAsync(target);
+        };
         var searchButton = new Button { Content = "查找下一个" };
         searchButton.Click += (_, _) => FindNext();
         searchBox.KeyDown += (_, args) => { if (args.Key == Key.Enter) FindNext(); };
@@ -77,7 +88,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         };
 
         var toolbar = new WrapPanel { Orientation = Orientation.Horizontal };
-        foreach (var element in new FrameworkElement[] { openButton, cancelButton, searchBox, searchButton, loadMoreButton, new TextBlock { Text = "缩放", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0) }, zoom })
+        foreach (var element in new FrameworkElement[] { openButton, cancelButton, searchBox, searchButton, loadMoreButton, previousSlideButton, slideNumberBox, nextSlideButton, new TextBlock { Text = "缩放", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0) }, zoom })
         {
             element.Margin = element.Margin == default ? new Thickness(0, 0, 8, 8) : element.Margin;
             toolbar.Children.Add(element);
@@ -122,6 +133,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         textPreview.Visibility = Visibility.Collapsed;
         csvPreview.Visibility = Visibility.Collapsed;
         loadMoreButton.Visibility = Visibility.Collapsed;
+        previousSlideButton.Visibility = Visibility.Collapsed;
+        nextSlideButton.Visibility = Visibility.Collapsed;
+        slideNumberBox.Visibility = Visibility.Collapsed;
+        currentSlideNumber = 0;
         loadCancellation = new CancellationTokenSource();
         cancelButton.IsEnabled = true;
         title.Text = Path.GetFileName(filePath);
@@ -146,9 +161,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     break;
                 case ISlidePreviewDocument slides:
                     csvPreview.Visibility = Visibility.Visible;
-                    loadMoreButton.Visibility = Visibility.Visible;
-                    slidePages = slides.ReadSlidesAsync(loadCancellation.Token).GetAsyncEnumerator(loadCancellation.Token);
-                    await LoadNextSlideAsync(slides.SlideCount);
+                    previousSlideButton.Visibility = Visibility.Visible;
+                    nextSlideButton.Visibility = Visibility.Visible;
+                    slideNumberBox.Visibility = Visibility.Visible;
+                    await NavigateSlideAsync(1);
                     break;
             }
         }
@@ -192,11 +208,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         textPreview.ScrollToHome();
     }
 
-    private async void LoadMoreButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (slidePages is not null && document is ISlidePreviewDocument slides) await LoadNextSlideAsync(slides.SlideCount);
-        else await LoadNextCsvPageAsync();
-    }
+    private async void LoadMoreButton_OnClick(object sender, RoutedEventArgs e) => await LoadNextCsvPageAsync();
 
     private async Task LoadNextCsvPageAsync()
     {
@@ -221,29 +233,39 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         finally { cancelButton.IsEnabled = false; }
     }
 
-    private async Task LoadNextSlideAsync(int slideCount)
+    private async Task NavigateSlideAsync(int slideNumber)
     {
-        if (slidePages is null) return;
-        loadMoreButton.IsEnabled = false;
+        if (document is not ISlidePreviewDocument slides || loadCancellation is null) return;
+        if (slideNumber < 1 || slideNumber > slides.SlideCount)
+        {
+            status.Text = $"页码范围为 1–{slides.SlideCount:N0}。";
+            slideNumberBox.Text = currentSlideNumber > 0 ? currentSlideNumber.ToString(CultureInfo.CurrentCulture) : string.Empty;
+            return;
+        }
+
+        previousSlideButton.IsEnabled = false;
+        nextSlideButton.IsEnabled = false;
+        slideNumberBox.IsEnabled = false;
         cancelButton.IsEnabled = true;
         try
         {
-            if (!await slidePages.MoveNextAsync())
-            {
-                loadMoreButton.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            var slide = slidePages.Current;
-            csvRows.Add($"幻灯片 {slide.SlideNumber:N0} / {slideCount:N0}");
+            var slide = await slides.ReadSlideAsync(slideNumber, loadCancellation.Token);
+            currentSlideNumber = slide.SlideNumber;
+            slideNumberBox.Text = slide.SlideNumber.ToString(CultureInfo.CurrentCulture);
+            csvRows.Clear();
+            csvRows.Add($"幻灯片 {slide.SlideNumber:N0} / {slides.SlideCount:N0}");
             csvRows.Add(string.IsNullOrWhiteSpace(slide.Text) ? "（此页没有可提取文本）" : slide.Text.Replace(Environment.NewLine, "  │  "));
-            status.Text = $"只读 · 已加载幻灯片 {slide.SlideNumber:N0} / {slideCount:N0} · 结构化文本预览";
-            loadMoreButton.Visibility = slide.IsFinal ? Visibility.Collapsed : Visibility.Visible;
-            loadMoreButton.IsEnabled = !slide.IsFinal;
+            status.Text = $"只读 · 幻灯片 {slide.SlideNumber:N0} / {slides.SlideCount:N0} · 支持随机跳转与有界缓存";
         }
         catch (OperationCanceledException) { status.Text = "已取消加载。"; }
         catch (InvalidDataException exception) { status.Text = $"PPTX 被安全拒绝：{exception.Message}"; }
-        finally { cancelButton.IsEnabled = false; }
+        finally
+        {
+            cancelButton.IsEnabled = false;
+            slideNumberBox.IsEnabled = true;
+            previousSlideButton.IsEnabled = currentSlideNumber > 1;
+            nextSlideButton.IsEnabled = currentSlideNumber > 0 && currentSlideNumber < slides.SlideCount;
+        }
     }
 
     private void FindNext()
