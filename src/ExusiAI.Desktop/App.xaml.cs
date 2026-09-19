@@ -142,5 +142,5 @@ public partial class App : Application
         SetBrush("DangerBrush", palette.Danger);
     }
 
-    private static void SetBrush(string key, string color) => Current.Resources[key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+    private static void SetBrush(string key, string color) => Current.Resources[key] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
 }

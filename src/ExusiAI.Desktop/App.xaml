@@ -71,8 +71,8 @@
             <Setter Property="ItemContainerStyle">
                 <Setter.Value>
                     <Style TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="11,9" />
-                        <Setter Property="Margin" Value="0,2" />
+                        <Setter Property="Padding" Value="9,7" />
+                        <Setter Property="Margin" Value="0,1" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Background" Value="Transparent" />
                         <Setter Property="BorderThickness" Value="0" />

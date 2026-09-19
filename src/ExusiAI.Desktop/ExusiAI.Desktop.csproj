@@ -3,7 +3,11 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ExusiAI.Core\ExusiAI.Core.csproj" />
     <ProjectReference Include="..\ExusiAI.Extension.Abstractions\ExusiAI.Extension.Abstractions.csproj" />
