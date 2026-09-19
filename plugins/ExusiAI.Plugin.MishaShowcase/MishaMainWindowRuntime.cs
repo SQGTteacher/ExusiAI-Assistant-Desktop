@@ -209,8 +209,8 @@ internal sealed class MishaMainWindow : Window
 
         var dpi = VisualTreeHelper.GetDpi(this);
         var area = new Rect(
-            areaPx.Left / dpi.DpiScaleX,
-            areaPx.Top / dpi.DpiScaleY,
+            areaPx.X / dpi.DpiScaleX,
+            areaPx.Y / dpi.DpiScaleY,
             areaPx.Width / dpi.DpiScaleX,
             areaPx.Height / dpi.DpiScaleY);
 
