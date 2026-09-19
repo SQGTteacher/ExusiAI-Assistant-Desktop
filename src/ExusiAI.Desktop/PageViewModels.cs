@@ -217,6 +217,29 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
     partial void OnSelectedPageChanged(PluginPageOption? value)
     {
         if (value is null) { CurrentPage = null; return; }
+        if (string.Equals(value.Route, "file-viewer.open", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var view = value.CreateView();
+                var window = new Window
+                {
+                    Title = "ExusiAI 文件查看器",
+                    Width = 1100,
+                    Height = 760,
+                    MinWidth = 760,
+                    MinHeight = 520,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    Owner = Application.Current?.MainWindow,
+                    Content = view,
+                    Background = Application.Current?.TryFindResource("AppBackgroundBrush") as System.Windows.Media.Brush
+                };
+                window.Show();
+                CurrentPage = null;
+            }
+            catch (Exception exception) { CurrentPage = crashReporter.CreateErrorPage(exception, $"创建插件窗口 {value.PackageId}/{value.Route}"); }
+            return;
+        }
         if (!pageCache.TryGetValue(value.Route, out var view))
         {
             try { view = value.CreateView(); }
