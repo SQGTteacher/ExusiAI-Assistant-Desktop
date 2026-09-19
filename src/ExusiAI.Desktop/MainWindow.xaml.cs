@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
-using System.Runtime.InteropServices;
-using System.Windows.Interop;
+using System.Windows.Media;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 using ExusiAI.Theme;
@@ -21,11 +20,9 @@ public partial class MainWindow : Window
         this.backdrop = backdrop;
         InitializeComponent();
         trayIcon = CreateTrayIcon();
-        SourceInitialized += (_, _) =>
-        {
-            ApplyWindowAppearance();
-            ApplyNativeWindowFrame();
-        };
+        SizeChanged += (_, _) => UpdateContentClip();
+        StateChanged += (_, _) => UpdateContentClip();
+        SourceInitialized += (_, _) => ApplyWindowAppearance();
         theme.Changed += Appearance_OnChanged;
         backdrop.Changed += Appearance_OnChanged;
         Closed += (_, _) =>
@@ -97,30 +94,11 @@ public partial class MainWindow : Window
     private void Appearance_OnChanged(object? sender, EventArgs e) => Dispatcher.InvokeAsync(ApplyWindowAppearance);
     private void ApplyWindowAppearance() => backdrop.ApplyTo(this, theme.IsDark);
 
-    private void ApplyNativeWindowFrame()
+    private void UpdateContentClip()
     {
-        // WPF WindowChrome and a manual content clip must not both own the outer radius.
-        // Windows 11 can provide a native rounded frame; Windows 10 keeps a clean square edge.
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return;
-
-        var handle = new WindowInteropHelper(this).Handle;
-        if (handle == IntPtr.Zero) return;
-
-        const int DwmWindowCornerPreference = 33;
-        const int DwmBorderColor = 34;
-        const int DwmWindowCornerRound = 2;
-        var cornerPreference = DwmWindowCornerRound;
-        _ = DwmSetWindowAttribute(handle, DwmWindowCornerPreference, ref cornerPreference, sizeof(int));
-
-        // DWMWA_COLOR_NONE removes the extra DWM outline around custom chrome.
-        var borderColorNone = unchecked((int)0xFFFFFFFE);
-        _ = DwmSetWindowAttribute(handle, DwmBorderColor, ref borderColorNone, sizeof(int));
+        var radius = WindowState == WindowState.Maximized ? 0d : 12d;
+        ChromeRoot.Clip = ActualWidth > 0 && ActualHeight > 0
+            ? new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight), radius, radius)
+            : null;
     }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(
-        IntPtr hwnd,
-        int attribute,
-        ref int attributeValue,
-        int attributeSize);
 }

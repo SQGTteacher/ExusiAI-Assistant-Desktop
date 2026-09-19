@@ -26,12 +26,13 @@ public sealed record ThemeDefinition(
 
 public static class ThemeCatalog
 {
-    public static ThemePalette Light { get; } = new("#EDF3F5F6", "#F7FFFFFF", "#DDE9EDF2", "#171A23", "#667085", "#8FD7DCE4", "#5268E5", "#DCE5E9FF", "#159A6A", "#D88A14", "#D34A5A");
-    public static ThemePalette Dark { get; } = new("#E8101119", "#E9181A25", "#D9212431", "#F3F4F8", "#A4A9B8", "#703E4353", "#8796FF", "#8A292F57", "#50C99A", "#F0AE4A", "#F17382");
+    public static ThemePalette Light { get; } = new("#F4F7FA", "#FFFFFF", "#EAF0F6", "#17212E", "#65758A", "#CAD5E1", "#5CA9C9", "#DCEFF6", "#159A73", "#D9913D", "#D95A70");
+    public static ThemePalette Dark { get; } = new("#10141C", "#171D28", "#202937", "#F1F5F9", "#9CAABD", "#344052", "#72C3E1", "#243F4D", "#58D6AE", "#F2B36A", "#EF7687");
 
     public static IReadOnlyList<ThemeDefinition> All { get; } =
     [
-        new("system", "跟随系统", "自动匹配 Windows 深浅色", false, Light, Dark),
+        new("system", "跟随系统", "自动匹配 Windows 深浅色，并使用 Exusiai 风格的蓝灰基调", false, Light, Dark),
+        new("exusiai", "Exusiai", "以能天使为灵感的深色蓝灰、冷青与暖橙点缀", true, Dark),
         new("paper", "Paper", "克制清晰的暖白工作区", false, new("#EDF7F5F0", "#F9FFFDF8", "#E8EEE9E1", "#24231F", "#706E66", "#9ED8D3C8", "#3568D4", "#D8E4EDFF", "#2E8B68", "#B97818", "#C84B55")),
         new("graphite", "Graphite", "中性的深灰编辑器配色", true, new("#EA17191C", "#EA202327", "#DC292D32", "#F2F4F7", "#AAB0BA", "#70464B53", "#7DA2F8", "#87314360", "#55C59A", "#E8B15B", "#ED7784")),
         new("nord", "Nord", "冷静的极地蓝灰色调", true, new("#EA242933", "#EA2E3440", "#DC3B4252", "#ECEFF4", "#B7C0D0", "#705C667A", "#88C0D0", "#70455D68", "#A3BE8C", "#EBCB8B", "#BF616A")),

@@ -379,8 +379,6 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         if (picker.ShowDialog() == true) await OpenAsync(picker.FileName);
     }
 
-    internal Task OpenFileAsync(string filePath) => OpenAsync(filePath);
-
     private async Task OpenAsync(string filePath)
     {
         await CloseDocumentAsync();

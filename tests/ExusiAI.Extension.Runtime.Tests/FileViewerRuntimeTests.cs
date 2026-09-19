@@ -54,7 +54,7 @@ public sealed class FileViewerRuntimeTests
                 Assert.Equal(PackageState.Running, entry.State);
                 var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
                 var page = Assert.Single(navigation.GetNavigationPages());
-                Assert.Equal("file-viewer.settings", page.Route);
+                Assert.Equal("file-viewer.open", page.Route);
                 Assert.Null(CreatePageOnStaThread(page));
             }
         }
