@@ -4,9 +4,9 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="ExusiAI Assistant" Width="1180" Height="760" MinWidth="860" MinHeight="600"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
-        Background="Transparent">
+        Background="{DynamicResource AppBackgroundBrush}">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="48" CornerRadius="12" GlassFrameThickness="0" ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
+        <shell:WindowChrome CaptionHeight="48" CornerRadius="0" GlassFrameThickness="0" ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
     <Grid x:Name="ChromeRoot" Background="{DynamicResource AppBackgroundBrush}">
         <Grid.RowDefinitions><RowDefinition Height="48" /><RowDefinition Height="*" /></Grid.RowDefinitions>

@@ -20,6 +20,6 @@ public sealed class FileViewerPlugin : ExtensionPluginBase, IWpfNavigationExtens
 
     public IReadOnlyCollection<WpfNavigationPage> GetNavigationPages() =>
     [
-        new("file-viewer.open", "文件查看器", "▤", static () => new FileViewerPage())
+        new("file-viewer.settings", "文件查看器", "▤", static () => new FileViewerSettingsPage())
     ];
 }
