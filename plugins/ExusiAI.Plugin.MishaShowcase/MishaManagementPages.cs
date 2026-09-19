@@ -93,9 +93,9 @@ internal sealed class MishaWorkspacePage : UserControl
     {
         this.store = store;
 
-        var root = MishaUi.Page("ClassIsland 工作区", "选择已经存在的 ClassIsland Settings.json。插件不会创建示例档案或模拟配置。");
+        var root = MishaUi.Page("ClassIsland 工作区", "导入已有 ClassIsland Settings.json。所有 ClassIsland JSON 会按原目录结构复制到 ExusiAI 自有工作区，之后只修改该副本；字段与格式仍保持 ClassIsland 原生兼容。");
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
-        var openSettings = MishaUi.Button("连接 Settings.json");
+        var openSettings = MishaUi.Button("导入 Settings.json");
         openSettings.Click += OpenSettings_OnClick;
         var openProfile = MishaUi.Button("仅打开 Profile JSON", true);
         openProfile.Click += OpenProfile_OnClick;
@@ -118,8 +118,10 @@ internal sealed class MishaWorkspacePage : UserControl
 
         if (store.Workspace is not null)
         {
-            details.Children.Add(MishaUi.Section("已连接工作区"));
-            details.Children.Add(MishaUi.SettingRow("数据根目录", "", ReadOnlyText(store.Workspace.RootDirectory, 420)));
+            details.Children.Add(MishaUi.Section("ExusiAI ClassIsland 工作区"));
+            if (!string.IsNullOrWhiteSpace(store.SourceRootDirectory))
+                details.Children.Add(MishaUi.SettingRow("导入来源", "仅用于迁移/后续同步，不直接写回。", ReadOnlyText(store.SourceRootDirectory!, 420)));
+            details.Children.Add(MishaUi.SettingRow("本地工作目录", "ExusiAI 后续只修改这里的 ClassIsland 原生 JSON。", ReadOnlyText(store.Workspace.RootDirectory, 420)));
             details.Children.Add(MishaUi.SettingRow("Settings.json", "", ReadOnlyText(store.Workspace.SettingsPath, 420)));
             details.Children.Add(MishaUi.SettingRow("当前档案", "", ReadOnlyText(store.Workspace.SelectedProfile, 300)));
             details.Children.Add(MishaUi.SettingRow("组件配置", "", ReadOnlyText(store.Workspace.CurrentComponentConfig, 240)));
@@ -145,8 +147,8 @@ internal sealed class MishaWorkspacePage : UserControl
         {
             await store.AttachWorkspaceAsync(dialog.FileName);
             status.Text = store.Profile is null
-                ? "已连接 Settings.json，但未找到其 SelectedProfile 对应档案。"
-                : "已连接真实 ClassIsland 工作区及当前档案。";
+                ? "已导入 ClassIsland JSON 到 ExusiAI 工作区，但未找到 SelectedProfile 对应档案。"
+                : "已导入 ClassIsland 工作区；后续修改仅作用于 ExusiAI 副本。";
         }
         catch (Exception exception)
         {
@@ -161,7 +163,7 @@ internal sealed class MishaWorkspacePage : UserControl
         try
         {
             await store.OpenProfileAsync(dialog.FileName);
-            status.Text = "已打开真实 ClassIsland Profile。";
+            status.Text = "已将 ClassIsland Profile 导入 ExusiAI 本地副本。";
         }
         catch (Exception exception)
         {
@@ -564,14 +566,14 @@ internal sealed class MishaDataPage : UserControl
     public MishaDataPage(MishaPlatformStore store)
     {
         this.store = store;
-        var root = MishaUi.Page("档案文件", "打开现有 Profile、保存当前 Profile，或另存为新的真实 ClassIsland Profile。不会生成示例内容。");
+        var root = MishaUi.Page("档案文件", "导入现有 Profile 后只编辑 ExusiAI 本地副本；“导出副本”用于显式迁移，不会把后续编辑目标切回 ClassIsland 原目录。");
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         var open = MishaUi.Button("打开 Profile");
         open.Click += Open_OnClick;
         var save = MishaUi.Button("保存", true);
         save.Click += async (_, _) => await SaveAsync();
-        var saveAs = MishaUi.Button("另存为", true);
+        var saveAs = MishaUi.Button("导出副本", true);
         saveAs.Click += SaveAs_OnClick;
         actions.Children.Add(open);
         actions.Children.Add(save);
@@ -601,7 +603,7 @@ internal sealed class MishaDataPage : UserControl
         if (store.Profile is null) { status.Text = "尚未打开 Profile。"; return; }
         var dialog = new SaveFileDialog { Filter = "ClassIsland Profile (*.json)|*.json", FileName = Path.GetFileName(store.Profile.FilePath) };
         if (dialog.ShowDialog() != true) return;
-        try { await store.SaveProfileAsAsync(dialog.FileName); status.Text = "已另存为真实 ClassIsland Profile。"; }
+        try { await store.SaveProfileAsAsync(dialog.FileName); status.Text = "已导出 ClassIsland 原生 Profile 副本；当前编辑仍留在 ExusiAI 工作区。"; }
         catch (Exception exception) { status.Text = $"另存失败：{exception.Message}"; }
     }
 }

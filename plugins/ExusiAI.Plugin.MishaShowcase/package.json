@@ -3,10 +3,10 @@
   "id": "exusiai.misha-showcase",
   "type": "plugin",
   "name": "ClassIsland 2.2 Misha",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "apiVersion": "1",
   "publisher": "SQGTteacher",
-  "description": "ClassIsland 2.2 Misha 的 ExusiAI 移植工作线；直接读写真实 ClassIsland Settings/Profile/ComponentLayouts/Automations 数据并持续补齐完整功能。原项目作者 HelloWRC，移植者 SQGTteacher。",
+  "description": "ClassIsland 2.2 Misha 的 ExusiAI 移植工作线；导入并保持 ClassIsland 原生 Settings/Profile/ComponentLayouts/Automations JSON，提供主信息岛运行时并持续补齐完整功能。原项目作者 HelloWRC，移植者 SQGTteacher。",
   "minimumHostVersion": "0.1.0",
   "entryPoint": {
     "assembly": "ExusiAI.Plugin.MishaShowcase.dll",

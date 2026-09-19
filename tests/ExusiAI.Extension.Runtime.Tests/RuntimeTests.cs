@@ -255,6 +255,111 @@ public sealed class RuntimeTests
         Assert.Null(store.Profile);
     }
 
+
+    [Fact]
+    public async Task MishaWorkspaceImportPreservesNativeJsonAndNeverWritesSource()
+    {
+        using var root = new TemporaryDirectory();
+        var source = Path.Combine(root.Path, "ClassIslandSource");
+        Directory.CreateDirectory(Path.Combine(source, "Profiles"));
+        Directory.CreateDirectory(Path.Combine(source, "Config", "ComponentLayouts"));
+        Directory.CreateDirectory(Path.Combine(source, "Config", "Automations"));
+
+        var settingsPath = Path.Combine(source, "Settings.json");
+        var originalSettings = "{\n  \"SelectedProfile\":\"Default.json\",\n  \"CurrentComponentConfig\":\"Default\",\n  \"CurrentAutomationConfig\":\"Default\",\n  \"FutureField\":{\"keep\":true}\n}";
+        await File.WriteAllTextAsync(settingsPath, originalSettings);
+        await File.WriteAllTextAsync(Path.Combine(source, "Profiles", "Default.json"), "{\"Name\":\"原生档案\",\"Subjects\":{},\"TimeLayouts\":{},\"ClassPlans\":{}}");
+        await File.WriteAllTextAsync(Path.Combine(source, "Config", "ComponentLayouts", "Default.json"), "{\"Lines\":[],\"FutureLayoutField\":7}");
+        await File.WriteAllTextAsync(Path.Combine(source, "Config", "Automations", "Default.json"), "[]");
+
+        var store = new MishaPlatformStore(Path.Combine(root.Path, "ExusiAIStore"));
+        await store.AttachWorkspaceAsync(settingsPath);
+
+        Assert.NotNull(store.Workspace);
+        Assert.NotEqual(Path.GetFullPath(source), store.Workspace!.RootDirectory);
+        Assert.Equal(Path.GetFullPath(source), store.SourceRootDirectory);
+        Assert.Equal(originalSettings, await File.ReadAllTextAsync(store.Workspace.SettingsPath));
+        Assert.True(File.Exists(Path.Combine(store.Workspace.RootDirectory, "Profiles", "Default.json")));
+        Assert.True(File.Exists(Path.Combine(store.Workspace.RootDirectory, "Config", "ComponentLayouts", "Default.json")));
+        Assert.True(File.Exists(Path.Combine(store.Workspace.RootDirectory, "Config", "Automations", "Default.json")));
+
+        store.Workspace.Set("IsMainWindowVisible", false);
+        await store.SaveWorkspaceSettingsAsync();
+
+        Assert.Equal(originalSettings, await File.ReadAllTextAsync(settingsPath));
+        var local = JsonNode.Parse(await File.ReadAllTextAsync(store.Workspace.SettingsPath))!.AsObject();
+        Assert.False(local["IsMainWindowVisible"]!.GetValue<bool>());
+        Assert.True(local["FutureField"]!["keep"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task MishaNativeMainWindowRendererUsesRealComponentProfileWithoutPlaceholders()
+    {
+        using var root = new TemporaryDirectory();
+        var source = Path.Combine(root.Path, "ClassIslandSource");
+        Directory.CreateDirectory(Path.Combine(source, "Profiles"));
+        Directory.CreateDirectory(Path.Combine(source, "Config", "ComponentLayouts"));
+        var settingsPath = Path.Combine(source, "Settings.json");
+        await File.WriteAllTextAsync(settingsPath, """
+        {
+          "SelectedProfile":"Default.json",
+          "CurrentComponentConfig":"Default",
+          "IsMainWindowVisible":true,
+          "Scale":1.0,
+          "Opacity":0.5,
+          "RadiusX":8
+        }
+        """);
+        await File.WriteAllTextAsync(Path.Combine(source, "Profiles", "Default.json"), """
+        {
+          "Name":"测试",
+          "Subjects":{},
+          "TimeLayouts":{},
+          "ClassPlans":{}
+        }
+        """);
+        await File.WriteAllTextAsync(Path.Combine(source, "Config", "ComponentLayouts", "Default.json"), """
+        {
+          "Lines":[{
+            "IsMainLine":true,
+            "Children":[
+              {"Id":"df3f8295-21f6-482e-bada-fa0e5f14bb66","Settings":null},
+              {"Id":"9e1af71d-8f77-4b21-a342-448787104dd9","Settings":{"ShowSeconds":true}},
+              {"Id":"ee8f66bd-c423-4e7c-ab46-aa9976b00e08","Settings":{"TextContent":"真实文本","FontSize":18}},
+              {"Id":"00000000-0000-0000-0000-000000000123","NameCache":"第三方组件","Settings":{"Future":true}}
+            ]
+          }]
+        }
+        """);
+
+        var store = new MishaPlatformStore(Path.Combine(root.Path, "ExusiAIStore"));
+        await store.AttachWorkspaceAsync(settingsPath);
+        var layout = await ClassIslandComponentLayoutDocument.LoadAsync(store.Workspace!.CurrentComponentLayoutPath!);
+
+        Exception? failure = null;
+        System.Windows.FrameworkElement? view = null;
+        var warnings = new List<string>();
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var tickers = new List<Action<DateTime>>();
+                view = MishaNativeMainWindowRenderer.Build(store, layout, tickers, warnings.Add);
+                foreach (var ticker in tickers) ticker(DateTime.Now);
+                view.Measure(new System.Windows.Size(1920, 1080));
+                view.Arrange(new System.Windows.Rect(0, 0, view.DesiredSize.Width, view.DesiredSize.Height));
+                view.UpdateLayout();
+            }
+            catch (Exception exception) { failure = exception; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "Misha main-window renderer smoke test timed out.");
+        Assert.Null(failure);
+        Assert.NotNull(view);
+        Assert.Contains("00000000-0000-0000-0000-000000000123", warnings);
+    }
+
     [Fact]
     public async Task RemovingMiddleClassTimePointKeepsClassPlanAlignment()
     {
