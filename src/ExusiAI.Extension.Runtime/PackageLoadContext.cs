@@ -6,14 +6,17 @@ namespace ExusiAI.Extension.Runtime;
 public sealed class PackageLoadContext : AssemblyLoadContext
 {
     private readonly string mainAssemblyPath;
+    private readonly string packageDirectory;
     private readonly AssemblyDependencyResolver resolver;
     private readonly HashSet<string> sharedAssemblyNames;
 
     public PackageLoadContext(string mainAssemblyPath, IEnumerable<string> sharedAssemblyNames)
         : base($"ExusiAI.Package.{Path.GetFileNameWithoutExtension(mainAssemblyPath)}.{Guid.NewGuid():N}", isCollectible: true)
     {
-        this.mainAssemblyPath = mainAssemblyPath;
-        resolver = new(mainAssemblyPath);
+        this.mainAssemblyPath = Path.GetFullPath(mainAssemblyPath);
+        packageDirectory = Path.GetDirectoryName(this.mainAssemblyPath)
+            ?? throw new ArgumentException("The plugin assembly must have a package directory.", nameof(mainAssemblyPath));
+        resolver = new(this.mainAssemblyPath);
         this.sharedAssemblyNames = new(sharedAssemblyNames, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -23,7 +26,7 @@ public sealed class PackageLoadContext : AssemblyLoadContext
     {
         if (assemblyName.Name is not null && sharedAssemblyNames.Contains(assemblyName.Name))
             return Default.Assemblies.FirstOrDefault(x => string.Equals(x.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase));
-        var assemblyPath = resolver.ResolveAssemblyToPath(assemblyName);
+        var assemblyPath = resolver.ResolveAssemblyToPath(assemblyName) ?? ResolvePackageAssembly(assemblyName);
         return assemblyPath is null ? null : LoadManagedAssembly(assemblyPath);
     }
 
@@ -40,5 +43,13 @@ public sealed class PackageLoadContext : AssemblyLoadContext
         source.CopyTo(buffer);
         buffer.Position = 0;
         return LoadFromStream(buffer);
+    }
+
+    private string? ResolvePackageAssembly(AssemblyName assemblyName)
+    {
+        if (string.IsNullOrWhiteSpace(assemblyName.Name)) return null;
+        var candidate = Path.GetFullPath(Path.Combine(packageDirectory, assemblyName.Name + ".dll"));
+        if (!string.Equals(Path.GetDirectoryName(candidate), packageDirectory, StringComparison.OrdinalIgnoreCase)) return null;
+        return File.Exists(candidate) ? candidate : null;
     }
 }
