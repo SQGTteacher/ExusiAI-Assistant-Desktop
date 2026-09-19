@@ -38,8 +38,7 @@ internal sealed class MishaSettingsHostPage : UserControl
             DisplayMemberPath = nameof(MishaSection.Title),
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
-            Padding = new Thickness(7, 10, 7, 10),
-            SelectedIndex = 0
+            Padding = new Thickness(7, 10, 7, 10)
         };
         navigation.SetResourceReference(ListBox.StyleProperty, "NavigationList");
         navigation.ItemTemplate = BuildNavigationTemplate();
