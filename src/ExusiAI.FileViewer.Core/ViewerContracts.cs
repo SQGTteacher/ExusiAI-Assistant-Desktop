@@ -22,6 +22,9 @@ public sealed record ViewerOpenOptions
     public int CsvRowsPerPage { get; init; } = 256;
     public int MaximumCsvFieldsPerRow { get; init; } = 16_384;
     public int MaximumCsvFieldCharacters { get; init; } = 1 * 1024 * 1024;
+    public int SpreadsheetRowsPerPage { get; init; } = 256;
+    public int MaximumSpreadsheetColumns { get; init; } = 16_384;
+    public int MaximumSpreadsheetSharedStrings { get; init; } = 1_000_000;
     public int MaximumArchiveEntries { get; init; } = 4096;
     public long MaximumArchiveEntryBytes { get; init; } = 256L * 1024 * 1024;
     public long MaximumArchiveExpandedBytes { get; init; } = 1024L * 1024 * 1024;
@@ -35,6 +38,9 @@ public sealed record ViewerOpenOptions
         if (CsvRowsPerPage is < 1 or > 10_000) throw new ArgumentOutOfRangeException(nameof(CsvRowsPerPage));
         if (MaximumCsvFieldsPerRow is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumCsvFieldsPerRow));
         if (MaximumCsvFieldCharacters is < 1 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumCsvFieldCharacters));
+        if (SpreadsheetRowsPerPage is < 1 or > 10_000) throw new ArgumentOutOfRangeException(nameof(SpreadsheetRowsPerPage));
+        if (MaximumSpreadsheetColumns is < 1 or > 16_384) throw new ArgumentOutOfRangeException(nameof(MaximumSpreadsheetColumns));
+        if (MaximumSpreadsheetSharedStrings is < 1 or > 10_000_000) throw new ArgumentOutOfRangeException(nameof(MaximumSpreadsheetSharedStrings));
         if (MaximumArchiveEntries is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntries));
         if (MaximumArchiveEntryBytes <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntryBytes));
         if (MaximumArchiveExpandedBytes < MaximumArchiveEntryBytes) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveExpandedBytes));
@@ -73,11 +79,11 @@ public interface ITextPreviewDocument
     IAsyncEnumerable<TextChunk> ReadChunksAsync(CancellationToken cancellationToken = default);
 }
 
-public sealed record CsvPage(long StartRow, ImmutableArray<ImmutableArray<string>> Rows, bool IsFinal);
+public sealed record TabularPage(long StartRow, ImmutableArray<ImmutableArray<string>> Rows, bool IsFinal);
 
 public interface ITabularPreviewDocument
 {
-    IAsyncEnumerable<CsvPage> ReadPagesAsync(CancellationToken cancellationToken = default);
+    IAsyncEnumerable<TabularPage> ReadPagesAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class UnsupportedFileFormatException(string extension)

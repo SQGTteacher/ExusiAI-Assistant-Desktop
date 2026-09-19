@@ -37,7 +37,7 @@ public sealed class FileViewerTests : IDisposable
 
         await using var opened = await registry.OpenAsync(path, new ViewerOpenOptions { CsvRowsPerPage = 2 });
         var document = Assert.IsType<StreamingCsvDocument>(opened);
-        var pages = new List<CsvPage>();
+        var pages = new List<TabularPage>();
         await foreach (var page in document.ReadPagesAsync()) pages.Add(page);
 
         Assert.Equal(2, pages.Count);
@@ -98,12 +98,74 @@ public sealed class FileViewerTests : IDisposable
             await registry.OpenAsync(path, new ViewerOpenOptions { MaximumArchiveCompressionRatio = 10 }));
     }
 
+    [Fact]
+    public async Task Xlsx_provider_pages_first_worksheet_and_resolves_shared_strings()
+    {
+        var path = Path.Combine(directory, "lesson.xlsx");
+        CreateXlsx(path);
+        var registry = CreateRegistry();
+
+        await using var opened = await registry.OpenAsync(path, new ViewerOpenOptions { SpreadsheetRowsPerPage = 1 });
+        var document = Assert.IsAssignableFrom<ITabularPreviewDocument>(opened);
+        var pages = new List<TabularPage>();
+        await foreach (var page in document.ReadPagesAsync()) pages.Add(page);
+
+        Assert.Equal("XLSX · 成绩", opened.Info.FormatName);
+        Assert.Equal(3, pages.Count);
+        Assert.Equal("姓名", pages[0].Rows[0][0]);
+        Assert.Equal("分数", pages[0].Rows[0][1]);
+        Assert.Equal("Alice", pages[1].Rows[0][0]);
+        Assert.Equal("95", pages[1].Rows[0][1]);
+        Assert.True(pages[^1].IsFinal);
+        Assert.True(opened.Info.IsReadOnly);
+    }
+
+    [Fact]
+    public async Task Xlsx_provider_rejects_external_worksheet_relationship()
+    {
+        var path = Path.Combine(directory, "external.xlsx");
+        CreateXlsx(path, externalWorksheet: true);
+        var registry = CreateRegistry();
+
+        await Assert.ThrowsAsync<FileRejectedException>(async () => await registry.OpenAsync(path));
+    }
+
     private static FileViewerProviderRegistry CreateRegistry() => new(new IFileViewerProvider[]
     {
         new TextFileViewerProvider(),
         new CsvFileViewerProvider(),
-        new DocxFileViewerProvider()
+        new DocxFileViewerProvider(),
+        new XlsxFileViewerProvider()
     });
+
+    private static void CreateXlsx(string path, bool externalWorksheet = false)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+
+        WriteEntry(archive, "xl/workbook.xml",
+            "<?xml version=\"1.0\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"成绩\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+
+        WriteEntry(archive, "xl/_rels/workbook.xml.rels",
+            "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"" +
+            (externalWorksheet ? "https://example.invalid/sheet.xml\" TargetMode=\"External" : "worksheets/sheet1.xml") +
+            "\"/></Relationships>");
+
+        WriteEntry(archive, "xl/sharedStrings.xml",
+            "<?xml version=\"1.0\"?><sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>姓名</t></si><si><t>分数</t></si><si><r><t>Ali</t></r><r><t>ce</t></r></si></sst>");
+
+        WriteEntry(archive, "xl/worksheets/sheet1.xml",
+            "<?xml version=\"1.0\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" +
+            "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>1</v></c></row>" +
+            "<row r=\"2\"><c r=\"A2\" t=\"s\"><v>2</v></c><c r=\"B2\"><v>95</v></c></row>" +
+            "</sheetData></worksheet>");
+    }
+
+    private static void WriteEntry(ZipArchive archive, string name, string content)
+    {
+        var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
+        using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+        writer.Write(content);
+    }
 
     private static void CreateDocx(string path, params string[] paragraphs)
     {

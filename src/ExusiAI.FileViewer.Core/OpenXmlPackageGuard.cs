@@ -38,8 +38,20 @@ internal sealed class OpenXmlPackageGuard : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         var entry = archive.GetEntry(entryName)
             ?? throw new FileRejectedException($"Open XML package is missing required part '{entryName}'.");
-        if (entry.Length > options.MaximumXmlCharacters * 4)
-            throw new FileRejectedException($"XML part '{entryName}' exceeds the configured XML safety limit.");
+        return OpenXml(entry, entryName);
+    }
+
+    public XmlReader? OpenOptionalXml(string entryName)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var entry = archive.GetEntry(entryName);
+        return entry is null ? null : OpenXml(entry, entryName);
+    }
+
+    private XmlReader OpenXml(ZipArchiveEntry entry, string entryName)
+    {
+        if (entry.Length > options.MaximumArchiveEntryBytes)
+            throw new FileRejectedException($"XML part '{entryName}' exceeds the configured per-entry safety limit.");
 
         var settings = new XmlReaderSettings
         {

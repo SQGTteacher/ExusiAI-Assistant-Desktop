@@ -41,7 +41,7 @@ public sealed class StreamingCsvDocument : ViewerDocument, ITabularPreviewDocume
         this.options = options;
     }
 
-    public async IAsyncEnumerable<CsvPage> ReadPagesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<TabularPage> ReadPagesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (Interlocked.Exchange(ref reading, 1) != 0) throw new InvalidOperationException("This document already has an active reader.");
