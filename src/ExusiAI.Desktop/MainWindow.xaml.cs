@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Forms;
+using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 using ExusiAI.Theme;
 
@@ -11,7 +11,7 @@ public partial class MainWindow : Window
 {
     private readonly IThemeService theme;
     private readonly IWindowBackdropService backdrop;
-    private readonly NotifyIcon trayIcon;
+    private readonly Forms.NotifyIcon trayIcon;
     private bool exitRequested;
 
     public MainWindow(IThemeService theme, IWindowBackdropService backdrop)
@@ -54,12 +54,12 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
-    private NotifyIcon CreateTrayIcon()
+    private Forms.NotifyIcon CreateTrayIcon()
     {
-        var menu = new ContextMenuStrip();
+        var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("打开 ExusiAI", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
         menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(ExitApplication));
-        var icon = new NotifyIcon
+        var icon = new Forms.NotifyIcon
         {
             Text = "ExusiAI Assistant",
             Icon = Drawing.SystemIcons.Application,
