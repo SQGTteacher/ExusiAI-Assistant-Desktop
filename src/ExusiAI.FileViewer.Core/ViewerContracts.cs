@@ -27,6 +27,8 @@ public sealed record ViewerOpenOptions
     public long MaximumArchiveExpandedBytes { get; init; } = 1024L * 1024 * 1024;
     public double MaximumArchiveCompressionRatio { get; init; } = 200;
     public long MaximumXmlCharacters { get; init; } = 64L * 1024 * 1024;
+    public int MaximumSharedStrings { get; init; } = 250_000;
+    public int MaximumSharedStringCharacters { get; init; } = 16 * 1024 * 1024;
 
     internal void Validate()
     {
@@ -40,6 +42,8 @@ public sealed record ViewerOpenOptions
         if (MaximumArchiveExpandedBytes < MaximumArchiveEntryBytes) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveExpandedBytes));
         if (MaximumArchiveCompressionRatio is < 1 or > 10_000) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveCompressionRatio));
         if (MaximumXmlCharacters <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumXmlCharacters));
+        if (MaximumSharedStrings is < 1 or > 1_000_000) throw new ArgumentOutOfRangeException(nameof(MaximumSharedStrings));
+        if (MaximumSharedStringCharacters is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumSharedStringCharacters));
     }
 }
 
@@ -73,7 +77,7 @@ public interface ITextPreviewDocument
     IAsyncEnumerable<TextChunk> ReadChunksAsync(CancellationToken cancellationToken = default);
 }
 
-public sealed record CsvPage(long StartRow, ImmutableArray<ImmutableArray<string>> Rows, bool IsFinal);
+public sealed record CsvPage(long StartRow, ImmutableArray<ImmutableArray<string>> Rows, bool IsFinal, string? SectionName = null);
 
 public interface ITabularPreviewDocument
 {
