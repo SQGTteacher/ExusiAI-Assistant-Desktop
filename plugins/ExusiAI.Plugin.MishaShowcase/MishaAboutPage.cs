@@ -14,7 +14,7 @@ internal sealed class MishaAboutPage : UserControl
         panel.Children.Add(Row("移植者", "SQGTteacher"));
         panel.Children.Add(Row("上游基线", "develop/v2/misha-alpha"));
         panel.Children.Add(Row("许可", "按仓库 THIRD_PARTY_NOTICES 与 GPL/LGPL 边界保留原项目署名。"));
-        panel.Children.Add(Row("配置策略", "使用 ClassIsland 原生 Settings.json、Profiles、ComponentLayouts 与 Automations 格式；ExusiAI 不另造兼容性模板。"));
+        panel.Children.Add(Row("配置策略", "导入后保存于 ExusiAI 自有工作区；Settings.json、Profiles、ComponentLayouts 与 Automations 始终保持 ClassIsland 原生格式，不另造兼容性模板。"));
         Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
 

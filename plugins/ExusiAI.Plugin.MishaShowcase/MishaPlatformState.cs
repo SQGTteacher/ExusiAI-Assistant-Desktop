@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -10,14 +12,28 @@ namespace ExusiAI.Plugin.MishaShowcase;
 /// </summary>
 internal sealed class MishaPlatformStore
 {
+    private readonly string storageRoot;
+
+    public MishaPlatformStore(string? storageRoot = null)
+    {
+        this.storageRoot = Path.GetFullPath(storageRoot ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ExusiAI",
+            "misha"));
+    }
+
     public ClassIslandWorkspace? Workspace { get; private set; }
     public ClassIslandProfileDocument? Profile { get; private set; }
+    public string? SourceRootDirectory { get; private set; }
+    public string StorageRoot => storageRoot;
 
     public event EventHandler? Changed;
 
     public async Task AttachWorkspaceAsync(string settingsPath)
     {
-        Workspace = await ClassIslandWorkspace.LoadAsync(settingsPath);
+        var imported = await ClassIslandWorkspaceImporter.ImportAsync(settingsPath, Path.Combine(storageRoot, "workspaces"));
+        SourceRootDirectory = imported.SourceRootDirectory;
+        Workspace = await ClassIslandWorkspace.LoadAsync(imported.SettingsPath);
         Profile = null;
 
         var profilePath = Workspace.SelectedProfilePath;
@@ -29,7 +45,11 @@ internal sealed class MishaPlatformStore
 
     public async Task OpenProfileAsync(string profilePath)
     {
-        Profile = await ClassIslandProfileDocument.LoadAsync(profilePath);
+        var imported = await ClassIslandWorkspaceImporter.ImportStandaloneProfileAsync(
+            profilePath,
+            Path.Combine(storageRoot, "profiles"));
+        SourceRootDirectory ??= Path.GetDirectoryName(Path.GetFullPath(profilePath));
+        Profile = await ClassIslandProfileDocument.LoadAsync(imported);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -43,8 +63,7 @@ internal sealed class MishaPlatformStore
     public async Task SaveProfileAsAsync(string destination)
     {
         if (Profile is null) throw new InvalidOperationException("尚未打开 ClassIsland 档案。");
-        await Profile.SaveAsAsync(destination);
-        Changed?.Invoke(this, EventArgs.Empty);
+        await ClassIslandWorkspace.WriteJsonAtomicAsync(destination, Profile.Root);
     }
 
     public async Task SaveWorkspaceSettingsAsync()
@@ -55,6 +74,91 @@ internal sealed class MishaPlatformStore
     }
 
     public int ResolveRotationWeek(DateTime date) => Workspace?.ResolveRotationWeek(date) ?? 1;
+}
+
+internal sealed record ImportedClassIslandWorkspace(string SettingsPath, string SourceRootDirectory);
+
+internal static class ClassIslandWorkspaceImporter
+{
+    public static async Task<ImportedClassIslandWorkspace> ImportAsync(string settingsPath, string destinationRoot)
+    {
+        var sourceSettings = Path.GetFullPath(settingsPath);
+        if (!File.Exists(sourceSettings))
+            throw new FileNotFoundException("未找到 ClassIsland Settings.json。", sourceSettings);
+
+        var sourceRoot = Path.GetDirectoryName(sourceSettings)
+            ?? throw new InvalidOperationException("Settings.json 路径无效。");
+
+        Directory.CreateDirectory(destinationRoot);
+        if (IsUnderRoot(sourceSettings, destinationRoot))
+            return new(sourceSettings, ReadSourceRoot(Path.GetDirectoryName(sourceSettings)!) ?? sourceRoot);
+
+        var workspaceName = SanitizeName(Path.GetFileName(sourceRoot));
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sourceRoot.ToUpperInvariant())))[..12];
+        var destination = Path.Combine(destinationRoot, $"{workspaceName}-{hash}-{DateTime.UtcNow:yyyyMMddHHmmssfff}");
+        Directory.CreateDirectory(destination);
+
+        foreach (var sourceFile in Directory.EnumerateFiles(sourceRoot, "*.json", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(sourceRoot, sourceFile);
+            if (relative.StartsWith("..", StringComparison.Ordinal))
+                continue;
+            var target = Path.Combine(destination, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(sourceFile, target, false);
+        }
+
+        var settingsRelative = Path.GetRelativePath(sourceRoot, sourceSettings);
+        var importedSettings = Path.Combine(destination, settingsRelative);
+        if (!File.Exists(importedSettings))
+            throw new InvalidOperationException("导入后未找到 Settings.json；ClassIsland JSON 工作区复制不完整。");
+
+        await File.WriteAllTextAsync(
+            Path.Combine(destination, ".exusiai-source.txt"),
+            $"Source={sourceRoot}{Environment.NewLine}Imported={DateTimeOffset.Now:O}{Environment.NewLine}",
+            Encoding.UTF8);
+
+        return new(importedSettings, sourceRoot);
+    }
+
+    public static Task<string> ImportStandaloneProfileAsync(string profilePath, string destinationRoot)
+    {
+        var source = Path.GetFullPath(profilePath);
+        if (!File.Exists(source))
+            throw new FileNotFoundException("未找到 ClassIsland Profile JSON。", source);
+
+        Directory.CreateDirectory(destinationRoot);
+        if (IsUnderRoot(source, destinationRoot))
+            return Task.FromResult(source);
+
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source.ToUpperInvariant())))[..12];
+        var fileName = Path.GetFileNameWithoutExtension(source);
+        var destination = Path.Combine(destinationRoot, $"{SanitizeName(fileName)}-{hash}-{DateTime.UtcNow:yyyyMMddHHmmssfff}.json");
+        File.Copy(source, destination, false);
+        return Task.FromResult(destination);
+    }
+
+    private static bool IsUnderRoot(string path, string root)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ReadSourceRoot(string workspaceDirectory)
+    {
+        var sourceMarker = Path.Combine(workspaceDirectory, ".exusiai-source.txt");
+        if (!File.Exists(sourceMarker)) return null;
+        var line = File.ReadLines(sourceMarker).FirstOrDefault(x => x.StartsWith("Source=", StringComparison.Ordinal));
+        return line is null ? null : line["Source=".Length..];
+    }
+
+    private static string SanitizeName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        var value = new string(name.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(value) ? "ClassIsland" : value;
+    }
 }
 
 internal sealed class ClassIslandWorkspace

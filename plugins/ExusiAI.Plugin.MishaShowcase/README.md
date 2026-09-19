@@ -41,3 +41,15 @@ SQGTteacher。
 - Automations 从整份 JSON 文本框升级为 `Workflow -> Triggers -> Ruleset -> ActionSet -> Actions` 结构化编辑；
 - 触发器和行动使用 ClassIsland 上游真实注册 ID；新增项 `Settings=null`，交由 ClassIsland 本体生成默认设置；
 - ExusiAI 编辑器不会加载或执行自动化行动，仅验证与保存配置。
+
+
+## 0.5.0：本地原生工作区与主信息岛运行时
+
+- 导入 ClassIsland `Settings.json` 时，递归复制来源目录内全部 `*.json` 到 ExusiAI 自有工作区，并保持相对目录、文件内容和 ClassIsland 原生 schema；
+- 后续设置、Profile、ComponentLayouts、Automations 编辑只写 ExusiAI 副本；来源目录仅记录为同步来源，不直接修改；
+- 单独导入 Profile 也会先复制到 ExusiAI 本地存储；“导出副本”不会切换当前编辑文件；
+- 主信息岛运行时直接读取 `CurrentComponentConfig` 指向的原生 `ComponentProfile -> Lines -> Children`；
+- 对照 Misha 上游内置组件实现，当前运行时接入日期、时钟、课程表、文本、倒计时、分割线、分组/堆叠/轮播/滚动容器，以及 Settings 中缓存天气信息；
+- 主窗口读取 ClassIsland 的 `IsMainWindowVisible`、`WindowDockingLocation`、偏移、监视器索引、`WindowLayer`、`Scale`、`Opacity`、`RadiusX`、`IsIslandSeperated`、字体与点击设置；
+- 未实现的第三方组件不会生成伪 UI 或空白模板，只跳过并写入插件日志，后续通过真实插件兼容层补齐；
+- 自动化配置仍只编辑/保存，不执行 `classisland.os.run` 等外部行动。

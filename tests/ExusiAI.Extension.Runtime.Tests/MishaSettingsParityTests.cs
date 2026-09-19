@@ -77,7 +77,7 @@ public sealed class MishaSettingsParityTests
         {
             try
             {
-                var store = new MishaPlatformStore();
+                var store = new MishaPlatformStore(Path.Combine(root.Path, "misha-store"));
                 store.AttachWorkspaceAsync(settingsPath).GetAwaiter().GetResult();
                 foreach (var category in MishaSettingsCatalog.Categories)
                 {
