@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Xml;
 using ExusiAI.FileViewer.Core;
 using Microsoft.Win32;
 
@@ -17,7 +18,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly FileViewerProviderRegistry providers = new(new IFileViewerProvider[]
     {
         new TextFileViewerProvider(),
-        new CsvFileViewerProvider()
+        new CsvFileViewerProvider(),
+        new DocxFileViewerProvider()
     });
     private readonly TextBlock title = new() { FontSize = 22, FontWeight = FontWeights.SemiBold, Text = "尚未打开文件" };
     private readonly TextBlock status = new() { Opacity = 0.68, Text = "支持 TXT、Markdown 与 CSV 的安全只读预览" };
@@ -101,7 +103,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var picker = new OpenFileDialog
         {
             Title = "选择要预览的文件",
-            Filter = "阶段 1 支持的文件|*.txt;*.md;*.markdown;*.csv|纯文本|*.txt|Markdown|*.md;*.markdown|CSV|*.csv|计划支持的 Office/RTF 文件|*.doc;*.docx;*.xls;*.xlsx;*.ppt;*.pptx;*.rtf|所有文件|*.*",
+            Filter = "支持的文件|*.txt;*.md;*.markdown;*.csv;*.docx|纯文本|*.txt|Markdown|*.md;*.markdown|CSV|*.csv|Word Open XML|*.docx|计划支持的 Office/RTF 文件|*.doc;*.xls;*.xlsx;*.ppt;*.pptx;*.rtf|所有文件|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -129,11 +131,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             status.Text = $"只读 · {FormatBytes(document.Info.Length)} · 不执行宏、脚本或外部内容";
             switch (document)
             {
-                case StreamingTextDocument text:
+                case ITextPreviewDocument text:
                     textPreview.Visibility = Visibility.Visible;
                     await LoadTextPreviewAsync(text, loadCancellation.Token);
                     break;
-                case StreamingCsvDocument csv:
+                case ITabularPreviewDocument csv:
                     csvPreview.Visibility = Visibility.Visible;
                     loadMoreButton.Visibility = Visibility.Visible;
                     csvPages = csv.ReadPagesAsync(loadCancellation.Token).GetAsyncEnumerator(loadCancellation.Token);
@@ -147,9 +149,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
         catch (UnsupportedFileFormatException)
         {
-            status.Text = "此格式尚未启用可靠 Provider。DOC/DOCX、XLS/XLSX、PPT/PPTX、RTF 当前明确为未实现，而不是低保真冒充支持。";
+            status.Text = "此格式尚未启用可靠 Provider。DOC、XLS/XLSX、PPT/PPTX、RTF 当前明确为未实现，而不是低保真冒充支持。";
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or XmlException)
         {
             status.Text = $"文件被安全拒绝：{exception.Message}";
         }
@@ -159,7 +161,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
     }
 
-    private async Task LoadTextPreviewAsync(StreamingTextDocument text, CancellationToken cancellationToken)
+    private async Task LoadTextPreviewAsync(ITextPreviewDocument text, CancellationToken cancellationToken)
     {
         await foreach (var chunk in text.ReadChunksAsync(cancellationToken))
         {

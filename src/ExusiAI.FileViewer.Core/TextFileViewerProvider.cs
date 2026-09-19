@@ -25,7 +25,7 @@ public sealed class TextFileViewerProvider : IFileViewerProvider
     }
 }
 
-public sealed class StreamingTextDocument : ViewerDocument
+public sealed class StreamingTextDocument : ViewerDocument, ITextPreviewDocument
 {
     private readonly FileInfo file;
     private readonly int chunkCharacters;
