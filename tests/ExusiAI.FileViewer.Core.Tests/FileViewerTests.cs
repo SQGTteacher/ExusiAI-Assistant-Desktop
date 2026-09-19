@@ -58,10 +58,10 @@ public sealed class FileViewerTests : IDisposable
     }
 
     [Fact]
-    public void Office_extension_is_not_misrepresented_as_supported()
+    public void Legacy_office_extension_is_not_misrepresented_as_supported()
     {
         var registry = CreateRegistry();
-        Assert.Throws<UnsupportedFileFormatException>(() => registry.Resolve("lesson.pptx"));
+        Assert.Throws<UnsupportedFileFormatException>(() => registry.Resolve("lesson.ppt"));
     }
 
     [Fact]
@@ -130,13 +130,63 @@ public sealed class FileViewerTests : IDisposable
         await Assert.ThrowsAsync<FileRejectedException>(async () => await registry.OpenAsync(path));
     }
 
+    [Fact]
+    public async Task Pptx_provider_preserves_slide_order_and_extracts_text()
+    {
+        var path = Path.Combine(directory, "lesson.pptx");
+        CreatePptx(path);
+        var registry = CreateRegistry();
+
+        await using var opened = await registry.OpenAsync(path);
+        var document = Assert.IsAssignableFrom<ISlidePreviewDocument>(opened);
+        var slides = new List<SlidePreview>();
+        await foreach (var slide in document.ReadSlidesAsync()) slides.Add(slide);
+
+        Assert.Equal(2, document.SlideCount);
+        Assert.Equal(2, slides.Count);
+        Assert.Equal(1, slides[0].SlideNumber);
+        Assert.Contains("课堂标题", slides[0].Text);
+        Assert.Contains("第一点", slides[0].Text);
+        Assert.Equal(2, slides[1].SlideNumber);
+        Assert.Contains("第二页", slides[1].Text);
+        Assert.True(slides[1].IsFinal);
+        Assert.True(opened.Info.IsReadOnly);
+    }
+
+    [Fact]
+    public async Task Pptx_provider_rejects_external_slide_relationship()
+    {
+        var path = Path.Combine(directory, "external.pptx");
+        CreatePptx(path, externalSlide: true);
+        var registry = CreateRegistry();
+
+        await Assert.ThrowsAsync<FileRejectedException>(async () => await registry.OpenAsync(path));
+    }
+
     private static FileViewerProviderRegistry CreateRegistry() => new(new IFileViewerProvider[]
     {
         new TextFileViewerProvider(),
         new CsvFileViewerProvider(),
         new DocxFileViewerProvider(),
-        new XlsxFileViewerProvider()
+        new XlsxFileViewerProvider(),
+        new PptxFileViewerProvider()
     });
+
+    private static void CreatePptx(string path, bool externalSlide = false)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        WriteEntry(archive, "ppt/presentation.xml",
+            "<?xml version=\"1.0\"?><p:presentation xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:sldIdLst><p:sldId id=\"256\" r:id=\"rId1\"/><p:sldId id=\"257\" r:id=\"rId2\"/></p:sldIdLst></p:presentation>");
+        WriteEntry(archive, "ppt/_rels/presentation.xml.rels",
+            "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+            "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"" +
+            (externalSlide ? "https://example.invalid/slide1.xml\" TargetMode=\"External" : "slides/slide1.xml") +
+            "\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide2.xml\"/></Relationships>");
+        WriteEntry(archive, "ppt/slides/slide1.xml",
+            "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>课堂标题</a:t></a:r></a:p><a:p><a:r><a:t>第一点</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>");
+        WriteEntry(archive, "ppt/slides/slide2.xml",
+            "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>第二页</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>");
+    }
 
     private static void CreateXlsx(string path, bool externalWorksheet = false)
     {

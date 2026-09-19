@@ -20,10 +20,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         new TextFileViewerProvider(),
         new CsvFileViewerProvider(),
         new DocxFileViewerProvider(),
-        new XlsxFileViewerProvider()
+        new XlsxFileViewerProvider(),
+        new PptxFileViewerProvider()
     });
     private readonly TextBlock title = new() { FontSize = 22, FontWeight = FontWeights.SemiBold, Text = "尚未打开文件" };
-    private readonly TextBlock status = new() { Opacity = 0.68, Text = "支持 TXT、Markdown、CSV、DOCX 与 XLSX 的安全只读预览" };
+    private readonly TextBlock status = new() { Opacity = 0.68, Text = "支持 TXT、Markdown、CSV、DOCX、XLSX 与 PPTX 的安全只读预览" };
     private readonly TextBox textPreview = new()
     {
         IsReadOnly = true,
@@ -44,6 +45,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private CancellationTokenSource? loadCancellation;
     private ViewerDocument? document;
     private IAsyncEnumerator<TabularPage>? csvPages;
+    private IAsyncEnumerator<SlidePreview>? slidePages;
     private bool disposed;
 
     public FileViewerPage()
@@ -104,7 +106,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var picker = new OpenFileDialog
         {
             Title = "选择要预览的文件",
-            Filter = "支持的文件|*.txt;*.md;*.markdown;*.csv;*.docx;*.xlsx|纯文本|*.txt|Markdown|*.md;*.markdown|CSV|*.csv|Word Open XML|*.docx|Excel Open XML|*.xlsx|计划支持的 Office/RTF 文件|*.doc;*.xls;*.ppt;*.pptx;*.rtf|所有文件|*.*",
+            Filter = "支持的文件|*.txt;*.md;*.markdown;*.csv;*.docx;*.xlsx;*.pptx|纯文本|*.txt|Markdown|*.md;*.markdown|CSV|*.csv|Word Open XML|*.docx|Excel Open XML|*.xlsx|PowerPoint Open XML|*.pptx|计划支持的 Office/RTF 文件|*.doc;*.xls;*.ppt;*.rtf|所有文件|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -142,6 +144,12 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     csvPages = csv.ReadPagesAsync(loadCancellation.Token).GetAsyncEnumerator(loadCancellation.Token);
                     await LoadNextCsvPageAsync();
                     break;
+                case ISlidePreviewDocument slides:
+                    csvPreview.Visibility = Visibility.Visible;
+                    loadMoreButton.Visibility = Visibility.Visible;
+                    slidePages = slides.ReadSlidesAsync(loadCancellation.Token).GetAsyncEnumerator(loadCancellation.Token);
+                    await LoadNextSlideAsync(slides.SlideCount);
+                    break;
             }
         }
         catch (OperationCanceledException)
@@ -150,7 +158,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
         catch (UnsupportedFileFormatException)
         {
-            status.Text = "此格式尚未启用可靠 Provider。DOC、XLS、PPT/PPTX、RTF 当前明确为未实现，而不是低保真冒充支持。";
+            status.Text = "此格式尚未启用可靠 Provider。DOC、XLS、PPT、RTF 当前明确为未实现，而不是低保真冒充支持。";
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or XmlException)
         {
@@ -184,7 +192,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         textPreview.ScrollToHome();
     }
 
-    private async void LoadMoreButton_OnClick(object sender, RoutedEventArgs e) => await LoadNextCsvPageAsync();
+    private async void LoadMoreButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (slidePages is not null && document is ISlidePreviewDocument slides) await LoadNextSlideAsync(slides.SlideCount);
+        else await LoadNextCsvPageAsync();
+    }
 
     private async Task LoadNextCsvPageAsync()
     {
@@ -209,6 +221,31 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         finally { cancelButton.IsEnabled = false; }
     }
 
+    private async Task LoadNextSlideAsync(int slideCount)
+    {
+        if (slidePages is null) return;
+        loadMoreButton.IsEnabled = false;
+        cancelButton.IsEnabled = true;
+        try
+        {
+            if (!await slidePages.MoveNextAsync())
+            {
+                loadMoreButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var slide = slidePages.Current;
+            csvRows.Add($"幻灯片 {slide.SlideNumber:N0} / {slideCount:N0}");
+            csvRows.Add(string.IsNullOrWhiteSpace(slide.Text) ? "（此页没有可提取文本）" : slide.Text.Replace(Environment.NewLine, "  │  "));
+            status.Text = $"只读 · 已加载幻灯片 {slide.SlideNumber:N0} / {slideCount:N0} · 结构化文本预览";
+            loadMoreButton.Visibility = slide.IsFinal ? Visibility.Collapsed : Visibility.Visible;
+            loadMoreButton.IsEnabled = !slide.IsFinal;
+        }
+        catch (OperationCanceledException) { status.Text = "已取消加载。"; }
+        catch (InvalidDataException exception) { status.Text = $"PPTX 被安全拒绝：{exception.Message}"; }
+        finally { cancelButton.IsEnabled = false; }
+    }
+
     private void FindNext()
     {
         if (textPreview.Visibility != Visibility.Visible || string.IsNullOrEmpty(searchBox.Text)) return;
@@ -228,6 +265,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         loadCancellation = null;
         if (csvPages is not null) await csvPages.DisposeAsync();
         csvPages = null;
+        if (slidePages is not null) await slidePages.DisposeAsync();
+        slidePages = null;
         if (document is not null) await document.DisposeAsync();
         document = null;
     }

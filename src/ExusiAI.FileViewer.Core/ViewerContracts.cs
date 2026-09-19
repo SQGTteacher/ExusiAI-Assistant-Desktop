@@ -9,8 +9,9 @@ public enum ViewerCapabilities
     Search = 1,
     IncrementalRead = 2,
     Tabular = 4,
-    Edit = 8,
-    Save = 16
+    Slides = 8,
+    Edit = 16,
+    Save = 32
 }
 
 public sealed record ViewerOpenOptions
@@ -25,6 +26,8 @@ public sealed record ViewerOpenOptions
     public int SpreadsheetRowsPerPage { get; init; } = 256;
     public int MaximumSpreadsheetColumns { get; init; } = 16_384;
     public int MaximumSpreadsheetSharedStrings { get; init; } = 1_000_000;
+    public int MaximumPresentationSlides { get; init; } = 2_000;
+    public int MaximumPresentationTextCharactersPerSlide { get; init; } = 2 * 1024 * 1024;
     public int MaximumArchiveEntries { get; init; } = 4096;
     public long MaximumArchiveEntryBytes { get; init; } = 256L * 1024 * 1024;
     public long MaximumArchiveExpandedBytes { get; init; } = 1024L * 1024 * 1024;
@@ -41,6 +44,8 @@ public sealed record ViewerOpenOptions
         if (SpreadsheetRowsPerPage is < 1 or > 10_000) throw new ArgumentOutOfRangeException(nameof(SpreadsheetRowsPerPage));
         if (MaximumSpreadsheetColumns is < 1 or > 16_384) throw new ArgumentOutOfRangeException(nameof(MaximumSpreadsheetColumns));
         if (MaximumSpreadsheetSharedStrings is < 1 or > 10_000_000) throw new ArgumentOutOfRangeException(nameof(MaximumSpreadsheetSharedStrings));
+        if (MaximumPresentationSlides is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationSlides));
+        if (MaximumPresentationTextCharactersPerSlide is < 1 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationTextCharactersPerSlide));
         if (MaximumArchiveEntries is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntries));
         if (MaximumArchiveEntryBytes <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntryBytes));
         if (MaximumArchiveExpandedBytes < MaximumArchiveEntryBytes) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveExpandedBytes));
@@ -84,6 +89,14 @@ public sealed record TabularPage(long StartRow, ImmutableArray<ImmutableArray<st
 public interface ITabularPreviewDocument
 {
     IAsyncEnumerable<TabularPage> ReadPagesAsync(CancellationToken cancellationToken = default);
+}
+
+public sealed record SlidePreview(int SlideNumber, string Text, bool IsFinal);
+
+public interface ISlidePreviewDocument
+{
+    int SlideCount { get; }
+    IAsyncEnumerable<SlidePreview> ReadSlidesAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class UnsupportedFileFormatException(string extension)
