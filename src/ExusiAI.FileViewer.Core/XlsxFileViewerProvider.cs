@@ -204,46 +204,47 @@ internal static class XlsxPackageReader
             return ImmutableArray<string>.Empty;
 
         var values = ImmutableArray.CreateBuilder<string>();
-        StringBuilder? current = null;
         long totalCharacters = 0;
 
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (reader.NodeType == XmlNodeType.Element &&
-                reader.NamespaceURI == SpreadsheetNamespace &&
-                reader.LocalName == "si")
+            if (reader.NodeType != XmlNodeType.Element ||
+                reader.NamespaceURI != SpreadsheetNamespace ||
+                reader.LocalName != "si")
             {
-                if (values.Count >= options.MaximumSpreadsheetSharedStrings)
-                    throw new FileRejectedException($"XLSX shared string table exceeds the {options.MaximumSpreadsheetSharedStrings:N0}-entry safety limit.");
-                current = new StringBuilder();
                 continue;
             }
 
-            if (current is not null &&
-                reader.NodeType == XmlNodeType.Element &&
-                reader.NamespaceURI == SpreadsheetNamespace &&
-                reader.LocalName == "t")
+            if (values.Count >= options.MaximumSpreadsheetSharedStrings)
+                throw new FileRejectedException($"XLSX shared string table exceeds the {options.MaximumSpreadsheetSharedStrings:N0}-entry safety limit.");
+
+            using var itemReader = reader.ReadSubtree();
+            var current = new StringBuilder();
+
+            while (await itemReader.ReadAsync().ConfigureAwait(false))
             {
-                var text = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (itemReader.NodeType != XmlNodeType.Element ||
+                    itemReader.NamespaceURI != SpreadsheetNamespace ||
+                    itemReader.LocalName != "t")
+                {
+                    continue;
+                }
+
+                var text = await itemReader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                 totalCharacters = checked(totalCharacters + text.Length);
                 if (totalCharacters > options.MaximumXmlCharacters)
                     throw new FileRejectedException("XLSX shared strings exceed the configured XML character safety limit.");
                 if (current.Length + text.Length > options.MaximumCsvFieldCharacters)
                     throw new FileRejectedException("XLSX shared string exceeds the configured cell text safety limit.");
+
                 current.Append(text);
-                continue;
             }
 
-            if (current is not null &&
-                reader.NodeType == XmlNodeType.EndElement &&
-                reader.NamespaceURI == SpreadsheetNamespace &&
-                reader.LocalName == "si")
-            {
-                values.Add(current.ToString());
-                current = null;
-            }
+            values.Add(current.ToString());
         }
 
         return values.ToImmutable();
