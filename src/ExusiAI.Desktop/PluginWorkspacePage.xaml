@@ -10,11 +10,15 @@
 
         <StackPanel>
             <TextBlock Text="插件工作台" Style="{StaticResource PageTitle}" />
-            <TextBlock Text="像启动台一样选择插件；插件设置与功能入口保持在各自页面中。" Style="{StaticResource PageSubtitle}" />
+            <TextBlock Text="选择插件后在下方进入该插件自己的设置界面。" Style="{StaticResource PageSubtitle}" />
         </StackPanel>
 
-        <ListBox Grid.Row="1" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}"
-                 Margin="0,20,0,14" BorderThickness="0" Background="Transparent"
+        <ListBox Grid.Row="1"
+                 ItemsSource="{Binding Pages}"
+                 SelectedItem="{Binding SelectedPage}"
+                 Margin="0,20,0,14"
+                 BorderThickness="0"
+                 Background="Transparent"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -23,8 +27,8 @@
             </ListBox.ItemsPanel>
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
-                    <Setter Property="Width" Value="224" />
-                    <Setter Property="MinHeight" Value="90" />
+                    <Setter Property="Width" Value="225" />
+                    <Setter Property="Height" Value="70" />
                     <Setter Property="Margin" Value="0,0,10,10" />
                     <Setter Property="Padding" Value="0" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -33,8 +37,12 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListBoxItem">
-                                <Border x:Name="Card" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="12" Padding="15">
+                                <Border x:Name="Card"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="12"
+                                        Padding="14">
                                     <ContentPresenter />
                                 </Border>
                                 <ControlTemplate.Triggers>
@@ -55,25 +63,29 @@
                 <DataTemplate>
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="42" />
+                            <ColumnDefinition Width="40" />
                             <ColumnDefinition />
                         </Grid.ColumnDefinitions>
-                        <Border Width="34" Height="34" CornerRadius="9" Background="{DynamicResource SurfaceAltBrush}" VerticalAlignment="Top">
-                            <TextBlock Text="{Binding IconGlyph}" FontSize="17" Foreground="{DynamicResource AccentBrush}"
+                        <Border Width="32" Height="32" CornerRadius="8"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="{Binding IconGlyph}" FontSize="16"
+                                       Foreground="{DynamicResource AccentBrush}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
-                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                            <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding PackageId}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="打开设置与功能" FontSize="10.5" Foreground="{DynamicResource AccentBrush}" Margin="0,9,0,0" />
-                        </StackPanel>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding Title}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Title}" />
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <Border Grid.Row="2" Style="{StaticResource LaunchCard}" Padding="20">
+        <Border Grid.Row="2" Style="{StaticResource LaunchCard}" Padding="0" ClipToBounds="True">
             <Grid>
                 <ContentControl Content="{Binding CurrentPage}" />
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -87,10 +99,15 @@
                             </Style.Triggers>
                         </Style>
                     </StackPanel.Style>
-                    <Path Data="M4,5 H20 V19 H4 Z M4,9 H20 M9,9 V19" Width="36" Height="36"
-                          Stretch="Uniform" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" />
-                    <TextBlock Text="没有可显示的插件页面" FontSize="17" FontWeight="SemiBold" Margin="0,15,0,0" HorizontalAlignment="Center" />
-                    <TextBlock Text="请在扩展管理中启用一个提供界面的插件。" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                    <Path Data="M4,5 H20 V19 H4 Z M4,9 H20 M9,9 V19"
+                          Width="36" Height="36" Stretch="Uniform"
+                          Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" />
+                    <TextBlock Text="没有可显示的插件页面" FontSize="17"
+                               FontWeight="SemiBold" Margin="0,15,0,0"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="请在扩展管理中启用一个提供界面的插件。"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,6,0,0" />
                 </StackPanel>
             </Grid>
         </Border>

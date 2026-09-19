@@ -13,8 +13,8 @@ SQGTteacher。
 - 天气位置、软件时间同步和设置认证选项；
 - 天气、倒计日、强调提醒、自动化和 CSES 等内置模块安装管理；
 - ClassIsland 2.2 原生 Profile JSON 导入导出，保留未知字段并维持 GUID 关系；
-- 七个工作台页面及插件运行时启用、禁用和卸载。
+- 单一 “ClassIsland 2.2 Misha” 工作台入口，进入后按 ClassIsland Misha 的设置窗口结构在左侧细分概览、课表与时间表、组件、提醒与自动化、扩展、档案与数据、关于。
 
 参考基线为 ClassIsland `develop/v2/misha-alpha` 分支的 2.2 Misha 早期开发版，
-提交 `b61a0353282cc061dc4f498d515bfd3b9a38ca58`。本插件不是 ClassIsland
+分支 `develop/v2/misha-alpha`。UI 信息架构以其设置窗口左侧导航 + 右侧内容区域为基线持续同步；功能移植不会停在展示页，目标仍是完整功能与 Profile 数据互通。本插件不是 ClassIsland
 官方发行版；项目身份、作者、贡献者与许可证信息见 `THIRD_PARTY_NOTICES.md`。

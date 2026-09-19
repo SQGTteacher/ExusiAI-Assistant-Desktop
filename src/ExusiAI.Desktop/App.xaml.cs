@@ -139,6 +139,7 @@ public partial class App : Application
         SetBrush("AccentSoftBrush", palette.AccentSoft);
         SetBrush("SuccessBrush", palette.Success);
         SetBrush("WarningBrush", palette.Warning);
+        SetBrush("AccentWarmBrush", palette.Warning);
         SetBrush("DangerBrush", palette.Danger);
         Current.Resources["WindowTopBarBrush"] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Surface));
         Current.Resources["NavRailBrush"] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Surface));

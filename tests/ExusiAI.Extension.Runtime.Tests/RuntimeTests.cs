@@ -113,12 +113,9 @@ public sealed class RuntimeTests
     {
         using var root = new TemporaryDirectory();
         var loadContext = await LoadAndStopSamplePluginAsync(root.Path);
-        for (var attempt = 0; attempt < 5 && loadContext.IsAlive; attempt++)
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-        }
-        Assert.False(loadContext.IsAlive);
+        Assert.True(
+            WaitForCollection(loadContext, TimeSpan.FromSeconds(2)),
+            "Collectible plugin AssemblyLoadContext did not unload within the bounded GC wait.");
     }
 
     [Fact]
@@ -171,28 +168,23 @@ public sealed class RuntimeTests
         Assert.Equal(PackageState.Running, entry.State);
         var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
         var pages = navigation.GetNavigationPages().ToArray();
-        Assert.Equal(new[]
-        {
-            "misha.dashboard", "misha.schedule", "misha.components", "misha.automation",
-            "misha.extensions", "misha.data", "misha.about"
-        }, pages.Select(page => page.Route));
+        var page = Assert.Single(pages);
+        Assert.Equal("misha.settings", page.Route);
+        Assert.Equal("ClassIsland 2.2 Misha", page.Title);
 
         Exception? pageFailure = null;
         var pageThread = new Thread(() =>
         {
             try
             {
-                foreach (var page in pages)
-                {
-                    var view = page.CreateView();
-                    Assert.NotNull(view);
-                    view.Measure(new System.Windows.Size(1280, 800));
-                    view.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
-                    view.UpdateLayout();
-                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
-                        System.Windows.Threading.DispatcherPriority.DataBind,
-                        new Action(() => { }));
-                }
+                var view = page.CreateView();
+                Assert.NotNull(view);
+                view.Measure(new System.Windows.Size(1280, 800));
+                view.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
+                view.UpdateLayout();
+                System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                    System.Windows.Threading.DispatcherPriority.DataBind,
+                    new Action(() => { }));
             }
             catch (Exception exception) { pageFailure = exception; }
         });
@@ -228,6 +220,22 @@ public sealed class RuntimeTests
         Assert.NotNull(exported["Subjects"]);
         Assert.NotNull(exported["TimeLayouts"]);
         Assert.NotNull(exported["ClassPlans"]);
+    }
+
+    private static bool WaitForCollection(WeakReference reference, TimeSpan timeout)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        do
+        {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            if (!reference.IsAlive) return true;
+            Thread.Sleep(25);
+        }
+        while (stopwatch.Elapsed < timeout);
+
+        return !reference.IsAlive;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
