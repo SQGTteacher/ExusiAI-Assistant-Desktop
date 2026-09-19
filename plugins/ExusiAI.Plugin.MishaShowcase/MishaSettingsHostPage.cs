@@ -35,7 +35,6 @@ internal sealed class MishaSettingsHostPage : UserControl
         var navigation = new ListBox
         {
             ItemsSource = pages,
-            DisplayMemberPath = nameof(MishaSection.Title),
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
             Padding = new Thickness(7, 10, 7, 10)
