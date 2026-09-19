@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -35,8 +36,8 @@ internal static class MishaUi
         var button = new Button { Content = text, Margin = new Thickness(0, 0, 8, 0) };
         if (secondary)
         {
-            button.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
-            button.SetResourceReference(Button.ForegroundProperty, "TextPrimaryBrush");
+            button.SetResourceReference(Control.BackgroundProperty, "SurfaceAltBrush");
+            button.SetResourceReference(Control.ForegroundProperty, "TextPrimaryBrush");
         }
         return button;
     }

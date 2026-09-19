@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -20,7 +21,7 @@ internal sealed class MishaPlatformStore
         Profile = null;
 
         var profilePath = Workspace.SelectedProfilePath;
-        if (!string.IsNullOrWhiteSpace(profilePath) && File.Exists(profilePath))
+        if (profilePath is not null && File.Exists(profilePath))
             Profile = await ClassIslandProfileDocument.LoadAsync(profilePath);
 
         Changed?.Invoke(this, EventArgs.Empty);
