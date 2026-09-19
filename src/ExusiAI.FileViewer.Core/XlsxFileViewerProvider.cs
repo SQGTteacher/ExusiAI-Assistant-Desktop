@@ -82,7 +82,7 @@ public sealed class StreamingXlsxDocument : ViewerDocument, ITabularPreviewDocum
                     continue;
                 }
 
-                page.Add(XlsxPackageReader.ReadRow(reader, sharedStrings, options));
+                page.Add(await XlsxPackageReader.ReadRowAsync(reader, sharedStrings, options).ConfigureAwait(false));
                 rowCount++;
 
                 if (page.Count != options.SpreadsheetRowsPerPage)
@@ -249,7 +249,7 @@ internal static class XlsxPackageReader
         return values.ToImmutable();
     }
 
-    public static ImmutableArray<string> ReadRow(
+    public static async ValueTask<ImmutableArray<string>> ReadRowAsync(
         XmlReader worksheetReader,
         ImmutableArray<string> sharedStrings,
         ViewerOpenOptions options)
@@ -258,7 +258,7 @@ internal static class XlsxPackageReader
         var cells = new SortedDictionary<int, string>();
         var sequentialColumn = 0;
 
-        while (rowReader.Read())
+        while (await rowReader.ReadAsync().ConfigureAwait(false))
         {
             if (rowReader.NodeType != XmlNodeType.Element ||
                 rowReader.LocalName != "c" ||
@@ -274,7 +274,7 @@ internal static class XlsxPackageReader
             if (column < 0 || column >= options.MaximumSpreadsheetColumns)
                 throw new FileRejectedException($"XLSX row exceeds the {options.MaximumSpreadsheetColumns:N0}-column safety limit.");
 
-            cells[column] = ReadCell(rowReader, sharedStrings, options);
+            cells[column] = await ReadCellAsync(rowReader, sharedStrings, options).ConfigureAwait(false);
         }
 
         if (cells.Count == 0)
@@ -287,26 +287,26 @@ internal static class XlsxPackageReader
         return row.ToImmutable();
     }
 
-    private static string ReadCell(XmlReader worksheetReader, ImmutableArray<string> sharedStrings, ViewerOpenOptions options)
+    private static async ValueTask<string> ReadCellAsync(XmlReader worksheetReader, ImmutableArray<string> sharedStrings, ViewerOpenOptions options)
     {
         var cellType = worksheetReader.GetAttribute("t");
         using var cellReader = worksheetReader.ReadSubtree();
         string? rawValue = null;
         StringBuilder? inlineText = null;
 
-        while (cellReader.Read())
+        while (await cellReader.ReadAsync().ConfigureAwait(false))
         {
             if (cellReader.NodeType != XmlNodeType.Element || cellReader.NamespaceURI != SpreadsheetNamespace)
                 continue;
 
             if (cellReader.LocalName == "v")
             {
-                rawValue = cellReader.ReadElementContentAsString();
+                rawValue = await cellReader.ReadElementContentAsStringAsync().ConfigureAwait(false);
             }
             else if (cellReader.LocalName == "t")
             {
                 inlineText ??= new StringBuilder();
-                var text = cellReader.ReadElementContentAsString();
+                var text = await cellReader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                 if (inlineText.Length + text.Length > options.MaximumCsvFieldCharacters)
                     throw new FileRejectedException("XLSX cell text exceeds the configured cell text safety limit.");
                 inlineText.Append(text);
