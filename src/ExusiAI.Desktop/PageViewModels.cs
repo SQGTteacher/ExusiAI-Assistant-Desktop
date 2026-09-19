@@ -221,7 +221,7 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
         {
             try
             {
-                var view = value.CreateView();
+                var viewerView = value.CreateView();
                 var window = new Window
                 {
                     Title = "ExusiAI 文件查看器",
@@ -231,7 +231,7 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
                     MinHeight = 520,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
                     Owner = Application.Current?.MainWindow,
-                    Content = view,
+                    Content = viewerView,
                     Background = Application.Current?.TryFindResource("AppBackgroundBrush") as System.Windows.Media.Brush
                 };
                 window.Show();
