@@ -96,12 +96,12 @@ internal sealed class MishaDashboardViewModel : INotifyPropertyChanged
         {
             var lesson = Lessons[liveIndex];
             CurrentSubject = lesson.Subject;
-            CurrentDetail = $"{lesson.PlanName} · 第 {lesson.Index} 节 · {lesson.Start:hh\:mm}–{lesson.End:hh\:mm} · {lesson.Teacher}";
+            CurrentDetail = $"{lesson.PlanName} · 第 {lesson.Index} 节 · {lesson.Start.ToString(@"hh\:mm")}–{lesson.End.ToString(@"hh\:mm")} · {lesson.Teacher}";
             if (liveIndex + 1 < Lessons.Count)
             {
                 var next = Lessons[liveIndex + 1];
                 NextSubject = next.Subject;
-                NextDetail = $"{next.Start:hh\:mm} · {next.Teacher}";
+                NextDetail = $"{next.Start.ToString(@"hh\:mm")} · {next.Teacher}";
             }
             else
             {
@@ -126,7 +126,7 @@ internal sealed class MishaDashboardViewModel : INotifyPropertyChanged
         {
             var next = Lessons[nextIndex];
             CurrentSubject = "课间 / 课前";
-            CurrentDetail = $"下一节 {next.Start:hh\:mm} 开始";
+            CurrentDetail = $"下一节 {next.Start.ToString(@"hh\:mm")} 开始";
             NextSubject = next.Subject;
             NextDetail = $"{next.PlanName} · {next.Teacher}";
         }
