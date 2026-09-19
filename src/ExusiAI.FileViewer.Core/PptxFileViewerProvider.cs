@@ -44,7 +44,7 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
             file.Name,
             "PPTX 结构化幻灯片",
             file.Length,
-            ViewerCapabilities.IncrementalRead | ViewerCapabilities.Slides,
+            ViewerCapabilities.Search | ViewerCapabilities.IncrementalRead | ViewerCapabilities.Slides,
             true,
             ImmutableArray.Create(
                 "阶段 2C 当前按幻灯片顺序提取可见文本，保留幻灯片边界，但不承诺与 PowerPoint 相同的版式。",

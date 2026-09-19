@@ -176,6 +176,44 @@ public sealed class FileViewerTests : IDisposable
     }
 
     [Fact]
+    public async Task Search_finds_text_across_chunk_boundary()
+    {
+        var path = Path.Combine(directory, "boundary.txt");
+        await File.WriteAllTextAsync(path, new string('a', 1023) + "课堂" + new string('b', 32), new UTF8Encoding(false));
+        var registry = CreateRegistry();
+
+        await using var opened = await registry.OpenAsync(path, new ViewerOpenOptions { TextChunkCharacters = 1024 });
+        var hits = await ViewerSearchService.SearchAsync(opened, "课堂");
+
+        var hit = Assert.Single(hits);
+        Assert.Equal(ViewerSearchLocationKind.Text, hit.Kind);
+        Assert.Equal(1023, hit.PrimaryIndex);
+    }
+
+    [Fact]
+    public async Task Search_finds_spreadsheet_cell_and_pptx_slide()
+    {
+        var xlsxPath = Path.Combine(directory, "search.xlsx");
+        CreateXlsx(xlsxPath);
+        var pptxPath = Path.Combine(directory, "search.pptx");
+        CreatePptx(pptxPath);
+        var registry = CreateRegistry();
+
+        await using var xlsx = await registry.OpenAsync(xlsxPath);
+        var tableHits = await ViewerSearchService.SearchAsync(xlsx, "Alice");
+        var tableHit = Assert.Single(tableHits);
+        Assert.Equal(ViewerSearchLocationKind.Row, tableHit.Kind);
+        Assert.Equal(2, tableHit.PrimaryIndex);
+        Assert.Equal(1, tableHit.SecondaryIndex);
+
+        await using var pptx = await registry.OpenAsync(pptxPath);
+        var slideHits = await ViewerSearchService.SearchAsync(pptx, "第二页");
+        var slideHit = Assert.Single(slideHits);
+        Assert.Equal(ViewerSearchLocationKind.Slide, slideHit.Kind);
+        Assert.Equal(2, slideHit.PrimaryIndex);
+    }
+
+    [Fact]
     public async Task Pptx_provider_rejects_external_slide_relationship()
     {
         var path = Path.Combine(directory, "external.pptx");
