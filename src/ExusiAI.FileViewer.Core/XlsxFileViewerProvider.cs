@@ -45,7 +45,7 @@ public sealed class StreamingXlsxDocument : ViewerDocument, ITabularPreviewDocum
             file.Name,
             $"XLSX · {worksheet.Name}",
             file.Length,
-            ViewerCapabilities.IncrementalRead | ViewerCapabilities.Tabular,
+            ViewerCapabilities.Search | ViewerCapabilities.IncrementalRead | ViewerCapabilities.Tabular,
             true,
             ImmutableArray.Create(
                 $"阶段 2B 当前预览首个工作表“{worksheet.Name}”；多工作表切换将在后续查看工作流中加入。",
