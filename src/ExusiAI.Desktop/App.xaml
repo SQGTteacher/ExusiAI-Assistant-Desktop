@@ -3,20 +3,20 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <!-- Exusiai-inspired fallback palette. Runtime themes replace the shared palette brushes. -->
-        <SolidColorBrush x:Key="AppBackgroundBrush" Color="#10141C" />
-        <SolidColorBrush x:Key="WindowTopBarBrush" Color="#121720" />
+        <SolidColorBrush x:Key="AppBackgroundBrush" Color="#101114" />
+        <SolidColorBrush x:Key="WindowTopBarBrush" Color="#17191F" />
         <SolidColorBrush x:Key="NavRailBrush" Color="#121720" />
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#171D28" />
-        <SolidColorBrush x:Key="SurfaceAltBrush" Color="#202937" />
-        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F1F5F9" />
-        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9CAABD" />
-        <SolidColorBrush x:Key="BorderBrush" Color="#344052" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#72C3E1" />
-        <SolidColorBrush x:Key="AccentSoftBrush" Color="#243F4D" />
-        <SolidColorBrush x:Key="AccentWarmBrush" Color="#F2B36A" />
-        <SolidColorBrush x:Key="SuccessBrush" Color="#58D6AE" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#17191F" />
+        <SolidColorBrush x:Key="SurfaceAltBrush" Color="#22252C" />
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F5F2EF" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#B2A9AD" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#3B3E46" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#D84B57" />
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#402126" />
+        <SolidColorBrush x:Key="AccentWarmBrush" Color="#E6BD68" />
+        <SolidColorBrush x:Key="SuccessBrush" Color="#58C39A" />
         <SolidColorBrush x:Key="WarningBrush" Color="#F2B36A" />
-        <SolidColorBrush x:Key="DangerBrush" Color="#EF7687" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#E15D6B" />
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -52,7 +52,7 @@
 
         <Style TargetType="Button">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-            <Setter Property="Foreground" Value="#10141C" />
+            <Setter Property="Foreground" Value="White" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="14,8" />
             <Setter Property="Cursor" Value="Hand" />

@@ -26,20 +26,34 @@ public sealed record ThemeDefinition(
 
 public static class ThemeCatalog
 {
-    public static ThemePalette Light { get; } = new("#F4F7FA", "#FFFFFF", "#EAF0F6", "#17212E", "#65758A", "#CAD5E1", "#5CA9C9", "#DCEFF6", "#159A73", "#D9913D", "#D95A70");
-    public static ThemePalette Dark { get; } = new("#10141C", "#171D28", "#202937", "#F1F5F9", "#9CAABD", "#344052", "#72C3E1", "#243F4D", "#58D6AE", "#F2B36A", "#EF7687");
+    // Exusiai's stable visual identity is red/burgundy hair, black/white clothing,
+    // and a warm golden halo. Cyan is deliberately not used as the primary accent.
+    public static ThemePalette Light { get; } = new(
+        "#F6F3F1", "#FFFFFF", "#EEE8E6", "#242126", "#746B70", "#D9CFCC",
+        "#C84450", "#F5DDE0", "#2F8F72", "#C89035", "#C94E5C");
+
+    public static ThemePalette Dark { get; } = new(
+        "#101114", "#17191F", "#22252C", "#F5F2EF", "#B2A9AD", "#3B3E46",
+        "#D84B57", "#402126", "#58C39A", "#E6BD68", "#E15D6B");
 
     public static IReadOnlyList<ThemeDefinition> All { get; } =
     [
-        new("system", "跟随系统", "自动匹配 Windows 深浅色，并使用 Exusiai 风格的蓝灰基调", false, Light, Dark),
-        new("exusiai", "Exusiai", "以能天使为灵感的深色蓝灰、冷青与暖橙点缀", true, Dark),
-        new("paper", "Paper", "克制清晰的暖白工作区", false, new("#EDF7F5F0", "#F9FFFDF8", "#E8EEE9E1", "#24231F", "#706E66", "#9ED8D3C8", "#3568D4", "#D8E4EDFF", "#2E8B68", "#B97818", "#C84B55")),
-        new("graphite", "Graphite", "中性的深灰编辑器配色", true, new("#EA17191C", "#EA202327", "#DC292D32", "#F2F4F7", "#AAB0BA", "#70464B53", "#7DA2F8", "#87314360", "#55C59A", "#E8B15B", "#ED7784")),
-        new("nord", "Nord", "冷静的极地蓝灰色调", true, new("#EA242933", "#EA2E3440", "#DC3B4252", "#ECEFF4", "#B7C0D0", "#705C667A", "#88C0D0", "#70455D68", "#A3BE8C", "#EBCB8B", "#BF616A")),
-        new("tokyo-night", "Tokyo Night", "高对比靛蓝夜间主题", true, new("#EA15161E", "#EA1A1B26", "#DC24283B", "#C0CAF5", "#9AA5CE", "#70414868", "#7AA2F7", "#73304168", "#9ECE6A", "#E0AF68", "#F7768E")),
-        new("dracula", "Dracula", "紫色强调的经典暗色方案", true, new("#EA21222C", "#EA282A36", "#DC343746", "#F8F8F2", "#B7B8C3", "#705A5D72", "#BD93F9", "#71463264", "#50FA7B", "#F1FA8C", "#FF5555")),
-        new("catppuccin", "Catppuccin", "柔和低刺激的摩卡色板", true, new("#EA181825", "#EA1E1E2E", "#DC313244", "#CDD6F4", "#A6ADC8", "#70585B70", "#CBA6F7", "#704B3E63", "#A6E3A1", "#F9E2AF", "#F38BA8")),
-        new("solarized", "Solarized Light", "适合长时间阅读的低对比浅色", false, new("#EDFDF6E3", "#F9FFFBED", "#E8EEE8D5", "#586E75", "#7C8B8E", "#9ECBC4B4", "#268BD2", "#D8DCEAF0", "#2AA198", "#B58900", "#DC322F"))
+        new("system", "跟随系统", "自动匹配 Windows 深浅色，并保持能天使的红黑白金视觉基调", false, Light, Dark),
+        new("exusiai", "Exusiai", "能天使主题：深石墨黑、黑白层级、酒红强调与光环金点缀", true, Dark),
+        new("paper", "Paper", "克制清晰的暖白工作区", false,
+            new("#EDF7F5F0", "#F9FFFDF8", "#E8EEE9E1", "#24231F", "#706E66", "#9ED8D3C8", "#3568D4", "#D8E4EDFF", "#2E8B68", "#B97818", "#C84B55")),
+        new("graphite", "Graphite", "中性的深灰编辑器配色", true,
+            new("#EA17191C", "#EA202327", "#DC292D32", "#F2F4F7", "#AAB0BA", "#70464B53", "#7DA2F8", "#87314360", "#55C59A", "#E8B15B", "#ED7784")),
+        new("nord", "Nord", "冷静的极地蓝灰色调", true,
+            new("#EA242933", "#EA2E3440", "#DC3B4252", "#ECEFF4", "#B7C0D0", "#705C667A", "#88C0D0", "#70455D68", "#A3BE8C", "#EBCB8B", "#BF616A")),
+        new("tokyo-night", "Tokyo Night", "高对比靛蓝夜间主题", true,
+            new("#EA15161E", "#EA1A1B26", "#DC24283B", "#C0CAF5", "#9AA5CE", "#70414868", "#7AA2F7", "#73304168", "#9ECE6A", "#E0AF68", "#F7768E")),
+        new("dracula", "Dracula", "紫色强调的经典暗色方案", true,
+            new("#EA21222C", "#EA282A36", "#DC343746", "#F8F8F2", "#B7B8C3", "#705A5D72", "#BD93F9", "#71463264", "#50FA7B", "#F1FA8C", "#FF5555")),
+        new("catppuccin", "Catppuccin", "柔和低刺激的摩卡色板", true,
+            new("#EA181825", "#EA1E1E2E", "#DC313244", "#CDD6F4", "#A6ADC8", "#70585B70", "#CBA6F7", "#704B3E63", "#A6E3A1", "#F9E2AF", "#F38BA8")),
+        new("solarized", "Solarized Light", "适合长时间阅读的低对比浅色", false,
+            new("#EDFDF6E3", "#F9FFFBED", "#E8EEE8D5", "#586E75", "#7C8B8E", "#9ECBC4B4", "#268BD2", "#D8DCEAF0", "#2AA198", "#B58900", "#DC322F"))
     ];
 
     public static ThemeDefinition Find(string? id) =>
