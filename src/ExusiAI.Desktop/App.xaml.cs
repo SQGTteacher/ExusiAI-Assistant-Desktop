@@ -53,7 +53,10 @@ public partial class App : Application
         catch (Exception exception)
         {
             host?.Services.GetService<ILogger<App>>()?.LogCritical(exception, "Application startup failed.");
-            MessageBox.Show("ExusiAI 无法启动。请检查本地日志后重试。", "启动失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (crashReporter is not null)
+                crashReporter.Report(exception, "应用启动失败");
+            else
+                MessageBox.Show("ExusiAI 无法启动。请检查本地日志后重试。", "启动失败", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(-1);
         }
     }

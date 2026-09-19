@@ -319,7 +319,6 @@ public sealed class RuntimeTests
                 System.Windows.FrameworkElement[] pages =
                 [
                     new MishaWorkspacePage(store),
-                    new MishaDashboardPage(store),
                     new MishaSubjectsPage(store),
                     new MishaTimeLayoutsPage(store),
                     new MishaClassPlansPage(store),

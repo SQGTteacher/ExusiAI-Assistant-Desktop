@@ -15,7 +15,6 @@ internal sealed class MishaSettingsHostPage : UserControl
         var pages = new List<MishaSection>
         {
             new("workspace", "工作区", "⌂", () => new MishaWorkspacePage(store)),
-            new("overview", "概览", "◫", () => new MishaDashboardPage(store)),
             new("subjects", "科目", "字", () => new MishaSubjectsPage(store)),
             new("time-layouts", "时间表", "◷", () => new MishaTimeLayoutsPage(store)),
             new("class-plans", "课表", "▦", () => new MishaClassPlansPage(store)),
