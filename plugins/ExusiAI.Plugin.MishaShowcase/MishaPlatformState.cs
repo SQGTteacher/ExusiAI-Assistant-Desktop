@@ -1,149 +1,231 @@
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 
 namespace ExusiAI.Plugin.MishaShowcase;
 
-internal sealed class MishaPlatformState
-{
-    public string ProfileName { get; set; } = "高二（1）班";
-    public int CycleWeek { get; set; } = 1;
-    public bool MouseThrough { get; set; }
-    public bool AutoHide { get; set; }
-    public bool PasswordProtection { get; set; }
-    public bool TimeSync { get; set; } = true;
-    public string WeatherCity { get; set; } = "北京市";
-    public string Theme { get; set; } = "跟随宿主";
-    public ObservableCollection<ScheduleEntry> Schedule { get; set; } = [];
-    public ObservableCollection<ComponentEntry> Components { get; set; } = [];
-    public ObservableCollection<AutomationEntry> Automations { get; set; } = [];
-    public ObservableCollection<BuiltInExtension> Extensions { get; set; } = [];
-
-    public static MishaPlatformState CreateDefault() => new()
-    {
-        Schedule =
-        [
-            new(1, "语文", "林老师", "08:00", "08:40", 1, true),
-            new(2, "数学", "周老师", "08:50", "09:30", 1, true),
-            new(3, "英语", "陈老师", "09:50", "10:30", 1, true),
-            new(4, "物理", "许老师", "10:40", "11:20", 1, true),
-            new(5, "历史", "赵老师", "14:00", "14:40", 1, true),
-            new(6, "信息技术", "王老师", "14:50", "15:30", 1, true)
-        ],
-        Components =
-        [
-            new("当前课程", true, 1), new("接下来", true, 1), new("时间", true, 2),
-            new("日期", true, 2), new("天气简报", true, 2), new("倒计日", true, 2)
-        ],
-        Automations =
-        [
-            new("上课提醒", "课程开始前 1 分钟", "强调提醒 + 语音", true),
-            new("下课提醒", "课程结束时", "播放提示音", true),
-            new("午间隐藏", "每天 12:00", "临时隐藏主界面", false)
-        ],
-        Extensions =
-        [
-            new("weather", "天气服务", "天气、降水提示、6 小时及 3 天天气预报", true),
-            new("countdown", "倒计日", "考试与纪念日倒计时组件", true),
-            new("notification", "强调提醒", "音效、语音、置顶和强调动画", true),
-            new("automation", "自动化行动", "按事件或时间执行提醒、文件、应用与网页行动", true),
-            new("cses", "CSES 互操作", "导入和导出 CSES 课表数据", false)
-        ]
-    };
-}
-
-internal sealed record ScheduleEntry(int Index, string Subject, string Teacher, string Start, string End, int Week, bool Enabled)
-{
-    public int Index { get; set; } = Index;
-    public string Subject { get; set; } = Subject;
-    public string Teacher { get; set; } = Teacher;
-    public string Start { get; set; } = Start;
-    public string End { get; set; } = End;
-    public int Week { get; set; } = Week;
-    public bool Enabled { get; set; } = Enabled;
-}
-
-internal sealed record ComponentEntry(string Name, bool Enabled, int Row)
-{
-    public string Name { get; set; } = Name;
-    public bool Enabled { get; set; } = Enabled;
-    public int Row { get; set; } = Row;
-}
-
-internal sealed record AutomationEntry(string Name, string Trigger, string Action, bool Enabled)
-{
-    public string Name { get; set; } = Name;
-    public string Trigger { get; set; } = Trigger;
-    public string Action { get; set; } = Action;
-    public bool Enabled { get; set; } = Enabled;
-}
-
-internal sealed record BuiltInExtension(string Id, string Name, string Description, bool Installed)
-{
-    public string Id { get; set; } = Id;
-    public string Name { get; set; } = Name;
-    public string Description { get; set; } = Description;
-    public bool Installed { get; set; } = Installed;
-}
-
+/// <summary>
+/// A direct attachment to an existing ClassIsland data directory. Nothing is generated when the
+/// store is constructed; users explicitly select an existing Settings.json or Profile JSON.
+/// </summary>
 internal sealed class MishaPlatformStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-    private readonly SemaphoreSlim gate = new(1, 1);
-    private readonly string filePath;
-    private readonly string nativeProfilePath;
+    public ClassIslandWorkspace? Workspace { get; private set; }
+    public ClassIslandProfileDocument? Profile { get; private set; }
 
-    public MishaPlatformStore()
-    {
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ExusiAI Assistant Desktop", "extensions", "exusiai.misha-showcase");
-        Directory.CreateDirectory(directory);
-        filePath = Path.Combine(directory, "profile.json");
-        nativeProfilePath = Path.Combine(directory, "classisland-profile.json");
-        State = LoadCore();
-        if (File.Exists(nativeProfilePath))
-        {
-            try { NativeProfile = ClassIslandProfileInterop.Parse(File.ReadAllText(nativeProfilePath), State); }
-            catch (Exception) { NativeProfile = null; }
-        }
-    }
-
-    public MishaPlatformState State { get; private set; }
-    [JsonIgnore] public JsonObject? NativeProfile { get; private set; }
     public event EventHandler? Changed;
 
-    public async Task SaveAsync()
+    public async Task AttachWorkspaceAsync(string settingsPath)
     {
-        await gate.WaitAsync();
-        try
+        Workspace = await ClassIslandWorkspace.LoadAsync(settingsPath);
+        Profile = null;
+
+        var profilePath = Workspace.SelectedProfilePath;
+        if (profilePath is not null && File.Exists(profilePath))
+            Profile = await ClassIslandProfileDocument.LoadAsync(profilePath);
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task OpenProfileAsync(string profilePath)
+    {
+        Profile = await ClassIslandProfileDocument.LoadAsync(profilePath);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task SaveProfileAsync()
+    {
+        if (Profile is null) throw new InvalidOperationException("尚未打开 ClassIsland 档案。");
+        await Profile.SaveAsync();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task SaveProfileAsAsync(string destination)
+    {
+        if (Profile is null) throw new InvalidOperationException("尚未打开 ClassIsland 档案。");
+        await Profile.SaveAsAsync(destination);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task SaveWorkspaceSettingsAsync()
+    {
+        if (Workspace is null) throw new InvalidOperationException("尚未连接 ClassIsland 工作区。");
+        await Workspace.SaveSettingsAsync();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public int ResolveRotationWeek(DateTime date) => Workspace?.ResolveRotationWeek(date) ?? 1;
+}
+
+internal sealed class ClassIslandWorkspace
+{
+    private ClassIslandWorkspace(string settingsPath, JsonObject settings)
+    {
+        SettingsPath = Path.GetFullPath(settingsPath);
+        RootDirectory = Path.GetDirectoryName(SettingsPath)
+            ?? throw new InvalidOperationException("Settings.json 路径无效。");
+        Settings = settings;
+    }
+
+    public string RootDirectory { get; }
+    public string SettingsPath { get; }
+    public JsonObject Settings { get; private set; }
+
+    public string ProfilesDirectory => Path.Combine(RootDirectory, "Profiles");
+    public string ComponentLayoutsDirectory => Path.Combine(RootDirectory, "Config", "ComponentLayouts");
+    public string AutomationsDirectory => Path.Combine(RootDirectory, "Config", "Automations");
+
+    public string SelectedProfile => GetString("SelectedProfile");
+    public string CurrentComponentConfig => GetString("CurrentComponentConfig");
+    public string CurrentAutomationConfig => GetString("CurrentAutomationConfig");
+
+    public string? SelectedProfilePath =>
+        ResolveFile(ProfilesDirectory, SelectedProfile, addJsonWhenMissing: false);
+
+    public string? CurrentComponentLayoutPath =>
+        ResolveFile(ComponentLayoutsDirectory, CurrentComponentConfig, addJsonWhenMissing: true);
+
+    public string? CurrentAutomationPath =>
+        ResolveFile(AutomationsDirectory, CurrentAutomationConfig, addJsonWhenMissing: true);
+
+    public static async Task<ClassIslandWorkspace> LoadAsync(string settingsPath)
+    {
+        var fullPath = Path.GetFullPath(settingsPath);
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException("未找到 ClassIsland Settings.json。", fullPath);
+
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(fullPath))?.AsObject()
+            ?? throw new InvalidDataException("ClassIsland Settings.json 根节点无效。");
+        return new(fullPath, root);
+    }
+
+    public IReadOnlyList<string> EnumerateProfiles() =>
+        Directory.Exists(ProfilesDirectory)
+            ? Directory.GetFiles(ProfilesDirectory, "*.json").Select(Path.GetFileName).Where(x => x is not null).Cast<string>().Order().ToArray()
+            : [];
+
+    public IReadOnlyList<string> EnumerateComponentLayouts() =>
+        EnumerateConfigNames(ComponentLayoutsDirectory);
+
+    public IReadOnlyList<string> EnumerateAutomations() =>
+        EnumerateConfigNames(AutomationsDirectory);
+
+    public string GetString(string key)
+    {
+        if (Settings[key] is JsonValue value && value.TryGetValue<string>(out var text))
+            return text ?? "";
+        return "";
+    }
+
+    public bool GetBool(string key, bool fallback = false)
+    {
+        if (Settings[key] is JsonValue value && value.TryGetValue<bool>(out var result))
+            return result;
+        return fallback;
+    }
+
+    public int GetInt(string key, int fallback = 0)
+    {
+        if (Settings[key] is JsonValue value)
         {
-            var temporary = filePath + ".tmp";
-            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(State, JsonOptions));
-            File.Move(temporary, filePath, true);
-            Changed?.Invoke(this, EventArgs.Empty);
+            if (value.TryGetValue<int>(out var result)) return result;
+            if (value.TryGetValue<double>(out var number)) return (int)number;
         }
-        finally { gate.Release(); }
+        return fallback;
     }
 
-    public async Task ExportAsync(string destination) =>
-        await File.WriteAllTextAsync(destination, ClassIslandProfileInterop.Write(State, NativeProfile));
-
-    public async Task ImportAsync(string source)
+    public double GetDouble(string key, double fallback = 0)
     {
-        var json = await File.ReadAllTextAsync(source);
-        var importedState = MishaPlatformState.CreateDefault();
-        NativeProfile = ClassIslandProfileInterop.Parse(json, importedState);
-        State = importedState;
-        await File.WriteAllTextAsync(nativeProfilePath, NativeProfile.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        await SaveAsync();
+        if (Settings[key] is JsonValue value)
+        {
+            if (value.TryGetValue<double>(out var result)) return result;
+            if (value.TryGetValue<int>(out var number)) return number;
+        }
+        return fallback;
     }
 
-    private MishaPlatformState LoadCore()
+    public void Set(string key, string value) => Settings[key] = value;
+    public void Set(string key, bool value) => Settings[key] = value;
+    public void Set(string key, int value) => Settings[key] = value;
+    public void Set(string key, double value) => Settings[key] = value;
+
+    public int ResolveRotationWeek(DateTime date)
     {
-        if (!File.Exists(filePath)) return MishaPlatformState.CreateDefault();
-        try { return JsonSerializer.Deserialize<MishaPlatformState>(File.ReadAllText(filePath), JsonOptions) ?? MishaPlatformState.CreateDefault(); }
-        catch (JsonException) { return MishaPlatformState.CreateDefault(); }
+        var maxCycle = Math.Max(1, GetInt("MultiWeekRotationMaxCycle", 1));
+        if (maxCycle == 1) return 1;
+
+        DateTime start;
+        if (!DateTime.TryParse(GetString("SingleWeekStartTime"), out start))
+            start = date.Date.AddDays(-(int)date.DayOfWeek);
+
+        var weeks = (int)Math.Floor((date.Date - start.Date).TotalDays / 7d);
+        return ((weeks % maxCycle) + maxCycle) % maxCycle + 1;
+    }
+
+    public async Task SaveSettingsAsync()
+    {
+        await WriteJsonAtomicAsync(SettingsPath, Settings);
+    }
+
+    public async Task<JsonNode?> LoadCurrentComponentLayoutAsync()
+    {
+        var path = CurrentComponentLayoutPath;
+        return path is not null && File.Exists(path)
+            ? JsonNode.Parse(await File.ReadAllTextAsync(path))
+            : null;
+    }
+
+    public async Task SaveCurrentComponentLayoutAsync(JsonNode root)
+    {
+        var path = CurrentComponentLayoutPath
+            ?? throw new InvalidOperationException("Settings.json 未指定 CurrentComponentConfig。");
+        await WriteJsonAtomicAsync(path, root);
+    }
+
+    public async Task<JsonNode?> LoadCurrentAutomationAsync()
+    {
+        var path = CurrentAutomationPath;
+        return path is not null && File.Exists(path)
+            ? JsonNode.Parse(await File.ReadAllTextAsync(path))
+            : null;
+    }
+
+    public async Task SaveCurrentAutomationAsync(JsonNode root)
+    {
+        var path = CurrentAutomationPath
+            ?? throw new InvalidOperationException("Settings.json 未指定 CurrentAutomationConfig。");
+        await WriteJsonAtomicAsync(path, root);
+    }
+
+    internal static async Task WriteJsonAtomicAsync(string destination, JsonNode root)
+    {
+        var directory = Path.GetDirectoryName(destination)
+            ?? throw new InvalidOperationException("目标路径无效。");
+        Directory.CreateDirectory(directory);
+
+        var temporary = destination + ".tmp";
+        var backup = destination + ".bak";
+        await File.WriteAllTextAsync(temporary, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+        if (File.Exists(destination))
+            File.Copy(destination, backup, true);
+        File.Move(temporary, destination, true);
+    }
+
+    private static IReadOnlyList<string> EnumerateConfigNames(string directory) =>
+        Directory.Exists(directory)
+            ? Directory.GetFiles(directory, "*.json").Select(Path.GetFileNameWithoutExtension).Where(x => x is not null).Cast<string>().Order().ToArray()
+            : [];
+
+    private static string? ResolveFile(string directory, string name, bool addJsonWhenMissing)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var fileName = addJsonWhenMissing && !name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+            ? name + ".json"
+            : name;
+
+        var root = Path.GetFullPath(directory) + Path.DirectorySeparatorChar;
+        var candidate = Path.GetFullPath(Path.Combine(directory, fileName));
+        return candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? candidate : null;
     }
 }

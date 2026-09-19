@@ -195,31 +195,265 @@ public sealed class RuntimeTests
     }
 
     [Fact]
-    public void ClassIslandProfileInteropImportsExportsAndPreservesUnknownFields()
+    public async Task ClassIslandProfileDocumentRoundTripsNativeNodesWithoutInventingExampleData()
     {
+        using var root = new TemporaryDirectory();
+        var profilePath = Path.Combine(root.Path, "Profile.json");
         const string subjectId = "11111111-1111-4111-8111-111111111111";
         const string layoutId = "22222222-2222-4222-8222-222222222222";
+        const string planId = "33333333-3333-4333-8333-333333333333";
         var json = """
         {
           "Name":"兼容性测试",
           "FutureField":{"keep":true},
-          "Subjects":{"SUBJECT_ID":{"Name":"数学","Initial":"数","TeacherName":"周老师","IsOutDoor":false}},
-          "TimeLayouts":{"LAYOUT_ID":{"Name":"标准时间表","Layouts":[{"StartTime":"08:00:00","EndTime":"08:40:00","TimeType":0}]}},
-          "ClassPlans":{"33333333-3333-4333-8333-333333333333":{"Name":"周一","TimeLayoutId":"LAYOUT_ID","IsEnabled":true,"TimeRule":{"WeekCountDiv":1},"Classes":[{"SubjectId":"SUBJECT_ID","IsEnabled":true}]}}
+          "ScheduleType":0,
+          "Subjects":{"SUBJECT_ID":{"Name":"数学","Initial":"数","TeacherName":"周老师","IsOutDoor":false,"FutureSubjectField":7}},
+          "TimeLayouts":{"LAYOUT_ID":{"Name":"标准时间表","IsOverlay":false,"Layouts":[{"StartTime":"08:00:00","EndTime":"08:40:00","TimeType":0,"IsHideDefault":false,"DefaultClassId":"00000000-0000-0000-0000-000000000000","BreakName":"","FuturePointField":"keep"}]}},
+          "ClassPlans":{"PLAN_ID":{"Name":"周一","TimeLayoutId":"LAYOUT_ID","IsEnabled":true,"AssociatedGroup":"ACAF4EF0-E261-4262-B941-34EA93CB4369","TimeRule":{"Type":0,"WeekDay":1,"WeekCountDiv":1,"WeekCountDivTotal":2,"FutureRuleField":9},"Classes":[{"SubjectId":"SUBJECT_ID","IsEnabled":true,"FutureClassField":true}]}},
+          "ClassPlanGroups":{},
+          "OrderedSchedules":{},
+          "ScheduleItems":{}
         }
-        """.Replace("SUBJECT_ID", subjectId, StringComparison.Ordinal).Replace("LAYOUT_ID", layoutId, StringComparison.Ordinal);
-        var state = MishaPlatformState.CreateDefault();
+        """
+        .Replace("SUBJECT_ID", subjectId, StringComparison.Ordinal)
+        .Replace("LAYOUT_ID", layoutId, StringComparison.Ordinal)
+        .Replace("PLAN_ID", planId, StringComparison.Ordinal);
+        await File.WriteAllTextAsync(profilePath, json);
 
-        var original = ClassIslandProfileInterop.Parse(json, state);
-        var exported = JsonNode.Parse(ClassIslandProfileInterop.Write(state, original))!.AsObject();
+        var document = await ClassIslandProfileDocument.LoadAsync(profilePath);
+        Assert.Equal("兼容性测试", document.Name);
+        Assert.Equal(subjectId, Assert.Single(document.Subjects).Id);
+        Assert.Equal(layoutId, Assert.Single(document.TimeLayouts).Id);
+        Assert.Equal(planId, Assert.Single(document.ClassPlans).Id);
 
-        Assert.Equal("兼容性测试", state.ProfileName);
-        Assert.Equal("数学", Assert.Single(state.Schedule).Subject);
-        Assert.Equal("08:00", Assert.Single(state.Schedule).Start);
-        Assert.True(exported["FutureField"]?["keep"]?.GetValue<bool>());
-        Assert.NotNull(exported["Subjects"]);
-        Assert.NotNull(exported["TimeLayouts"]);
-        Assert.NotNull(exported["ClassPlans"]);
+        var subject = Assert.Single(document.Subjects);
+        subject.Name = "高等数学";
+        subject.TeacherName = "王老师";
+
+        var lesson = Assert.Single(Assert.Single(document.ClassPlans).Lessons);
+        Assert.Equal("高等数学", lesson.SubjectName);
+        Assert.Equal("08:00:00", lesson.StartTime);
+
+        await document.SaveAsync();
+
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(profilePath))!.AsObject();
+        Assert.True(saved["FutureField"]?["keep"]?.GetValue<bool>());
+        Assert.Equal(7, saved["Subjects"]?[subjectId]?["FutureSubjectField"]?.GetValue<int>());
+        Assert.Equal("keep", saved["TimeLayouts"]?[layoutId]?["Layouts"]?[0]?["FuturePointField"]?.GetValue<string>());
+        Assert.True(saved["ClassPlans"]?[planId]?["Classes"]?[0]?["FutureClassField"]?.GetValue<bool>());
+        Assert.Equal(9, saved["ClassPlans"]?[planId]?["TimeRule"]?["FutureRuleField"]?.GetValue<int>());
+        Assert.Equal("高等数学", saved["Subjects"]?[subjectId]?["Name"]?.GetValue<string>());
+        Assert.Equal("王老师", saved["Subjects"]?[subjectId]?["TeacherName"]?.GetValue<string>());
+        Assert.True(File.Exists(profilePath + ".bak"));
+    }
+
+    [Fact]
+    public void MishaStoreStartsDetachedAndDoesNotGenerateSampleConfiguration()
+    {
+        var store = new MishaPlatformStore();
+        Assert.Null(store.Workspace);
+        Assert.Null(store.Profile);
+    }
+
+    [Fact]
+    public async Task RemovingMiddleClassTimePointKeepsClassPlanAlignment()
+    {
+        using var root = new TemporaryDirectory();
+        var profilePath = Path.Combine(root.Path, "Profile.json");
+        const string s1 = "11111111-1111-4111-8111-111111111111";
+        const string s2 = "22222222-2222-4222-8222-222222222222";
+        const string s3 = "33333333-3333-4333-8333-333333333333";
+        const string layout = "44444444-4444-4444-8444-444444444444";
+        const string plan = "55555555-5555-4555-8555-555555555555";
+        var json = """
+        {
+          "Name":"索引测试",
+          "Subjects":{
+            "S1":{"Name":"第一节"},
+            "S2":{"Name":"第二节"},
+            "S3":{"Name":"第三节"}
+          },
+          "TimeLayouts":{
+            "LAYOUT":{"Name":"布局","Layouts":[
+              {"StartTime":"08:00:00","EndTime":"08:40:00","TimeType":0},
+              {"StartTime":"08:40:00","EndTime":"08:50:00","TimeType":1},
+              {"StartTime":"08:50:00","EndTime":"09:30:00","TimeType":0},
+              {"StartTime":"09:40:00","EndTime":"10:20:00","TimeType":0}
+            ]}
+          },
+          "ClassPlans":{
+            "PLAN":{"Name":"课表","TimeLayoutId":"LAYOUT","IsEnabled":true,"TimeRule":{"Type":0,"WeekDay":1},"Classes":[
+              {"SubjectId":"S1","IsEnabled":true},
+              {"SubjectId":"S2","IsEnabled":true},
+              {"SubjectId":"S3","IsEnabled":true}
+            ]}
+          }
+        }
+        """
+        .Replace("S1", s1, StringComparison.Ordinal)
+        .Replace("S2", s2, StringComparison.Ordinal)
+        .Replace("S3", s3, StringComparison.Ordinal)
+        .Replace("LAYOUT", layout, StringComparison.Ordinal)
+        .Replace("PLAN", plan, StringComparison.Ordinal);
+        await File.WriteAllTextAsync(profilePath, json);
+
+        var document = await ClassIslandProfileDocument.LoadAsync(profilePath);
+        var timePoints = Assert.Single(document.TimeLayouts).Items;
+        document.RemoveTimeLayoutItem(layout, timePoints[2].Node);
+
+        var lessons = Assert.Single(document.ClassPlans).Lessons;
+        Assert.Equal(2, lessons.Count);
+        Assert.Equal("第一节", lessons[0].SubjectName);
+        Assert.Equal("第三节", lessons[1].SubjectName);
+    }
+
+    [Fact]
+    public void MishaRealDataPagesConstructWithoutCreatingConfiguration()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var store = new MishaPlatformStore();
+                System.Windows.FrameworkElement[] pages =
+                [
+                    new MishaWorkspacePage(store),
+                    new MishaDashboardPage(store),
+                    new MishaSubjectsPage(store),
+                    new MishaTimeLayoutsPage(store),
+                    new MishaClassPlansPage(store),
+                    new MishaClassPlanGroupsPage(store),
+                    new MishaOrderedSchedulesPage(store),
+                    new MishaScheduleModePage(store),
+                    new MishaTemporarySchedulePage(store),
+                    new MishaDataPage(store),
+                    new MishaNativeJsonConfigPage(store, "设置", "测试", workspace => workspace.SettingsPath),
+                    new MishaComponentLayoutsPage(store),
+                    new MishaAutomationEditorPage(store),
+                    new MishaAboutPage()
+                ];
+
+                foreach (var page in pages)
+                {
+                    page.Measure(new System.Windows.Size(1280, 800));
+                    page.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
+                    page.UpdateLayout();
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(20)), "Misha real-data page smoke test timed out.");
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public async Task ComponentLayoutRoundTripsUnknownSettingsAndNativeComponentIds()
+    {
+        using var root = new TemporaryDirectory();
+        var path = Path.Combine(root.Path, "Components.json");
+        await File.WriteAllTextAsync(path, """
+        {
+          "FutureRoot":{"keep":true},
+          "Lines":[
+            {
+              "IsMainLine":true,
+              "FutureLineField":42,
+              "Children":[
+                {
+                  "Id":"df3f8295-21f6-482e-bada-fa0e5f14bb66",
+                  "NameCache":"日期",
+                  "Settings":{"FutureSetting":"keep"},
+                  "FutureComponentField":true
+                }
+              ]
+            }
+          ]
+        }
+        """);
+
+        var document = await ClassIslandComponentLayoutDocument.LoadAsync(path);
+        var line = Assert.Single(document.Lines);
+        var component = Assert.Single(line.Components);
+        Assert.Equal("日期", component.DisplayName);
+        Assert.Equal("df3f8295-21f6-482e-bada-fa0e5f14bb66", component.Id);
+
+        document.AddComponent(line, ClassIslandComponentCatalog.BuiltIns.Single(x => x.Name == "时钟"));
+        await document.SaveAsync();
+
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+        Assert.True(saved["FutureRoot"]?["keep"]?.GetValue<bool>());
+        Assert.Equal(42, saved["Lines"]?[0]?["FutureLineField"]?.GetValue<int>());
+        Assert.True(saved["Lines"]?[0]?["Children"]?[0]?["FutureComponentField"]?.GetValue<bool>());
+        Assert.Equal("keep", saved["Lines"]?[0]?["Children"]?[0]?["Settings"]?["FutureSetting"]?.GetValue<string>());
+        Assert.Equal("9e1af71d-8f77-4b21-a342-448787104dd9",
+            saved["Lines"]?[0]?["Children"]?[1]?["Id"]?.GetValue<string>());
+        Assert.Null(saved["Lines"]?[0]?["Children"]?[1]?["Settings"]);
+        Assert.True(File.Exists(path + ".bak"));
+    }
+
+    [Fact]
+    public async Task AutomationRoundTripsUnknownWorkflowNodesWithoutExecutingActions()
+    {
+        using var root = new TemporaryDirectory();
+        var path = Path.Combine(root.Path, "Automation.json");
+        await File.WriteAllTextAsync(path, """
+        [
+          {
+            "FutureWorkflowField":"keep",
+            "Triggers":[
+              {
+                "Id":"classisland.lessons.onClass",
+                "Settings":null,
+                "FutureTriggerField":1
+              }
+            ],
+            "IsConditionEnabled":false,
+            "Ruleset":{"Mode":0,"IsReversed":false,"Groups":[],"FutureRulesetField":2},
+            "ActionSet":{
+              "Name":"现有工作流",
+              "Actions":[
+                {
+                  "Id":"classisland.showNotification",
+                  "Settings":{"Mask":"测试"},
+                  "FutureActionField":3
+                }
+              ],
+              "IsEnabled":true,
+              "IsRevertEnabled":false,
+              "FutureActionSetField":4
+            }
+          }
+        ]
+        """);
+
+        var document = await ClassIslandAutomationDocument.LoadAsync(path);
+        var workflow = Assert.Single(document.Workflows);
+        Assert.Equal("现有工作流", workflow.Name);
+        Assert.Equal("上课时", Assert.Single(workflow.Triggers).DisplayName);
+        Assert.Equal("显示提醒", Assert.Single(workflow.Actions).DisplayName);
+
+        document.AddTrigger(workflow, ClassIslandAutomationCatalog.Triggers.Single(x => x.Id == "classisland.cron"));
+        document.AddAction(workflow, ClassIslandAutomationCatalog.Actions.Single(x => x.Id == "classisland.action.sleep"));
+        await document.SaveAsync();
+
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsArray();
+        Assert.Equal("keep", saved[0]?["FutureWorkflowField"]?.GetValue<string>());
+        Assert.Equal(1, saved[0]?["Triggers"]?[0]?["FutureTriggerField"]?.GetValue<int>());
+        Assert.Equal(2, saved[0]?["Ruleset"]?["FutureRulesetField"]?.GetValue<int>());
+        Assert.Equal(3, saved[0]?["ActionSet"]?["Actions"]?[0]?["FutureActionField"]?.GetValue<int>());
+        Assert.Equal(4, saved[0]?["ActionSet"]?["FutureActionSetField"]?.GetValue<int>());
+        Assert.Equal("classisland.cron", saved[0]?["Triggers"]?[1]?["Id"]?.GetValue<string>());
+        Assert.Null(saved[0]?["Triggers"]?[1]?["Settings"]);
+        Assert.Equal("classisland.action.sleep", saved[0]?["ActionSet"]?["Actions"]?[1]?["Id"]?.GetValue<string>());
+        Assert.Null(saved[0]?["ActionSet"]?["Actions"]?[1]?["Settings"]);
+        Assert.True(File.Exists(path + ".bak"));
     }
 
     private static bool WaitForCollection(WeakReference reference, TimeSpan timeout)
