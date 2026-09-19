@@ -224,11 +224,11 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
                 var viewerView = value.CreateView();
                 var window = new Window
                 {
-                    Title = "ExusiAI 文件查看器",
-                    Width = 1100,
-                    Height = 760,
-                    MinWidth = 760,
-                    MinHeight = 520,
+                    Title = "ExusiAI 文件查看器 · 文档工作区",
+                    Width = 1280,
+                    Height = 820,
+                    MinWidth = 900,
+                    MinHeight = 620,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
                     Owner = Application.Current?.MainWindow,
                     Content = viewerView,
