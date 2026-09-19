@@ -4,100 +4,151 @@ using System.Runtime.CompilerServices;
 
 namespace ExusiAI.Plugin.MishaShowcase;
 
-internal sealed record LessonItem(int Index, string Subject, string Teacher, TimeSpan Start, TimeSpan End);
+internal sealed record LessonItem(int Index, string Subject, string Teacher, TimeSpan Start, TimeSpan End, string PlanName);
 
 internal sealed class MishaDashboardViewModel : INotifyPropertyChanged
 {
-    private readonly DateTime countdownTarget = new(2027, 6, 7, 9, 0, 0, DateTimeKind.Local);
-    private DateTime now;
-    private int? simulatedLessonIndex;
-
     private readonly MishaPlatformStore store;
+    private DateTime now;
 
     public MishaDashboardViewModel(MishaPlatformStore store)
     {
         this.store = store;
-        Lessons = new(store.State.Schedule.Where(x => x.Enabled && x.Week == store.State.CycleWeek)
-            .Select(x => new LessonItem(x.Index, x.Subject, x.Teacher,
-                TimeSpan.TryParse(x.Start, out var start) ? start : TimeSpan.Zero,
-                TimeSpan.TryParse(x.End, out var end) ? end : TimeSpan.Zero)));
-        if (Lessons.Count == 0) Lessons.Add(new(1, "未安排课程", "", TimeSpan.Zero, TimeSpan.Zero));
+        store.Changed += (_, _) => RefreshLessons();
+        RefreshLessons();
         Tick(DateTime.Now);
     }
 
-    public ObservableCollection<LessonItem> Lessons { get; }
-    public string SchoolName => store.State.ProfileName;
+    public ObservableCollection<LessonItem> Lessons { get; } = [];
+    public string SchoolName => store.Profile?.Name ?? "尚未连接 ClassIsland 档案";
+    public string WorkspaceText => store.Workspace is null
+        ? "请先在“工作区”页面选择现有 ClassIsland Settings.json。"
+        : store.Workspace.RootDirectory;
     public string TimeText => now.ToString("HH:mm:ss");
     public string DateText => now.ToString("yyyy 年 M 月 d 日  dddd");
-    public string CurrentSubject { get; private set; } = string.Empty;
-    public string CurrentDetail { get; private set; } = string.Empty;
-    public string NextSubject { get; private set; } = string.Empty;
-    public string NextDetail { get; private set; } = string.Empty;
-    public string CountdownText
-    {
-        get
-        {
-            var remaining = countdownTarget - now;
-            if (remaining <= TimeSpan.Zero) return "目标日期已到";
-            return $"{remaining.Days} 天 {remaining.Hours:D2}:{remaining.Minutes:D2}:{remaining.Seconds:D2}";
-        }
-    }
-    public double DayProgress => Math.Clamp(now.TimeOfDay.TotalMinutes / TimeSpan.FromDays(1).TotalMinutes * 100, 0, 100);
+    public string CurrentSubject { get; private set; } = "未连接档案";
+    public string CurrentDetail { get; private set; } = "";
+    public string NextSubject { get; private set; } = "";
+    public string NextDetail { get; private set; } = "";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public void Tick(DateTime value)
     {
+        var dateChanged = now.Date != value.Date;
         now = value;
+        if (dateChanged) RefreshLessons();
         UpdateLessonState();
+
         Notify(nameof(TimeText));
         Notify(nameof(DateText));
-        Notify(nameof(CountdownText));
-        Notify(nameof(DayProgress));
     }
 
-    public void SimulateNextLesson()
+    public void RefreshLessons()
     {
-        var current = simulatedLessonIndex ?? ResolveCurrentIndex();
-        simulatedLessonIndex = current < Lessons.Count - 1 ? current + 1 : 0;
+        Lessons.Clear();
+        var profile = store.Profile;
+        if (profile is not null)
+        {
+            var week = store.ResolveRotationWeek(DateTime.Today);
+            foreach (var lesson in profile.GetLessonsForDate(DateTime.Today, week))
+                Lessons.Add(new(lesson.Index, lesson.Subject, lesson.Teacher, lesson.Start, lesson.End, lesson.PlanName));
+        }
+
+        Notify(nameof(SchoolName));
+        Notify(nameof(WorkspaceText));
         UpdateLessonState();
-    }
-
-    public void ResetSimulation()
-    {
-        simulatedLessonIndex = null;
-        UpdateLessonState();
-    }
-
-    private int ResolveCurrentIndex()
-    {
-        var current = Lessons.Select((lesson, index) => (lesson, index))
-            .FirstOrDefault(x => now.TimeOfDay >= x.lesson.Start && now.TimeOfDay < x.lesson.End);
-        if (current.lesson is not null) return current.index;
-        var upcoming = Lessons.Select((lesson, index) => (lesson, index))
-            .FirstOrDefault(x => now.TimeOfDay < x.lesson.Start);
-        return upcoming.lesson is null ? Lessons.Count - 1 : upcoming.index;
     }
 
     private void UpdateLessonState()
     {
-        var index = simulatedLessonIndex ?? ResolveCurrentIndex();
-        var lesson = Lessons[index];
-        var isLive = simulatedLessonIndex is not null || now.TimeOfDay >= lesson.Start && now.TimeOfDay < lesson.End;
-        CurrentSubject = isLive ? lesson.Subject : now.TimeOfDay < lesson.Start ? "课间准备" : "今日课程结束";
-        CurrentDetail = isLive
-            ? $"第 {lesson.Index} 节 · {lesson.Start:hh\\:mm}–{lesson.End:hh\\:mm} · {lesson.Teacher}"
-            : now.TimeOfDay < lesson.Start ? $"下一节 {lesson.Start:hh\\:mm} 开始" : "请检查明日课表";
-        var nextIndex = index + 1;
-        NextSubject = nextIndex < Lessons.Count ? Lessons[nextIndex].Subject : "无后续课程";
-        NextDetail = nextIndex < Lessons.Count
-            ? $"{Lessons[nextIndex].Start:hh\\:mm} · {Lessons[nextIndex].Teacher}"
-            : "今天辛苦了";
+        if (store.Profile is null)
+        {
+            CurrentSubject = "未连接档案";
+            CurrentDetail = "请先选择真实的 ClassIsland Settings.json 或 Profile JSON。";
+            NextSubject = "";
+            NextDetail = "";
+            NotifyLessonState();
+            return;
+        }
+
+        if (Lessons.Count == 0)
+        {
+            CurrentSubject = "当前日期没有启用课程";
+            CurrentDetail = $"轮换周：{store.ResolveRotationWeek(now)}";
+            NextSubject = "";
+            NextDetail = "";
+            NotifyLessonState();
+            return;
+        }
+
+        var liveIndex = -1;
+        for (var i = 0; i < Lessons.Count; i++)
+        {
+            if (now.TimeOfDay >= Lessons[i].Start && now.TimeOfDay < Lessons[i].End)
+            {
+                liveIndex = i;
+                break;
+            }
+        }
+
+        if (liveIndex >= 0)
+        {
+            var lesson = Lessons[liveIndex];
+            CurrentSubject = lesson.Subject;
+            CurrentDetail = $"{lesson.PlanName} · 第 {lesson.Index} 节 · {lesson.Start:hh\:mm}–{lesson.End:hh\:mm} · {lesson.Teacher}";
+            if (liveIndex + 1 < Lessons.Count)
+            {
+                var next = Lessons[liveIndex + 1];
+                NextSubject = next.Subject;
+                NextDetail = $"{next.Start:hh\:mm} · {next.Teacher}";
+            }
+            else
+            {
+                NextSubject = "无后续课程";
+                NextDetail = "";
+            }
+            NotifyLessonState();
+            return;
+        }
+
+        var nextIndex = -1;
+        for (var i = 0; i < Lessons.Count; i++)
+        {
+            if (now.TimeOfDay < Lessons[i].Start)
+            {
+                nextIndex = i;
+                break;
+            }
+        }
+
+        if (nextIndex >= 0)
+        {
+            var next = Lessons[nextIndex];
+            CurrentSubject = "课间 / 课前";
+            CurrentDetail = $"下一节 {next.Start:hh\:mm} 开始";
+            NextSubject = next.Subject;
+            NextDetail = $"{next.PlanName} · {next.Teacher}";
+        }
+        else
+        {
+            CurrentSubject = "今日课程结束";
+            CurrentDetail = "";
+            NextSubject = "";
+            NextDetail = "";
+        }
+
+        NotifyLessonState();
+    }
+
+    private void NotifyLessonState()
+    {
         Notify(nameof(CurrentSubject));
         Notify(nameof(CurrentDetail));
         Notify(nameof(NextSubject));
         Notify(nameof(NextDetail));
     }
 
-    private void Notify([CallerMemberName] string? propertyName = null) => PropertyChanged?.Invoke(this, new(propertyName));
+    private void Notify([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new(propertyName));
 }

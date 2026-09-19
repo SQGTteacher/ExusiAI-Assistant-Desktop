@@ -1,198 +1,606 @@
 using Microsoft.Win32;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
+using System.Windows.Data;
 
 namespace ExusiAI.Plugin.MishaShowcase;
 
 internal static class MishaUi
 {
-    public static TextBlock Text(string value, double size = 13, FontWeight? weight = null, string? resource = null)
+    public static TextBlock Header(string text) =>
+        new() { Text = text, FontSize = 24, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) };
+
+    public static TextBlock Note(string text)
     {
-        var text = new TextBlock { Text = value, FontSize = size, FontWeight = weight ?? FontWeights.Normal, TextWrapping = TextWrapping.Wrap };
-        if (resource is not null) text.SetResourceReference(TextBlock.ForegroundProperty, resource);
-        return text;
+        var block = new TextBlock { Text = text, FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
+        block.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        return block;
     }
 
-    public static StackPanel Header(string title, string subtitle)
+    public static TextBlock Section(string text) =>
+        new() { Text = text, FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 7) };
+
+    public static StackPanel Page(string title, string description)
     {
-        var panel = new StackPanel { Margin = new(0, 0, 0, 16) };
-        panel.Children.Add(Text(title, 26, FontWeights.SemiBold));
-        var detail = Text(subtitle, 12, null, "TextSecondaryBrush");
-        detail.Margin = new(0, 5, 0, 0);
-        panel.Children.Add(detail);
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 12, 24), MaxWidth = 980 };
+        panel.Children.Add(Header(title));
+        panel.Children.Add(Note(description));
         return panel;
-    }
-
-    public static Border Card(UIElement child, Thickness? margin = null)
-    {
-        var card = new Border { Child = child, Padding = new(17), CornerRadius = new(7), BorderThickness = new(1), Margin = margin ?? new(0, 0, 0, 10) };
-        card.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
-        card.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        return card;
     }
 
     public static Button Button(string text, bool secondary = false)
     {
-        var button = new Button { Content = text, Padding = new(13, 7, 13, 7), Margin = new(0, 0, 7, 0) };
+        var button = new Button { Content = text, Margin = new Thickness(0, 0, 8, 0) };
         if (secondary)
         {
-            button.SetResourceReference(System.Windows.Controls.Button.BackgroundProperty, "SurfaceAltBrush");
-            button.SetResourceReference(System.Windows.Controls.Button.ForegroundProperty, "TextPrimaryBrush");
+            button.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
+            button.SetResourceReference(Button.ForegroundProperty, "TextPrimaryBrush");
         }
         return button;
     }
 
-    public static TextBlock Status() => Text("所有更改均保存在本机插件档案中。", 11, null, "TextSecondaryBrush");
+    public static FrameworkElement SettingRow(string label, string description, FrameworkElement editor)
+    {
+        var wrapper = new Grid();
+        wrapper.RowDefinitions.Add(new RowDefinition());
+        wrapper.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var grid = new Grid { MinHeight = 62 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 8, 20, 8) };
+        info.Children.Add(new TextBlock { Text = label, FontSize = 13.5, FontWeight = FontWeights.SemiBold });
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            var note = Note(description);
+            note.Margin = new Thickness(0, 3, 0, 0);
+            info.Children.Add(note);
+        }
+        grid.Children.Add(info);
+
+        editor.VerticalAlignment = VerticalAlignment.Center;
+        editor.Margin = new Thickness(8, 6, 0, 6);
+        Grid.SetColumn(editor, 1);
+        grid.Children.Add(editor);
+        wrapper.Children.Add(grid);
+
+        var separator = new Separator { Opacity = 0.45 };
+        Grid.SetRow(separator, 1);
+        wrapper.Children.Add(separator);
+        return wrapper;
+    }
+
+    public static ScrollViewer Scroll(StackPanel panel) =>
+        new()
+        {
+            Content = panel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
 }
 
-internal sealed class MishaSchedulePage : UserControl
+internal sealed class MishaWorkspacePage : UserControl
 {
     private readonly MishaPlatformStore store;
-    private readonly DataGrid grid;
-    private readonly TextBlock status = MishaUi.Status();
+    private readonly StackPanel details = new();
+    private readonly TextBlock status = MishaUi.Note("未连接 ClassIsland 数据目录。");
 
-    public MishaSchedulePage(MishaPlatformStore store)
+    public MishaWorkspacePage(MishaPlatformStore store)
     {
         this.store = store;
-        var root = new StackPanel();
-        root.Children.Add(MishaUi.Header("课表与时间表", "编辑课程、教师、起止时间和轮换周；支持临时增删与启用状态。"));
-        var profile = new Grid();
-        profile.ColumnDefinitions.Add(new() { Width = new(110) });
-        profile.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
-        profile.ColumnDefinitions.Add(new() { Width = new(90) });
-        profile.ColumnDefinitions.Add(new() { Width = new(100) });
-        profile.Children.Add(MishaUi.Text("当前档案", 13, FontWeights.SemiBold));
-        var profileName = new TextBox { Text = store.State.ProfileName, Margin = new(8, 0, 14, 0) };
-        Grid.SetColumn(profileName, 1); profile.Children.Add(profileName);
-        var weekLabel = MishaUi.Text("轮换周", 13, FontWeights.SemiBold); Grid.SetColumn(weekLabel, 2); profile.Children.Add(weekLabel);
-        var week = new ComboBox { ItemsSource = Enumerable.Range(1, 8), SelectedItem = store.State.CycleWeek };
-        Grid.SetColumn(week, 3); profile.Children.Add(week);
-        profileName.TextChanged += (_, _) => store.State.ProfileName = profileName.Text;
-        week.SelectionChanged += (_, _) => store.State.CycleWeek = week.SelectedItem is int value ? value : 1;
-        root.Children.Add(MishaUi.Card(profile));
 
-        grid = new DataGrid { ItemsSource = store.State.Schedule, AutoGenerateColumns = true, CanUserAddRows = false, MinHeight = 310, HeadersVisibility = DataGridHeadersVisibility.Column };
-        root.Children.Add(MishaUi.Card(grid));
+        var root = MishaUi.Page("ClassIsland 工作区", "选择已经存在的 ClassIsland Settings.json。插件不会创建示例档案或模拟配置。");
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
-        var add = MishaUi.Button("新增课程");
-        add.Click += (_, _) => { store.State.Schedule.Add(new(store.State.Schedule.Count + 1, "新课程", "任课教师", "16:00", "16:40", store.State.CycleWeek, true)); grid.SelectedIndex = store.State.Schedule.Count - 1; };
-        var remove = MishaUi.Button("删除选中", true);
-        remove.Click += (_, _) => { if (grid.SelectedItem is ScheduleEntry entry) store.State.Schedule.Remove(entry); };
-        var save = MishaUi.Button("保存课表");
-        save.Click += async (_, _) => await SaveAsync();
-        actions.Children.Add(add); actions.Children.Add(remove); actions.Children.Add(save); actions.Children.Add(status);
+        var openSettings = MishaUi.Button("连接 Settings.json");
+        openSettings.Click += OpenSettings_OnClick;
+        var openProfile = MishaUi.Button("仅打开 Profile JSON", true);
+        openProfile.Click += OpenProfile_OnClick;
+        actions.Children.Add(openSettings);
+        actions.Children.Add(openProfile);
         root.Children.Add(actions);
-        root.Children.Add(MishaUi.Card(MishaUi.Text("临时调课与预定：复制需要调整的课程行，修改日期/轮换周后启用；原课程可暂时取消 Enabled。跨天调整保存在同一档案，恢复时重新启用原课程。", 12, null, "TextSecondaryBrush"), new(0, 12, 0, 0)));
-        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        status.Margin = new Thickness(0, 10, 0, 12);
+        root.Children.Add(status);
+        root.Children.Add(new Separator());
+        root.Children.Add(details);
+
+        store.Changed += (_, _) => Dispatcher.Invoke(RefreshDetails);
+        RefreshDetails();
+        Content = MishaUi.Scroll(root);
+    }
+
+    private void RefreshDetails()
+    {
+        details.Children.Clear();
+
+        if (store.Workspace is not null)
+        {
+            details.Children.Add(MishaUi.Section("已连接工作区"));
+            details.Children.Add(MishaUi.SettingRow("数据根目录", "", ReadOnlyText(store.Workspace.RootDirectory, 420)));
+            details.Children.Add(MishaUi.SettingRow("Settings.json", "", ReadOnlyText(store.Workspace.SettingsPath, 420)));
+            details.Children.Add(MishaUi.SettingRow("当前档案", "", ReadOnlyText(store.Workspace.SelectedProfile, 300)));
+            details.Children.Add(MishaUi.SettingRow("组件配置", "", ReadOnlyText(store.Workspace.CurrentComponentConfig, 240)));
+            details.Children.Add(MishaUi.SettingRow("自动化配置", "", ReadOnlyText(store.Workspace.CurrentAutomationConfig, 240)));
+        }
+
+        if (store.Profile is not null)
+        {
+            details.Children.Add(MishaUi.Section("当前 Profile"));
+            details.Children.Add(MishaUi.SettingRow("档案名称", "", ReadOnlyText(store.Profile.Name, 260)));
+            details.Children.Add(MishaUi.SettingRow("档案路径", "", ReadOnlyText(store.Profile.FilePath, 420)));
+            details.Children.Add(MishaUi.SettingRow("科目", "", ReadOnlyText(store.Profile.Subjects.Count.ToString(), 100)));
+            details.Children.Add(MishaUi.SettingRow("时间表", "", ReadOnlyText(store.Profile.TimeLayouts.Count.ToString(), 100)));
+            details.Children.Add(MishaUi.SettingRow("课表", "", ReadOnlyText(store.Profile.ClassPlans.Count.ToString(), 100)));
+        }
+    }
+
+    private async void OpenSettings_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Filter = "ClassIsland Settings.json|Settings.json|JSON 文件 (*.json)|*.json" };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            await store.AttachWorkspaceAsync(dialog.FileName);
+            status.Text = store.Profile is null
+                ? "已连接 Settings.json，但未找到其 SelectedProfile 对应档案。"
+                : "已连接真实 ClassIsland 工作区及当前档案。";
+        }
+        catch (Exception exception)
+        {
+            status.Text = $"连接失败：{exception.Message}";
+        }
+    }
+
+    private async void OpenProfile_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Filter = "ClassIsland Profile (*.json)|*.json" };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            await store.OpenProfileAsync(dialog.FileName);
+            status.Text = "已打开真实 ClassIsland Profile。";
+        }
+        catch (Exception exception)
+        {
+            status.Text = $"打开失败：{exception.Message}";
+        }
+    }
+
+    private static TextBox ReadOnlyText(string value, double width) =>
+        new() { Text = value, IsReadOnly = true, Width = width };
+}
+
+internal sealed class MishaSubjectsPage : UserControl
+{
+    private readonly MishaPlatformStore store;
+    private readonly DataGrid grid = new();
+    private readonly TextBlock status = MishaUi.Note("");
+
+    public MishaSubjectsPage(MishaPlatformStore store)
+    {
+        this.store = store;
+        var root = MishaUi.Page("科目", "直接编辑当前 ClassIsland Profile 的 Subjects 字典，保留每个科目的 GUID 与未知字段。");
+
+        ConfigureGrid();
+        root.Children.Add(grid);
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        var add = MishaUi.Button("新增科目");
+        add.Click += (_, _) =>
+        {
+            if (store.Profile is null) return;
+            store.Profile.AddSubject();
+            Reload();
+        };
+        var remove = MishaUi.Button("删除选中", true);
+        remove.Click += (_, _) =>
+        {
+            if (store.Profile is null || grid.SelectedItem is not ClassIslandSubjectRow row) return;
+            try
+            {
+                store.Profile.RemoveSubject(row.Id);
+                Reload();
+                status.Text = "";
+            }
+            catch (Exception exception)
+            {
+                status.Text = exception.Message;
+            }
+        };
+        var save = MishaUi.Button("保存 Profile");
+        save.Click += async (_, _) => await SaveAsync();
+
+        actions.Children.Add(add);
+        actions.Children.Add(remove);
+        actions.Children.Add(save);
+        root.Children.Add(actions);
+        root.Children.Add(status);
+
+        Loaded += (_, _) => Reload();
+        store.Changed += (_, _) => Dispatcher.Invoke(Reload);
+        Content = MishaUi.Scroll(root);
+    }
+
+    private void ConfigureGrid()
+    {
+        grid.AutoGenerateColumns = false;
+        grid.CanUserAddRows = false;
+        grid.MinHeight = 340;
+        grid.Columns.Add(new DataGridTextColumn { Header = "GUID", Binding = new Binding(nameof(ClassIslandSubjectRow.Id)), IsReadOnly = true, Width = 250 });
+        grid.Columns.Add(new DataGridTextColumn { Header = "科目", Binding = new Binding(nameof(ClassIslandSubjectRow.Name)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+        grid.Columns.Add(new DataGridTextColumn { Header = "简称", Binding = new Binding(nameof(ClassIslandSubjectRow.Initial)), Width = 90 });
+        grid.Columns.Add(new DataGridTextColumn { Header = "教师", Binding = new Binding(nameof(ClassIslandSubjectRow.TeacherName)), Width = 130 });
+        grid.Columns.Add(new DataGridCheckBoxColumn { Header = "户外", Binding = new Binding(nameof(ClassIslandSubjectRow.IsOutDoor)), Width = 65 });
+    }
+
+    private void Reload() => grid.ItemsSource = store.Profile?.Subjects ?? [];
+
+    private async Task SaveAsync()
+    {
+        if (store.Profile is null) { status.Text = "尚未打开 Profile。"; return; }
+        grid.CommitEdit(DataGridEditingUnit.Row, true);
+        await store.SaveProfileAsync();
+        status.Text = $"已保存 {Path.GetFileName(store.Profile.FilePath)}";
+    }
+}
+
+internal sealed class MishaTimeLayoutsPage : UserControl
+{
+    private readonly MishaPlatformStore store;
+    private readonly ComboBox layouts = new();
+    private readonly DataGrid points = new();
+    private readonly TextBlock status = MishaUi.Note("");
+
+    public MishaTimeLayoutsPage(MishaPlatformStore store)
+    {
+        this.store = store;
+        var root = MishaUi.Page("时间表", "直接编辑 TimeLayouts 与 Layouts。上课、课间、分割线和行动时间点保持 ClassIsland 原生 TimeType。");
+
+        layouts.DisplayMemberPath = nameof(ClassIslandTimeLayoutRow.Name);
+        layouts.MinWidth = 260;
+        layouts.SelectionChanged += (_, _) => ReloadPoints();
+        root.Children.Add(MishaUi.SettingRow("当前时间表", "", layouts));
+
+        ConfigurePoints();
+        root.Children.Add(points);
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        var addLayout = MishaUi.Button("新增时间表");
+        addLayout.Click += (_, _) =>
+        {
+            if (store.Profile is null) return;
+            var added = store.Profile.AddTimeLayout();
+            ReloadLayouts(added.Id);
+        };
+        var removeLayout = MishaUi.Button("删除时间表", true);
+        removeLayout.Click += (_, _) =>
+        {
+            if (store.Profile is null || layouts.SelectedItem is not ClassIslandTimeLayoutRow layout) return;
+            try { store.Profile.RemoveTimeLayout(layout.Id); ReloadLayouts(); status.Text = ""; }
+            catch (Exception exception) { status.Text = exception.Message; }
+        };
+        var addClass = MishaUi.Button("新增上课时间点");
+        addClass.Click += (_, _) => AddPoint(0);
+        var addBreak = MishaUi.Button("新增课间");
+        addBreak.Click += (_, _) => AddPoint(1);
+        var removePoint = MishaUi.Button("删除时间点", true);
+        removePoint.Click += (_, _) =>
+        {
+            if (store.Profile is null ||
+                layouts.SelectedItem is not ClassIslandTimeLayoutRow layout ||
+                points.SelectedItem is not ClassIslandTimeLayoutItemRow point) return;
+            store.Profile.RemoveTimeLayoutItem(layout.Id, point.Node);
+            ReloadPoints();
+        };
+        var save = MishaUi.Button("保存 Profile");
+        save.Click += async (_, _) => await SaveAsync();
+
+        foreach (var button in new[] { addLayout, removeLayout, addClass, addBreak, removePoint, save })
+            actions.Children.Add(button);
+        root.Children.Add(actions);
+        root.Children.Add(status);
+
+        Loaded += (_, _) => ReloadLayouts();
+        store.Changed += (_, _) => Dispatcher.Invoke(() => ReloadLayouts());
+        Content = MishaUi.Scroll(root);
+    }
+
+    private void ConfigurePoints()
+    {
+        points.AutoGenerateColumns = false;
+        points.CanUserAddRows = false;
+        points.MinHeight = 330;
+        points.Columns.Add(new DataGridTextColumn { Header = "开始", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.StartTime)), Width = 105 });
+        points.Columns.Add(new DataGridTextColumn { Header = "结束", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.EndTime)), Width = 105 });
+        points.Columns.Add(new DataGridTextColumn { Header = "TimeType", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.TimeType)), Width = 90 });
+        points.Columns.Add(new DataGridTextColumn { Header = "课间名称", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.BreakName)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+        points.Columns.Add(new DataGridTextColumn { Header = "默认科目", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.DefaultSubject)), Width = 150 });
+        points.Columns.Add(new DataGridCheckBoxColumn { Header = "默认隐藏", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.IsHideDefault)), Width = 85 });
+    }
+
+    private void ReloadLayouts(string? selectId = null)
+    {
+        var values = store.Profile?.TimeLayouts ?? [];
+        layouts.ItemsSource = values;
+        if (values.Count == 0) { points.ItemsSource = null; return; }
+
+        layouts.SelectedItem = selectId is null
+            ? values[0]
+            : values.FirstOrDefault(x => x.Id == selectId) ?? values[0];
+    }
+
+    private void ReloadPoints()
+    {
+        points.ItemsSource = layouts.SelectedItem is ClassIslandTimeLayoutRow row ? row.Items : null;
+    }
+
+    private void AddPoint(int type)
+    {
+        if (store.Profile is null || layouts.SelectedItem is not ClassIslandTimeLayoutRow layout) return;
+        store.Profile.AddTimeLayoutItem(layout.Id, type);
+        ReloadPoints();
     }
 
     private async Task SaveAsync()
     {
-        grid.CommitEdit(DataGridEditingUnit.Row, true);
-        await store.SaveAsync();
-        status.Text = $"已保存 · {DateTime.Now:HH:mm:ss}";
+        if (store.Profile is null) { status.Text = "尚未打开 Profile。"; return; }
+        points.CommitEdit(DataGridEditingUnit.Row, true);
+        await store.SaveProfileAsync();
+        status.Text = "已保存真实 ClassIsland Profile。";
     }
 }
 
-internal sealed class MishaComponentsPage : UserControl
+internal sealed class MishaClassPlansPage : UserControl
 {
-    public MishaComponentsPage(MishaPlatformStore store)
+    private readonly MishaPlatformStore store;
+    private readonly ComboBox plans = new();
+    private readonly DataGrid lessons = new();
+    private readonly StackPanel ruleArea = new();
+    private readonly TextBlock status = MishaUi.Note("");
+
+    public MishaClassPlansPage(MishaPlatformStore store)
     {
-        var root = new StackPanel();
-        root.Children.Add(MishaUi.Header("组件与显示", "管理信息岛组件、多行布局、主题、自动隐藏和鼠标穿透。"));
-        foreach (var component in store.State.Components)
+        this.store = store;
+        var root = MishaUi.Page("课表", "直接编辑 ClassPlans、Classes 与 TimeRule；科目引用保持原 GUID。");
+
+        plans.DisplayMemberPath = nameof(ClassIslandClassPlanRow.Name);
+        plans.MinWidth = 280;
+        plans.SelectionChanged += (_, _) => ReloadSelected();
+        root.Children.Add(MishaUi.SettingRow("当前课表", "", plans));
+
+        root.Children.Add(ruleArea);
+        ConfigureLessons();
+        root.Children.Add(lessons);
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        var add = MishaUi.Button("新增课表");
+        add.Click += (_, _) =>
         {
-            var row = new Grid(); row.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) }); row.ColumnDefinitions.Add(new() { Width = new(90) }); row.ColumnDefinitions.Add(new() { Width = new(85) });
-            row.Children.Add(MishaUi.Text(component.Name, 14, FontWeights.SemiBold));
-            var enabled = new CheckBox { Content = "显示", IsChecked = component.Enabled }; enabled.Checked += (_, _) => component.Enabled = true; enabled.Unchecked += (_, _) => component.Enabled = false;
-            Grid.SetColumn(enabled, 1); row.Children.Add(enabled);
-            var rowSelect = new ComboBox { ItemsSource = new[] { 1, 2, 3 }, SelectedItem = component.Row }; rowSelect.SelectionChanged += (_, _) => component.Row = (int)(rowSelect.SelectedItem ?? 1);
-            Grid.SetColumn(rowSelect, 2); row.Children.Add(rowSelect); root.Children.Add(MishaUi.Card(row));
-        }
-        var options = new StackPanel();
-        var autoHide = new CheckBox { Content = "授课或全屏时自动隐藏", IsChecked = store.State.AutoHide, Margin = new(0, 0, 0, 8) };
-        autoHide.Checked += (_, _) => store.State.AutoHide = true; autoHide.Unchecked += (_, _) => store.State.AutoHide = false;
-        var mouse = new CheckBox { Content = "允许信息岛鼠标穿透", IsChecked = store.State.MouseThrough, Margin = new(0, 0, 0, 8) };
-        mouse.Checked += (_, _) => store.State.MouseThrough = true; mouse.Unchecked += (_, _) => store.State.MouseThrough = false;
-        var protect = new CheckBox { Content = "使用认证保护课表与设置", IsChecked = store.State.PasswordProtection };
-        protect.Checked += (_, _) => store.State.PasswordProtection = true; protect.Unchecked += (_, _) => store.State.PasswordProtection = false;
-        options.Children.Add(autoHide); options.Children.Add(mouse); options.Children.Add(protect);
-        var theme = new ComboBox { ItemsSource = new[] { "跟随宿主", "明亮", "暗色", "高对比度" }, SelectedItem = store.State.Theme, Margin = new(0, 12, 0, 0) };
-        theme.SelectionChanged += (_, _) => store.State.Theme = theme.SelectedItem?.ToString() ?? "跟随宿主"; options.Children.Add(theme);
-        root.Children.Add(MishaUi.Card(options));
-        var save = MishaUi.Button("保存组件布局"); save.Click += async (_, _) => await store.SaveAsync(); root.Children.Add(save);
-        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-    }
-}
-
-internal sealed class MishaAutomationPage : UserControl
-{
-    public MishaAutomationPage(MishaPlatformStore store)
-    {
-        var root = new StackPanel(); root.Children.Add(MishaUi.Header("提醒与自动化", "在课程事件或指定时间触发提醒、语音、文件、应用、网页与显示行动。"));
-        var grid = new DataGrid { ItemsSource = store.State.Automations, AutoGenerateColumns = true, CanUserAddRows = false, MinHeight = 300 };
-        root.Children.Add(MishaUi.Card(grid));
-        var actions = new StackPanel { Orientation = Orientation.Horizontal };
-        var add = MishaUi.Button("新增规则"); add.Click += (_, _) => store.State.Automations.Add(new("新自动化", "每天 08:00", "显示普通提醒", true));
-        var remove = MishaUi.Button("删除选中", true); remove.Click += (_, _) => { if (grid.SelectedItem is AutomationEntry item) store.State.Automations.Remove(item); };
-        var save = MishaUi.Button("保存规则"); save.Click += async (_, _) => { grid.CommitEdit(DataGridEditingUnit.Row, true); await store.SaveAsync(); };
-        actions.Children.Add(add); actions.Children.Add(remove); actions.Children.Add(save); root.Children.Add(actions);
-        root.Children.Add(MishaUi.Card(MishaUi.Text("强调提醒支持：提示音、语音播报、置顶和强调视觉效果。外部行动仅在用户明确配置后执行；插件默认规则不会启动程序或访问网络。", 12, null, "TextSecondaryBrush"), new(0, 12, 0, 0)));
-        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-    }
-}
-
-internal sealed class MishaExtensionsPage : UserControl
-{
-    public MishaExtensionsPage(MishaPlatformStore store)
-    {
-        var root = new StackPanel(); root.Children.Add(MishaUi.Header("内置扩展", "按需安装或卸载移植插件的内置功能模块，避免所有功能强制常驻。"));
-        foreach (var extension in store.State.Extensions)
+            if (store.Profile is null || store.Profile.TimeLayouts.Count == 0)
+            {
+                status.Text = "请先创建时间表。";
+                return;
+            }
+            var added = store.Profile.AddClassPlan(store.Profile.TimeLayouts[0].Id);
+            ReloadPlans(added.Id);
+        };
+        var remove = MishaUi.Button("删除课表", true);
+        remove.Click += (_, _) =>
         {
-            var grid = new Grid(); grid.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) }); grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            var info = new StackPanel(); info.Children.Add(MishaUi.Text(extension.Name, 15, FontWeights.SemiBold)); var detail = MishaUi.Text(extension.Description, 12, null, "TextSecondaryBrush"); detail.Margin = new(0, 4, 0, 0); info.Children.Add(detail); grid.Children.Add(info);
-            var toggle = MishaUi.Button(extension.Installed ? "卸载" : "安装", extension.Installed); Grid.SetColumn(toggle, 1); grid.Children.Add(toggle);
-            toggle.Click += async (_, _) => { extension.Installed = !extension.Installed; toggle.Content = extension.Installed ? "卸载" : "安装"; await store.SaveAsync(); };
-            root.Children.Add(MishaUi.Card(grid));
+            if (store.Profile is null || plans.SelectedItem is not ClassIslandClassPlanRow plan) return;
+            store.Profile.RemoveClassPlan(plan.Id);
+            ReloadPlans();
+        };
+        var save = MishaUi.Button("保存 Profile");
+        save.Click += async (_, _) => await SaveAsync();
+        actions.Children.Add(add);
+        actions.Children.Add(remove);
+        actions.Children.Add(save);
+        root.Children.Add(actions);
+        root.Children.Add(status);
+
+        Loaded += (_, _) => ReloadPlans();
+        store.Changed += (_, _) => Dispatcher.Invoke(() => ReloadPlans());
+        Content = MishaUi.Scroll(root);
+    }
+
+    private void ConfigureLessons()
+    {
+        lessons.AutoGenerateColumns = false;
+        lessons.CanUserAddRows = false;
+        lessons.MinHeight = 330;
+        lessons.Columns.Add(new DataGridTextColumn { Header = "节次", Binding = new Binding(nameof(ClassIslandLessonRow.Index)), IsReadOnly = true, Width = 65 });
+        lessons.Columns.Add(new DataGridTextColumn { Header = "科目", Binding = new Binding(nameof(ClassIslandLessonRow.SubjectName)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+        lessons.Columns.Add(new DataGridTextColumn { Header = "教师", Binding = new Binding(nameof(ClassIslandLessonRow.TeacherName)), IsReadOnly = true, Width = 120 });
+        lessons.Columns.Add(new DataGridTextColumn { Header = "开始", Binding = new Binding(nameof(ClassIslandLessonRow.StartTime)), IsReadOnly = true, Width = 95 });
+        lessons.Columns.Add(new DataGridTextColumn { Header = "结束", Binding = new Binding(nameof(ClassIslandLessonRow.EndTime)), IsReadOnly = true, Width = 95 });
+        lessons.Columns.Add(new DataGridCheckBoxColumn { Header = "启用", Binding = new Binding(nameof(ClassIslandLessonRow.Enabled)), Width = 70 });
+    }
+
+    private void ReloadPlans(string? selectedId = null)
+    {
+        var values = store.Profile?.ClassPlans ?? [];
+        plans.ItemsSource = values;
+        if (values.Count == 0)
+        {
+            lessons.ItemsSource = null;
+            ruleArea.Children.Clear();
+            return;
         }
-        root.Children.Add(MishaUi.Card(MishaUi.Text("这些模块随插件发行，不从未知地址下载代码；“安装”会启用模块并保存状态。第三方 ExusiAI 插件仍由宿主的扩展管理与本地资源库负责。", 12, null, "TextSecondaryBrush")));
-        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        plans.SelectedItem = selectedId is null
+            ? values[0]
+            : values.FirstOrDefault(x => x.Id == selectedId) ?? values[0];
+    }
+
+    private void ReloadSelected()
+    {
+        if (plans.SelectedItem is not ClassIslandClassPlanRow plan)
+        {
+            lessons.ItemsSource = null;
+            ruleArea.Children.Clear();
+            return;
+        }
+
+        lessons.ItemsSource = plan.Lessons;
+        ruleArea.Children.Clear();
+        ruleArea.Children.Add(MishaUi.Section("启用规则"));
+
+        var enabled = new CheckBox { IsChecked = plan.IsEnabled };
+        enabled.Checked += (_, _) => plan.IsEnabled = true;
+        enabled.Unchecked += (_, _) => plan.IsEnabled = false;
+        ruleArea.Children.Add(MishaUi.SettingRow("默认启用", "", enabled));
+
+        var type = new ComboBox { ItemsSource = new[] { "Weekly", "Date", "Loop" }, SelectedIndex = Math.Clamp(plan.RuleType, 0, 2), Width = 130 };
+        type.SelectionChanged += (_, _) => plan.RuleType = type.SelectedIndex;
+        ruleArea.Children.Add(MishaUi.SettingRow("TimeRule 类型", "", type));
+
+        var weekDay = new ComboBox { ItemsSource = Enum.GetNames<DayOfWeek>(), SelectedIndex = Math.Clamp(plan.WeekDay, 0, 6), Width = 140 };
+        weekDay.SelectionChanged += (_, _) => plan.WeekDay = weekDay.SelectedIndex;
+        ruleArea.Children.Add(MishaUi.SettingRow("星期", "Sunday=0，与 ClassIsland TimeRule 一致。", weekDay));
+
+        var week = new TextBox { Text = plan.WeekCountDiv.ToString(), Width = 100 };
+        week.TextChanged += (_, _) => { if (int.TryParse(week.Text, out var value)) plan.WeekCountDiv = value; };
+        ruleArea.Children.Add(MishaUi.SettingRow("轮换周", "0 表示不限制；n 表示第 n 周。", week));
+
+        var total = new TextBox { Text = plan.WeekCountDivTotal.ToString(), Width = 100 };
+        total.TextChanged += (_, _) => { if (int.TryParse(total.Text, out var value)) plan.WeekCountDivTotal = Math.Max(1, value); };
+        ruleArea.Children.Add(MishaUi.SettingRow("轮换总周数", "", total));
+    }
+
+    private async Task SaveAsync()
+    {
+        if (store.Profile is null) { status.Text = "尚未打开 Profile。"; return; }
+        lessons.CommitEdit(DataGridEditingUnit.Row, true);
+        await store.SaveProfileAsync();
+        status.Text = "已保存真实 ClassIsland Profile。";
+    }
+}
+
+internal sealed class MishaNativeJsonConfigPage : UserControl
+{
+    private readonly MishaPlatformStore store;
+    private readonly Func<ClassIslandWorkspace, string?> pathResolver;
+    private readonly TextBox editor = new() { AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.NoWrap, MinHeight = 430 };
+    private readonly TextBlock status = MishaUi.Note("");
+
+    public MishaNativeJsonConfigPage(MishaPlatformStore store, string title, string description, Func<ClassIslandWorkspace, string?> pathResolver)
+    {
+        this.store = store;
+        this.pathResolver = pathResolver;
+
+        var root = MishaUi.Page(title, description);
+        editor.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+        editor.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+        root.Children.Add(editor);
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        var reload = MishaUi.Button("重新加载", true);
+        reload.Click += async (_, _) => await ReloadAsync();
+        var save = MishaUi.Button("验证并保存");
+        save.Click += async (_, _) => await SaveAsync();
+        actions.Children.Add(reload);
+        actions.Children.Add(save);
+        root.Children.Add(actions);
+        root.Children.Add(status);
+
+        Loaded += async (_, _) => await ReloadAsync();
+        store.Changed += (_, _) => Dispatcher.InvokeAsync(() => _ = ReloadAsync());
+        Content = MishaUi.Scroll(root);
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (store.Workspace is null)
+        {
+            editor.Text = "";
+            status.Text = "请先连接 ClassIsland Settings.json。";
+            return;
+        }
+
+        var path = pathResolver(store.Workspace);
+        if (path is null || !File.Exists(path))
+        {
+            editor.Text = "";
+            status.Text = "当前 Settings.json 未指向已存在的配置文件。不会自动创建示例配置。";
+            return;
+        }
+
+        editor.Text = await File.ReadAllTextAsync(path);
+        status.Text = path;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (store.Workspace is null) { status.Text = "请先连接工作区。"; return; }
+        var path = pathResolver(store.Workspace);
+        if (path is null || !File.Exists(path))
+        {
+            status.Text = "目标配置不存在；为避免生成模拟配置，本移植不会自动创建。";
+            return;
+        }
+
+        try
+        {
+            var parsed = JsonNode.Parse(editor.Text)
+                ?? throw new InvalidDataException("JSON 根节点为空。");
+            await ClassIslandWorkspace.WriteJsonAtomicAsync(path, parsed);
+            status.Text = $"已保存：{path}";
+        }
+        catch (Exception exception)
+        {
+            status.Text = $"保存失败：{exception.Message}";
+        }
     }
 }
 
 internal sealed class MishaDataPage : UserControl
 {
     private readonly MishaPlatformStore store;
-    private readonly TextBlock status = MishaUi.Status();
+    private readonly TextBlock status = MishaUi.Note("");
+
     public MishaDataPage(MishaPlatformStore store)
     {
         this.store = store;
-        var root = new StackPanel(); root.Children.Add(MishaUi.Header("档案与数据", "直接导入或导出 ClassIsland 2.2 原生 Profile JSON，并保留未识别字段。"));
-        var settings = new StackPanel();
-        settings.Children.Add(MishaUi.Text("天气位置", 12, FontWeights.SemiBold)); var city = new TextBox { Text = store.State.WeatherCity, Margin = new(0, 5, 0, 10) }; city.TextChanged += (_, _) => store.State.WeatherCity = city.Text; settings.Children.Add(city);
-        var sync = new CheckBox { Content = "自动同步软件时间（也可手动对齐铃声）", IsChecked = store.State.TimeSync }; sync.Checked += (_, _) => store.State.TimeSync = true; sync.Unchecked += (_, _) => store.State.TimeSync = false; settings.Children.Add(sync);
-        root.Children.Add(MishaUi.Card(settings));
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-        var export = MishaUi.Button("导出档案"); export.Click += Export_OnClick;
-        var import = MishaUi.Button("导入档案", true); import.Click += Import_OnClick;
-        var save = MishaUi.Button("保存设置"); save.Click += async (_, _) => { await store.SaveAsync(); status.Text = "设置已保存。"; };
-        buttons.Children.Add(export); buttons.Children.Add(import); buttons.Children.Add(save); buttons.Children.Add(status); root.Children.Add(buttons);
-        root.Children.Add(MishaUi.Card(MishaUi.Text("Profile JSON 使用 ClassIsland 的 Subjects、TimeLayouts、ClassPlans、TimeRule 与 GUID 引用结构，可在两端直接迁移。表格/CSES 互操作仍由对应模块处理；导入时未知的新版本字段会原样保留。", 12, null, "TextSecondaryBrush"), new(0, 12, 0, 0)));
-        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var root = MishaUi.Page("档案文件", "打开现有 Profile、保存当前 Profile，或另存为新的真实 ClassIsland Profile。不会生成示例内容。");
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        var open = MishaUi.Button("打开 Profile");
+        open.Click += Open_OnClick;
+        var save = MishaUi.Button("保存", true);
+        save.Click += async (_, _) => await SaveAsync();
+        var saveAs = MishaUi.Button("另存为", true);
+        saveAs.Click += SaveAs_OnClick;
+        actions.Children.Add(open);
+        actions.Children.Add(save);
+        actions.Children.Add(saveAs);
+        root.Children.Add(actions);
+        root.Children.Add(status);
+
+        Content = MishaUi.Scroll(root);
     }
 
-    private async void Export_OnClick(object sender, RoutedEventArgs e)
-    {
-        var dialog = new SaveFileDialog { Filter = "ClassIsland Profile (*.json)|*.json", FileName = $"{store.State.ProfileName}.json" };
-        if (dialog.ShowDialog() != true) return;
-        try { await store.ExportAsync(dialog.FileName); status.Text = "档案已导出。"; } catch (Exception exception) { status.Text = $"导出失败：{exception.Message}"; }
-    }
-
-    private async void Import_OnClick(object sender, RoutedEventArgs e)
+    private async void Open_OnClick(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Filter = "ClassIsland Profile (*.json)|*.json" };
         if (dialog.ShowDialog() != true) return;
-        try { await store.ImportAsync(dialog.FileName); status.Text = "档案已导入；重新打开页面即可刷新内容。"; } catch (Exception exception) { status.Text = $"导入失败：{exception.Message}"; }
+        try { await store.OpenProfileAsync(dialog.FileName); status.Text = "已打开真实 Profile。"; }
+        catch (Exception exception) { status.Text = $"打开失败：{exception.Message}"; }
+    }
+
+    private async Task SaveAsync()
+    {
+        try { await store.SaveProfileAsync(); status.Text = "已保存。"; }
+        catch (Exception exception) { status.Text = $"保存失败：{exception.Message}"; }
+    }
+
+    private async void SaveAs_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (store.Profile is null) { status.Text = "尚未打开 Profile。"; return; }
+        var dialog = new SaveFileDialog { Filter = "ClassIsland Profile (*.json)|*.json", FileName = Path.GetFileName(store.Profile.FilePath) };
+        if (dialog.ShowDialog() != true) return;
+        try { await store.SaveProfileAsAsync(dialog.FileName); status.Text = "已另存为真实 ClassIsland Profile。"; }
+        catch (Exception exception) { status.Text = $"另存失败：{exception.Message}"; }
     }
 }
