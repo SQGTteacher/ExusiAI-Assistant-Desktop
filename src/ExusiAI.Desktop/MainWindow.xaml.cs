@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using ExusiAI.Theme;
 
 namespace ExusiAI.Desktop;
@@ -14,6 +15,8 @@ public partial class MainWindow : Window
         this.theme = theme;
         this.backdrop = backdrop;
         InitializeComponent();
+        SizeChanged += (_, _) => UpdateContentClip();
+        StateChanged += (_, _) => UpdateContentClip();
         SourceInitialized += (_, _) => ApplyWindowAppearance();
         theme.Changed += Appearance_OnChanged;
         backdrop.Changed += Appearance_OnChanged;
@@ -36,4 +39,12 @@ public partial class MainWindow : Window
     private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     private void Appearance_OnChanged(object? sender, EventArgs e) => Dispatcher.InvokeAsync(ApplyWindowAppearance);
     private void ApplyWindowAppearance() => backdrop.ApplyTo(this, theme.IsDark);
+
+    private void UpdateContentClip()
+    {
+        var radius = WindowState == WindowState.Maximized ? 0d : 12d;
+        ChromeRoot.Clip = ActualWidth > 0 && ActualHeight > 0
+            ? new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight), radius, radius)
+            : null;
+    }
 }
