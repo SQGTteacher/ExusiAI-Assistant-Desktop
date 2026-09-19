@@ -171,28 +171,23 @@ public sealed class RuntimeTests
         Assert.Equal(PackageState.Running, entry.State);
         var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
         var pages = navigation.GetNavigationPages().ToArray();
-        Assert.Equal(new[]
-        {
-            "misha.dashboard", "misha.schedule", "misha.components", "misha.automation",
-            "misha.extensions", "misha.data", "misha.about"
-        }, pages.Select(page => page.Route));
+        var page = Assert.Single(pages);
+        Assert.Equal("misha.settings", page.Route);
+        Assert.Equal("ClassIsland 2.2 Misha", page.Title);
 
         Exception? pageFailure = null;
         var pageThread = new Thread(() =>
         {
             try
             {
-                foreach (var page in pages)
-                {
-                    var view = page.CreateView();
-                    Assert.NotNull(view);
-                    view.Measure(new System.Windows.Size(1280, 800));
-                    view.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
-                    view.UpdateLayout();
-                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
-                        System.Windows.Threading.DispatcherPriority.DataBind,
-                        new Action(() => { }));
-                }
+                var view = page.CreateView();
+                Assert.NotNull(view);
+                view.Measure(new System.Windows.Size(1280, 800));
+                view.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
+                view.UpdateLayout();
+                System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                    System.Windows.Threading.DispatcherPriority.DataBind,
+                    new Action(() => { }));
             }
             catch (Exception exception) { pageFailure = exception; }
         });
