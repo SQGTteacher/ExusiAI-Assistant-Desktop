@@ -113,12 +113,9 @@ public sealed class RuntimeTests
     {
         using var root = new TemporaryDirectory();
         var loadContext = await LoadAndStopSamplePluginAsync(root.Path);
-        for (var attempt = 0; attempt < 5 && loadContext.IsAlive; attempt++)
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-        }
-        Assert.False(loadContext.IsAlive);
+        Assert.True(
+            WaitForCollection(loadContext, TimeSpan.FromSeconds(2)),
+            "Collectible plugin AssemblyLoadContext did not unload within the bounded GC wait.");
     }
 
     [Fact]
@@ -223,6 +220,22 @@ public sealed class RuntimeTests
         Assert.NotNull(exported["Subjects"]);
         Assert.NotNull(exported["TimeLayouts"]);
         Assert.NotNull(exported["ClassPlans"]);
+    }
+
+    private static bool WaitForCollection(WeakReference reference, TimeSpan timeout)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        do
+        {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            if (!reference.IsAlive) return true;
+            Thread.Sleep(25);
+        }
+        while (stopwatch.Elapsed < timeout);
+
+        return !reference.IsAlive;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
