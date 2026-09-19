@@ -19,10 +19,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         new TextFileViewerProvider(),
         new CsvFileViewerProvider(),
-        new DocxFileViewerProvider()
+        new DocxFileViewerProvider(),
+        new XlsxFileViewerProvider()
     });
     private readonly TextBlock title = new() { FontSize = 22, FontWeight = FontWeights.SemiBold, Text = "尚未打开文件" };
-    private readonly TextBlock status = new() { Opacity = 0.68, Text = "支持 TXT、Markdown 与 CSV 的安全只读预览" };
+    private readonly TextBlock status = new() { Opacity = 0.68, Text = "支持 TXT、Markdown、CSV、DOCX 与 XLSX 的安全只读预览" };
     private readonly TextBox textPreview = new()
     {
         IsReadOnly = true,
@@ -42,7 +43,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly TextBox searchBox = new() { MinWidth = 180, ToolTip = "在已加载的文本中搜索" };
     private CancellationTokenSource? loadCancellation;
     private ViewerDocument? document;
-    private IAsyncEnumerator<CsvPage>? csvPages;
+    private IAsyncEnumerator<TabularPage>? csvPages;
     private bool disposed;
 
     public FileViewerPage()
@@ -103,7 +104,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var picker = new OpenFileDialog
         {
             Title = "选择要预览的文件",
-            Filter = "支持的文件|*.txt;*.md;*.markdown;*.csv;*.docx|纯文本|*.txt|Markdown|*.md;*.markdown|CSV|*.csv|Word Open XML|*.docx|计划支持的 Office/RTF 文件|*.doc;*.xls;*.xlsx;*.ppt;*.pptx;*.rtf|所有文件|*.*",
+            Filter = "支持的文件|*.txt;*.md;*.markdown;*.csv;*.docx;*.xlsx|纯文本|*.txt|Markdown|*.md;*.markdown|CSV|*.csv|Word Open XML|*.docx|Excel Open XML|*.xlsx|计划支持的 Office/RTF 文件|*.doc;*.xls;*.ppt;*.pptx;*.rtf|所有文件|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -149,7 +150,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
         catch (UnsupportedFileFormatException)
         {
-            status.Text = "此格式尚未启用可靠 Provider。DOC、XLS/XLSX、PPT/PPTX、RTF 当前明确为未实现，而不是低保真冒充支持。";
+            status.Text = "此格式尚未启用可靠 Provider。DOC、XLS、PPT/PPTX、RTF 当前明确为未实现，而不是低保真冒充支持。";
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or XmlException)
         {
@@ -204,7 +205,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             loadMoreButton.IsEnabled = !page.IsFinal;
         }
         catch (OperationCanceledException) { status.Text = "已取消加载。"; }
-        catch (InvalidDataException exception) { status.Text = $"CSV 被安全拒绝：{exception.Message}"; }
+        catch (InvalidDataException exception) { status.Text = $"表格被安全拒绝：{exception.Message}"; }
         finally { cancelButton.IsEnabled = false; }
     }
 
