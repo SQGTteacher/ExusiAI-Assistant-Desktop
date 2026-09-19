@@ -98,15 +98,6 @@ internal sealed class MishaSettingsHostPage : UserControl
     private static DataTemplate BuildNavigationTemplate()
     {
         var template = new DataTemplate();
-        var factory = new FrameworkElementFactory(typeof(Grid));
-        var iconColumn = new FrameworkElementFactory(typeof(ColumnDefinition));
-        iconColumn.SetValue(ColumnDefinition.WidthProperty, new GridLength(32));
-        var textColumn = new FrameworkElementFactory(typeof(ColumnDefinition));
-        factory.AppendChild(iconColumn);
-        factory.AppendChild(textColumn);
-
-        // FrameworkElementFactory cannot add Grid.ColumnDefinitions directly in a robust way,
-        // so keep the visual compact with a horizontal StackPanel inside the item.
         var stack = new FrameworkElementFactory(typeof(StackPanel));
         stack.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
 
@@ -114,7 +105,6 @@ internal sealed class MishaSettingsHostPage : UserControl
         icon.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(MishaSection.Icon)));
         icon.SetValue(TextBlock.WidthProperty, 28d);
         icon.SetValue(TextBlock.FontSizeProperty, 15d);
-        icon.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
         stack.AppendChild(icon);
 
         var title = new FrameworkElementFactory(typeof(TextBlock));
