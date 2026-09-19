@@ -243,7 +243,7 @@ public sealed class StreamingXlsxDocument : ViewerDocument, ITabularPreviewDocum
         var letters = 0;
         foreach (var character in reference)
         {
-            if (character is < 'A' or > 'Z' && character is < 'a' or > 'z') break;
+            if (!((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z'))) break;
             value = checked(value * 26 + (char.ToUpperInvariant(character) - 'A' + 1));
             letters++;
         }
