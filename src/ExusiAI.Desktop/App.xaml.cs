@@ -140,6 +140,8 @@ public partial class App : Application
         SetBrush("SuccessBrush", palette.Success);
         SetBrush("WarningBrush", palette.Warning);
         SetBrush("DangerBrush", palette.Danger);
+        Current.Resources["WindowTopBarBrush"] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Surface));
+        Current.Resources["NavRailBrush"] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Surface));
     }
 
     private static void SetBrush(string key, string color) => Current.Resources[key] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
