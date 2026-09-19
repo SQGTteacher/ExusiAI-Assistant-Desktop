@@ -74,7 +74,7 @@ internal sealed class OpenXmlPackageGuard : IDisposable
                 throw new FileRejectedException($"Package part '{entry.FullName}' exceeds the compression-ratio safety limit.");
 
             var normalized = entry.FullName.Replace('\\', '/');
-            if (normalized.StartsWith('/', StringComparison.Ordinal) || normalized.Split('/').Any(segment => segment == ".."))
+            if (normalized.StartsWith("/", StringComparison.Ordinal) || normalized.Split('/').Any(segment => segment == ".."))
                 throw new FileRejectedException("Package contains an unsafe part path.");
         }
     }
