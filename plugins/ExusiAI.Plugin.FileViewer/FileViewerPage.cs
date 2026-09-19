@@ -733,14 +733,19 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         return button;
     }
 
-    private static Border CreateSeparator() => new()
+    private static Border CreateSeparator()
     {
-        Width = 1,
-        Height = 22,
-        Margin = new Thickness(5, 5, 13, 5),
-        VerticalAlignment = VerticalAlignment.Center,
-        Opacity = 0.65
-    };
+        var separator = new Border
+        {
+            Width = 1,
+            Height = 22,
+            Margin = new Thickness(5, 5, 13, 5),
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0.65
+        };
+        separator.SetResourceReference(Border.BackgroundProperty, "BorderBrush");
+        return separator;
+    }
 
     private static void AddCommand(Panel panel, FrameworkElement element)
     {
