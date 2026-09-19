@@ -329,6 +329,8 @@ public sealed class RuntimeTests
                     new MishaTemporarySchedulePage(store),
                     new MishaDataPage(store),
                     new MishaNativeJsonConfigPage(store, "设置", "测试", workspace => workspace.SettingsPath),
+                    new MishaComponentLayoutsPage(store),
+                    new MishaAutomationEditorPage(store),
                     new MishaAboutPage()
                 ];
 
@@ -349,6 +351,109 @@ public sealed class RuntimeTests
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(20)), "Misha real-data page smoke test timed out.");
         Assert.Null(failure);
+    }
+
+    [Fact]
+    public async Task ComponentLayoutRoundTripsUnknownSettingsAndNativeComponentIds()
+    {
+        using var root = new TemporaryDirectory();
+        var path = Path.Combine(root.Path, "Components.json");
+        await File.WriteAllTextAsync(path, """
+        {
+          "FutureRoot":{"keep":true},
+          "Lines":[
+            {
+              "IsMainLine":true,
+              "FutureLineField":42,
+              "Children":[
+                {
+                  "Id":"df3f8295-21f6-482e-bada-fa0e5f14bb66",
+                  "NameCache":"日期",
+                  "Settings":{"FutureSetting":"keep"},
+                  "FutureComponentField":true
+                }
+              ]
+            }
+          ]
+        }
+        """);
+
+        var document = await ClassIslandComponentLayoutDocument.LoadAsync(path);
+        var line = Assert.Single(document.Lines);
+        var component = Assert.Single(line.Components);
+        Assert.Equal("日期", component.DisplayName);
+        Assert.Equal("df3f8295-21f6-482e-bada-fa0e5f14bb66", component.Id);
+
+        document.AddComponent(line, ClassIslandComponentCatalog.BuiltIns.Single(x => x.Name == "时钟"));
+        await document.SaveAsync();
+
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+        Assert.True(saved["FutureRoot"]?["keep"]?.GetValue<bool>());
+        Assert.Equal(42, saved["Lines"]?[0]?["FutureLineField"]?.GetValue<int>());
+        Assert.True(saved["Lines"]?[0]?["Children"]?[0]?["FutureComponentField"]?.GetValue<bool>());
+        Assert.Equal("keep", saved["Lines"]?[0]?["Children"]?[0]?["Settings"]?["FutureSetting"]?.GetValue<string>());
+        Assert.Equal("9e1af71d-8f77-4b21-a342-448787104dd9",
+            saved["Lines"]?[0]?["Children"]?[1]?["Id"]?.GetValue<string>());
+        Assert.Null(saved["Lines"]?[0]?["Children"]?[1]?["Settings"]);
+        Assert.True(File.Exists(path + ".bak"));
+    }
+
+    [Fact]
+    public async Task AutomationRoundTripsUnknownWorkflowNodesWithoutExecutingActions()
+    {
+        using var root = new TemporaryDirectory();
+        var path = Path.Combine(root.Path, "Automation.json");
+        await File.WriteAllTextAsync(path, """
+        [
+          {
+            "FutureWorkflowField":"keep",
+            "Triggers":[
+              {
+                "Id":"classisland.lessons.onClass",
+                "Settings":null,
+                "FutureTriggerField":1
+              }
+            ],
+            "IsConditionEnabled":false,
+            "Ruleset":{"Mode":0,"IsReversed":false,"Groups":[],"FutureRulesetField":2},
+            "ActionSet":{
+              "Name":"现有工作流",
+              "Actions":[
+                {
+                  "Id":"classisland.showNotification",
+                  "Settings":{"Mask":"测试"},
+                  "FutureActionField":3
+                }
+              ],
+              "IsEnabled":true,
+              "IsRevertEnabled":false,
+              "FutureActionSetField":4
+            }
+          }
+        ]
+        """);
+
+        var document = await ClassIslandAutomationDocument.LoadAsync(path);
+        var workflow = Assert.Single(document.Workflows);
+        Assert.Equal("现有工作流", workflow.Name);
+        Assert.Equal("上课时", Assert.Single(workflow.Triggers).DisplayName);
+        Assert.Equal("显示提醒", Assert.Single(workflow.Actions).DisplayName);
+
+        document.AddTrigger(workflow, ClassIslandAutomationCatalog.Triggers.Single(x => x.Id == "classisland.cron"));
+        document.AddAction(workflow, ClassIslandAutomationCatalog.Actions.Single(x => x.Id == "classisland.action.sleep"));
+        await document.SaveAsync();
+
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsArray();
+        Assert.Equal("keep", saved[0]?["FutureWorkflowField"]?.GetValue<string>());
+        Assert.Equal(1, saved[0]?["Triggers"]?[0]?["FutureTriggerField"]?.GetValue<int>());
+        Assert.Equal(2, saved[0]?["Ruleset"]?["FutureRulesetField"]?.GetValue<int>());
+        Assert.Equal(3, saved[0]?["ActionSet"]?["Actions"]?[0]?["FutureActionField"]?.GetValue<int>());
+        Assert.Equal(4, saved[0]?["ActionSet"]?["FutureActionSetField"]?.GetValue<int>());
+        Assert.Equal("classisland.cron", saved[0]?["Triggers"]?[1]?["Id"]?.GetValue<string>());
+        Assert.Null(saved[0]?["Triggers"]?[1]?["Settings"]);
+        Assert.Equal("classisland.action.sleep", saved[0]?["ActionSet"]?["Actions"]?[1]?["Id"]?.GetValue<string>());
+        Assert.Null(saved[0]?["ActionSet"]?["Actions"]?[1]?["Settings"]);
+        Assert.True(File.Exists(path + ".bak"));
     }
 
     private static bool WaitForCollection(WeakReference reference, TimeSpan timeout)

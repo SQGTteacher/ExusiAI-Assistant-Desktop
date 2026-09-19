@@ -27,12 +27,8 @@ internal sealed class MishaSettingsHostPage : UserControl
             new MishaSection("settings", "应用设置", "⚙", () => new MishaNativeJsonConfigPage(
                 store, "ClassIsland Settings.json", "直接编辑当前工作区真实 Settings.json；保存前进行 JSON 验证。",
                 workspace => workspace.SettingsPath)),
-            new MishaSection("components", "组件配置", "◩", () => new MishaNativeJsonConfigPage(
-                store, "组件配置", "直接编辑 Settings.json 的 CurrentComponentConfig 指向的真实 ComponentLayouts JSON。",
-                workspace => workspace.CurrentComponentLayoutPath)),
-            new MishaSection("automation", "自动化配置", "⚡", () => new MishaNativeJsonConfigPage(
-                store, "自动化配置", "直接编辑 Settings.json 的 CurrentAutomationConfig 指向的真实 Automations JSON。",
-                workspace => workspace.CurrentAutomationPath)),
+            new MishaSection("components", "组件配置", "◩", () => new MishaComponentLayoutsPage(store)),
+            new MishaSection("automation", "自动化配置", "⚡", () => new MishaAutomationEditorPage(store)),
             new MishaSection("about", "关于", "ⓘ", static () => new MishaAboutPage())
         };
 
