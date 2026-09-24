@@ -43,10 +43,10 @@ internal sealed class ViewerWindow : Window
 
         rail = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(10, 13, 19)),
-            BorderBrush = FindResource("BorderBrush") as Brush,
             BorderThickness = new Thickness(0, 0, 1, 0)
         };
+        rail.SetResourceReference(Border.BackgroundProperty, "SurfaceAltBrush");
+        rail.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         var railContent = new StackPanel { Margin = new Thickness(0, 18, 0, 12) };
         railContent.Children.Add(new Border
         {
@@ -64,16 +64,17 @@ internal sealed class ViewerWindow : Window
                 Foreground = Brushes.White
             }
         });
-        railContent.Children.Add(new TextBlock
+        var railLabel = new TextBlock
         {
             Text = "VIEW",
             FontSize = 9,
             FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 188)),
             HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(0, 10, 0, 0),
-            Opacity = 0.58
-        });
+            Opacity = 0.72
+        };
+        railLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        railContent.Children.Add(railLabel);
         rail.Child = railContent;
         shell.Children.Add(rail);
 
