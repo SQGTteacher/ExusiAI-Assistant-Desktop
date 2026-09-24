@@ -93,6 +93,13 @@ public interface ITabularPreviewDocument
     IAsyncEnumerable<TabularPage> ReadPagesAsync(CancellationToken cancellationToken = default);
 }
 
+public interface IWorkbookPreviewDocument : ITabularPreviewDocument
+{
+    IReadOnlyList<string> WorksheetNames { get; }
+    int ActiveWorksheetIndex { get; }
+    void SelectWorksheet(int index);
+}
+
 public sealed record SlidePreview(int SlideNumber, string Text, bool IsFinal);
 
 public interface ISlidePreviewDocument

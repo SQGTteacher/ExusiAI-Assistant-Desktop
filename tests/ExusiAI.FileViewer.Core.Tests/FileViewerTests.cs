@@ -83,6 +83,23 @@ public sealed class FileViewerTests : IDisposable
     }
 
     [Fact]
+    public async Task Docx_provider_preserves_headings_lists_and_table_rows()
+    {
+        var path = Path.Combine(directory, "structured.docx");
+        CreateStructuredDocx(path);
+
+        await using var opened = await CreateRegistry().OpenAsync(path);
+        var document = Assert.IsAssignableFrom<ITextPreviewDocument>(opened);
+        var text = new StringBuilder();
+        await foreach (var chunk in document.ReadChunksAsync()) text.Append(chunk.Text);
+
+        Assert.Contains("# 课堂计划", text.ToString());
+        Assert.Contains("## 教学目标", text.ToString());
+        Assert.Contains("• 复习旧知识", text.ToString());
+        Assert.Contains("| 姓名 | 分数 |", text.ToString());
+    }
+
+    [Fact]
     public async Task Docx_provider_rejects_excessive_compression_ratio()
     {
         var path = Path.Combine(directory, "compressed.docx");
@@ -110,7 +127,7 @@ public sealed class FileViewerTests : IDisposable
         var pages = new List<TabularPage>();
         await foreach (var page in document.ReadPagesAsync()) pages.Add(page);
 
-        Assert.Equal("XLSX · 成绩", opened.Info.FormatName);
+        Assert.Equal("XLSX · 2 个工作表", opened.Info.FormatName);
         Assert.Equal(3, pages.Count);
         Assert.Equal("姓名", pages[0].Rows[0][0]);
         Assert.Equal("分数", pages[0].Rows[0][1]);
@@ -118,6 +135,25 @@ public sealed class FileViewerTests : IDisposable
         Assert.Equal("95", pages[1].Rows[0][1]);
         Assert.True(pages[^1].IsFinal);
         Assert.True(opened.Info.IsReadOnly);
+    }
+
+    [Fact]
+    public async Task Xlsx_provider_switches_worksheets_without_loading_entire_workbook()
+    {
+        var path = Path.Combine(directory, "multi-sheet.xlsx");
+        CreateXlsx(path);
+
+        await using var opened = await CreateRegistry().OpenAsync(path, new ViewerOpenOptions { SpreadsheetRowsPerPage = 8 });
+        var workbook = Assert.IsAssignableFrom<IWorkbookPreviewDocument>(opened);
+        Assert.Equal(new[] { "成绩", "备注" }, workbook.WorksheetNames);
+
+        workbook.SelectWorksheet(1);
+        var pages = new List<TabularPage>();
+        await foreach (var page in workbook.ReadPagesAsync()) pages.Add(page);
+
+        Assert.Equal(1, workbook.ActiveWorksheetIndex);
+        Assert.Equal("课堂表现良好", pages[0].Rows[0][0]);
+        Assert.True(pages[^1].IsFinal);
     }
 
     [Fact]
@@ -253,12 +289,12 @@ public sealed class FileViewerTests : IDisposable
         using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
 
         WriteEntry(archive, "xl/workbook.xml",
-            "<?xml version=\"1.0\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"成绩\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+            "<?xml version=\"1.0\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"成绩\" sheetId=\"1\" r:id=\"rId1\"/><sheet name=\"备注\" sheetId=\"2\" r:id=\"rId2\"/></sheets></workbook>");
 
         WriteEntry(archive, "xl/_rels/workbook.xml.rels",
             "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"" +
             (externalWorksheet ? "https://example.invalid/sheet.xml\" TargetMode=\"External" : "worksheets/sheet1.xml") +
-            "\"/></Relationships>");
+            "\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet2.xml\"/></Relationships>");
 
         WriteEntry(archive, "xl/sharedStrings.xml",
             "<?xml version=\"1.0\"?><sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>姓名</t></si><si><t>分数</t></si><si><r><t>Ali</t></r><r><t>ce</t></r></si></sst>");
@@ -267,6 +303,10 @@ public sealed class FileViewerTests : IDisposable
             "<?xml version=\"1.0\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" +
             "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>1</v></c></row>" +
             "<row r=\"2\"><c r=\"A2\" t=\"s\"><v>2</v></c><c r=\"B2\"><v>95</v></c></row>" +
+            "</sheetData></worksheet>");
+        WriteEntry(archive, "xl/worksheets/sheet2.xml",
+            "<?xml version=\"1.0\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" +
+            "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>课堂表现良好</t></is></c></row>" +
             "</sheetData></worksheet>");
     }
 
@@ -286,6 +326,20 @@ public sealed class FileViewerTests : IDisposable
         foreach (var paragraph in paragraphs)
             writer.Write($"<w:p><w:r><w:t>{System.Security.SecurityElement.Escape(paragraph)}</w:t></w:r></w:p>");
         writer.Write("</w:body></w:document>");
+    }
+
+    private static void CreateStructuredDocx(string path)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        WriteEntry(archive, "word/document.xml", """
+            <?xml version="1.0" encoding="utf-8"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+              <w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>课堂计划</w:t></w:r></w:p>
+              <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>教学目标</w:t></w:r></w:p>
+              <w:p><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>复习旧知识</w:t></w:r></w:p>
+              <w:tbl><w:tr><w:tc><w:p><w:r><w:t>姓名</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>分数</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+            </w:body></w:document>
+            """);
     }
 
     public void Dispose()

@@ -104,6 +104,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly TextBox slideNumberBox = new() { Width = 56, ToolTip = "输入幻灯片页码并按 Enter" };
     private readonly TextBox searchBox = new() { Width = 230, ToolTip = "搜索当前文档全部可索引内容" };
     private readonly ComboBox recentFilesBox = new() { Width = 205, ToolTip = "最近打开" };
+    private readonly ComboBox worksheetBox = new() { Width = 170, ToolTip = "切换工作表", Visibility = Visibility.Collapsed };
     private readonly Slider zoom = new()
     {
         Minimum = 11,
@@ -119,6 +120,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private IAsyncEnumerator<TabularPage>? tablePages;
     private int currentSlideNumber;
     private bool disposed;
+    private bool changingWorksheet;
     private Border? topBar;
     private Border? bottomBar;
     private Border? documentCanvas;
@@ -185,6 +187,12 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 await RefreshRecentFilesAsync();
                 status.Text = "最近文件已不存在，已从列表移除。";
             }
+        };
+
+        worksheetBox.SelectionChanged += async (_, _) =>
+        {
+            if (changingWorksheet || worksheetBox.SelectedIndex < 0) return;
+            await SelectWorksheetAsync(worksheetBox.SelectedIndex);
         };
 
         slideScroll.Content = new Border
@@ -285,6 +293,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var commandRow = new WrapPanel { Orientation = Orientation.Horizontal };
         AddCommand(commandRow, openButton);
         AddCommand(commandRow, recentFilesBox);
+        AddCommand(commandRow, worksheetBox);
 
         var separator1 = CreateSeparator();
         commandRow.Children.Add(separator1);
@@ -453,6 +462,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         previousSlideButton.Visibility = Visibility.Collapsed;
         nextSlideButton.Visibility = Visibility.Collapsed;
         slideNumberBox.Visibility = Visibility.Collapsed;
+        worksheetBox.Visibility = Visibility.Collapsed;
 
         currentSlideNumber = 0;
         welcomePanel.Visibility = Visibility.Collapsed;
@@ -484,6 +494,18 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 case ITextPreviewDocument text:
                     textPreview.Visibility = Visibility.Visible;
                     await LoadTextPreviewAsync(text, loadCancellation.Token);
+                    break;
+
+                case IWorkbookPreviewDocument workbook:
+                    tablePreview.Visibility = Visibility.Visible;
+                    loadMoreButton.Visibility = Visibility.Visible;
+                    changingWorksheet = true;
+                    worksheetBox.ItemsSource = workbook.WorksheetNames;
+                    worksheetBox.SelectedIndex = workbook.ActiveWorksheetIndex;
+                    worksheetBox.Visibility = Visibility.Visible;
+                    changingWorksheet = false;
+                    tablePages = workbook.ReadPagesAsync(loadCancellation.Token).GetAsyncEnumerator(loadCancellation.Token);
+                    await LoadNextTablePageAsync();
                     break;
 
                 case ITabularPreviewDocument table:
@@ -583,6 +605,31 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
     }
 
+    private async Task SelectWorksheetAsync(int index)
+    {
+        if (document is not IWorkbookPreviewDocument workbook || loadCancellation is null) return;
+        changingWorksheet = true;
+        try
+        {
+            if (tablePages is not null) await tablePages.DisposeAsync();
+            tablePages = null;
+            tableRows.Clear();
+            workbook.SelectWorksheet(index);
+            tablePages = workbook.ReadPagesAsync(loadCancellation.Token).GetAsyncEnumerator(loadCancellation.Token);
+            loadMoreButton.Visibility = Visibility.Visible;
+            await LoadNextTablePageAsync();
+            documentMeta.Text = $"XLSX · {workbook.WorksheetNames[index]} · 工作表 {index + 1:N0} / {workbook.WorksheetNames.Count:N0}";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            status.Text = $"无法切换工作表：{exception.Message}";
+        }
+        finally
+        {
+            changingWorksheet = false;
+        }
+    }
+
     private async Task NavigateSlideAsync(int slideNumber)
     {
         if (document is not ISlidePreviewDocument slides || loadCancellation is null) return;
@@ -648,6 +695,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             await using var searchDocument = await providers.OpenAsync(
                 document.Info.FilePath,
                 cancellationToken: loadCancellation.Token);
+            if (document is IWorkbookPreviewDocument currentWorkbook &&
+                searchDocument is IWorkbookPreviewDocument searchWorkbook)
+            {
+                searchWorkbook.SelectWorksheet(currentWorkbook.ActiveWorksheetIndex);
+            }
 
             var hits = await ViewerSearchService.SearchAsync(
                 searchDocument,

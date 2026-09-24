@@ -10,6 +10,6 @@
 
 Viewer 支持拖放单个文件打开，并提供办公软件常用操作：`Ctrl+O` 打开、`Ctrl+F` 搜索、`Ctrl++`/`Ctrl+-`/`Ctrl+0` 缩放、`Ctrl+滚轮` 缩放、`F5` 全屏演示、`Esc` 退出演示，以及在 PPTX 中使用方向键、空格和 `PageUp`/`PageDown` 切页。无文件时显示轻量启动页和最近文档，不会预加载文档 Provider。
 
-当前支持 `.txt`、`.md`、`.markdown`、`.csv`、`.docx`、`.xlsx` 与 `.pptx` 的安全只读预览。DOCX 暂不提供 Word 高保真分页；XLSX 不计算公式且不处理图表等高级对象；PPTX 暂不提供图片、图表、SmartArt、动画和媒体的高保真渲染；`.doc`、`.xls`、`.ppt`、`.rtf` 尚未实现。查看器不会执行宏、脚本、OLE、嵌入对象、外部链接或外部内容。
+当前支持 `.txt`、`.md`、`.markdown`、`.csv`、`.docx`、`.xlsx` 与 `.pptx` 的安全只读预览。DOCX 可保留标题、列表、段落和表格行结构；XLSX 支持多工作表切换、分页读取和当前工作表搜索。DOCX 暂不提供 Word 高保真分页；XLSX 不计算公式且不处理图表等高级对象；PPTX 暂不提供图片、图表、SmartArt、动画和媒体的高保真渲染；`.doc`、`.xls`、`.ppt`、`.rtf` 尚未实现。查看器不会执行宏、脚本、OLE、嵌入对象、外部链接或外部内容。
 
 完整边界见 `docs/file-viewer/compatibility-matrix.md`。

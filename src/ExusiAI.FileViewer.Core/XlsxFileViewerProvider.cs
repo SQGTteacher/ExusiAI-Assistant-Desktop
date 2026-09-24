@@ -19,41 +19,53 @@ public sealed class XlsxFileViewerProvider : IFileViewerProvider
         cancellationToken.ThrowIfCancellationRequested();
         var info = SafeFileAccess.Inspect(filePath, options);
 
-        XlsxWorksheet worksheet;
+        IReadOnlyList<XlsxWorksheet> worksheets;
         using (var package = OpenXmlPackageGuard.Open(info, options))
         {
-            worksheet = XlsxPackageReader.ReadFirstWorksheet(package);
-            using var worksheetReader = package.OpenRequiredXml(worksheet.PartName);
+            worksheets = XlsxPackageReader.ReadWorksheets(package);
+            using var worksheetReader = package.OpenRequiredXml(worksheets[0].PartName);
         }
 
-        ViewerDocument document = new StreamingXlsxDocument(info, options, worksheet);
+        ViewerDocument document = new StreamingXlsxDocument(info, options, worksheets);
         return ValueTask.FromResult(document);
     }
 }
 
-public sealed class StreamingXlsxDocument : ViewerDocument, ITabularPreviewDocument
+public sealed class StreamingXlsxDocument : ViewerDocument, IWorkbookPreviewDocument
 {
     private readonly FileInfo file;
     private readonly ViewerOpenOptions options;
-    private readonly XlsxWorksheet worksheet;
+    private readonly IReadOnlyList<XlsxWorksheet> worksheets;
+    private int activeWorksheetIndex;
     private int reading;
     private bool disposed;
 
-    internal StreamingXlsxDocument(FileInfo file, ViewerOpenOptions options, XlsxWorksheet worksheet)
+    internal StreamingXlsxDocument(FileInfo file, ViewerOpenOptions options, IReadOnlyList<XlsxWorksheet> worksheets)
         : base(new(
             file.FullName,
             file.Name,
-            $"XLSX · {worksheet.Name}",
+            $"XLSX · {worksheets.Count:N0} 个工作表",
             file.Length,
             ViewerCapabilities.Search | ViewerCapabilities.IncrementalRead | ViewerCapabilities.Tabular,
             true,
             ImmutableArray.Create(
-                $"阶段 2B 当前预览首个工作表“{worksheet.Name}”；多工作表切换将在后续查看工作流中加入。",
-                "公式不会执行，仅显示文件中已有的缓存结果；样式、日期格式、合并单元格、图表、批注、宏和外部链接不渲染或执行。")))
+                "支持在工作簿内切换工作表；每次仅流式读取当前工作表，避免一次加载整本工作簿。",
+                "公式不会执行，仅显示文件中已有的缓存结果；复杂样式、合并单元格、图表、批注、宏和外部链接不渲染或执行。")))
     {
         this.file = file;
         this.options = options;
-        this.worksheet = worksheet;
+        this.worksheets = worksheets;
+    }
+
+    public IReadOnlyList<string> WorksheetNames => worksheets.Select(x => x.Name).ToArray();
+    public int ActiveWorksheetIndex => activeWorksheetIndex;
+
+    public void SelectWorksheet(int index)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if ((uint)index >= (uint)worksheets.Count) throw new ArgumentOutOfRangeException(nameof(index));
+        if (Volatile.Read(ref reading) != 0) throw new InvalidOperationException("Cannot change worksheets while a page reader is active.");
+        activeWorksheetIndex = index;
     }
 
     public async IAsyncEnumerable<TabularPage> ReadPagesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -64,6 +76,7 @@ public sealed class StreamingXlsxDocument : ViewerDocument, ITabularPreviewDocum
 
         try
         {
+            var worksheet = worksheets[activeWorksheetIndex];
             using var package = OpenXmlPackageGuard.Open(file, options);
             var sharedStrings = await XlsxPackageReader.ReadSharedStringsAsync(package, options, cancellationToken).ConfigureAwait(false);
             using var reader = package.OpenRequiredXml(worksheet.PartName);
@@ -117,10 +130,11 @@ internal static class XlsxPackageReader
     private const string PackageRelationshipNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
     private const string WorksheetRelationshipSuffix = "/worksheet";
 
-    public static XlsxWorksheet ReadFirstWorksheet(OpenXmlPackageGuard package)
+    public static IReadOnlyList<XlsxWorksheet> ReadWorksheets(OpenXmlPackageGuard package)
     {
         var relationships = ReadWorkbookRelationships(package);
         using var reader = package.OpenRequiredXml("xl/workbook.xml");
+        var worksheets = new List<XlsxWorksheet>();
 
         while (reader.Read())
         {
@@ -139,10 +153,12 @@ internal static class XlsxPackageReader
             if (!relationships.TryGetValue(relationshipId, out var target))
                 throw new FileRejectedException($"XLSX worksheet '{name}' references a missing or unsupported relationship.");
 
-            return new(name, ResolveWorkbookTarget(target));
+            worksheets.Add(new(name, ResolveWorkbookTarget(target)));
         }
 
-        throw new FileRejectedException("XLSX workbook does not contain a readable worksheet.");
+        if (worksheets.Count == 0)
+            throw new FileRejectedException("XLSX workbook does not contain a readable worksheet.");
+        return worksheets;
     }
 
     private static Dictionary<string, string> ReadWorkbookRelationships(OpenXmlPackageGuard package)
