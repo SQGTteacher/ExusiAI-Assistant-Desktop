@@ -6,6 +6,53 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class MishaSettingsParityTests
 {
     [Fact]
+    public async Task ImportedWorkspaceBindingSurvivesRestartAndUsesOnlyExusiAICopy()
+    {
+        using var root = new TemporaryDirectory();
+        var source = Path.Combine(root.Path, "classisland-source");
+        Directory.CreateDirectory(source);
+        var sourceSettings = Path.Combine(source, "Settings.json");
+        await File.WriteAllTextAsync(sourceSettings, """
+        {
+          "Theme":2,
+          "SelectedProfile":"",
+          "FutureMishaField":{"keep":true}
+        }
+        """);
+
+        var storage = Path.Combine(root.Path, "exusiai-store");
+        var first = new MishaPlatformStore(storage);
+        await first.AttachWorkspaceAsync(sourceSettings);
+        Assert.NotNull(first.Workspace);
+        Assert.NotEqual(Path.GetFullPath(sourceSettings), first.Workspace!.SettingsPath);
+
+        first.Workspace.Set("Theme", 1);
+        await first.SaveWorkspaceSettingsAsync();
+
+        var restored = new MishaPlatformStore(storage);
+        Assert.True(await restored.RestoreLastWorkspaceAsync());
+        Assert.Equal(1, restored.Workspace!.GetInt("Theme"));
+        Assert.Equal(Path.GetFullPath(source), restored.SourceRootDirectory);
+
+        var original = JsonNode.Parse(await File.ReadAllTextAsync(sourceSettings))!.AsObject();
+        Assert.Equal(2, original["Theme"]!.GetValue<int>());
+        Assert.True(original["FutureMishaField"]!["keep"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task CorruptWorkspaceBindingDoesNotBreakPluginStartup()
+    {
+        using var root = new TemporaryDirectory();
+        Directory.CreateDirectory(root.Path);
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "workspace-state.json"), "not-json");
+
+        var store = new MishaPlatformStore(root.Path);
+        Assert.False(await store.RestoreLastWorkspaceAsync());
+        Assert.Null(store.Workspace);
+        Assert.Null(store.Profile);
+    }
+
+    [Fact]
     public void SettingsCatalogCoversMishaSettingsNavigationSurface()
     {
         var ids = MishaSettingsCatalog.Categories.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);

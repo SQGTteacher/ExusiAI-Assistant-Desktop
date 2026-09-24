@@ -12,6 +12,7 @@ namespace ExusiAI.Plugin.MishaShowcase;
 /// </summary>
 internal sealed class MishaPlatformStore
 {
+    private const string StateFileName = "workspace-state.json";
     private readonly string storageRoot;
 
     public MishaPlatformStore(string? storageRoot = null)
@@ -29,18 +30,33 @@ internal sealed class MishaPlatformStore
 
     public event EventHandler? Changed;
 
+    public async Task<bool> RestoreLastWorkspaceAsync()
+    {
+        var statePath = Path.Combine(storageRoot, StateFileName);
+        if (!File.Exists(statePath)) return false;
+
+        try
+        {
+            var state = JsonNode.Parse(await File.ReadAllTextAsync(statePath)) as JsonObject;
+            var settingsPath = state?["SettingsPath"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(settingsPath) || !File.Exists(settingsPath))
+                return false;
+
+            await LoadImportedWorkspaceAsync(settingsPath, state?["SourceRootDirectory"]?.GetValue<string>());
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            // A stale/corrupt binding must never prevent the plugin or host from starting.
+            return false;
+        }
+    }
+
     public async Task AttachWorkspaceAsync(string settingsPath)
     {
         var imported = await ClassIslandWorkspaceImporter.ImportAsync(settingsPath, Path.Combine(storageRoot, "workspaces"));
-        SourceRootDirectory = imported.SourceRootDirectory;
-        Workspace = await ClassIslandWorkspace.LoadAsync(imported.SettingsPath);
-        Profile = null;
-
-        var profilePath = Workspace.SelectedProfilePath;
-        if (profilePath is not null && File.Exists(profilePath))
-            Profile = await ClassIslandProfileDocument.LoadAsync(profilePath);
-
-        Changed?.Invoke(this, EventArgs.Empty);
+        await LoadImportedWorkspaceAsync(imported.SettingsPath, imported.SourceRootDirectory);
+        await PersistWorkspaceBindingAsync();
     }
 
     public async Task OpenProfileAsync(string profilePath)
@@ -74,6 +90,33 @@ internal sealed class MishaPlatformStore
     }
 
     public int ResolveRotationWeek(DateTime date) => Workspace?.ResolveRotationWeek(date) ?? 1;
+
+    private async Task LoadImportedWorkspaceAsync(string settingsPath, string? sourceRootDirectory)
+    {
+        var workspace = await ClassIslandWorkspace.LoadAsync(settingsPath);
+        ClassIslandProfileDocument? profile = null;
+        var profilePath = workspace.SelectedProfilePath;
+        if (profilePath is not null && File.Exists(profilePath))
+            profile = await ClassIslandProfileDocument.LoadAsync(profilePath);
+
+        SourceRootDirectory = sourceRootDirectory;
+        Workspace = workspace;
+        Profile = profile;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task PersistWorkspaceBindingAsync()
+    {
+        if (Workspace is null) return;
+        Directory.CreateDirectory(storageRoot);
+        var state = new JsonObject
+        {
+            ["SettingsPath"] = Workspace.SettingsPath,
+            ["SourceRootDirectory"] = SourceRootDirectory,
+            ["SchemaVersion"] = 1
+        };
+        await ClassIslandWorkspace.WriteJsonAtomicAsync(Path.Combine(storageRoot, StateFileName), state);
+    }
 }
 
 internal sealed record ImportedClassIslandWorkspace(string SettingsPath, string SourceRootDirectory);
