@@ -21,9 +21,9 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     private readonly DispatcherTimer timer;
     private readonly List<Action<DateTime>> tickers = [];
     private readonly HashSet<string> warnedComponents = new(StringComparer.OrdinalIgnoreCase);
+    private readonly CoalescingRefreshQueue refreshQueue = new();
     private MishaMainWindow? window;
     private bool started;
-    private bool refreshing;
 
     public MishaMainWindowRuntime(MishaPlatformStore store, IExtensionLogger logger)
     {
@@ -42,7 +42,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         started = true;
         store.Changed += Store_OnChanged;
         timer.Start();
-        _ = RefreshAsync();
+        RequestRefresh();
     }
 
     public void Dispose()
@@ -54,20 +54,31 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         window?.CloseForShutdown();
         window = null;
         tickers.Clear();
+        refreshQueue.Reset();
     }
 
     private void Store_OnChanged(object? sender, EventArgs e)
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
-        if (dispatcher.CheckAccess()) _ = RefreshAsync();
-        else _ = dispatcher.InvokeAsync(() => _ = RefreshAsync());
+        if (dispatcher.CheckAccess()) RequestRefresh();
+        else _ = dispatcher.InvokeAsync(RequestRefresh);
     }
 
-    private async Task RefreshAsync()
+    private void RequestRefresh()
     {
-        if (refreshing) return;
-        refreshing = true;
+        if (started && refreshQueue.Request())
+            _ = RunRefreshLoopAsync();
+    }
+
+    private async Task RunRefreshLoopAsync()
+    {
+        while (started && refreshQueue.TakeNext())
+            await RefreshOnceAsync();
+    }
+
+    private async Task RefreshOnceAsync()
+    {
         try
         {
             var workspace = store.Workspace;
@@ -85,6 +96,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
             }
 
             var layout = await ClassIslandComponentLayoutDocument.LoadAsync(path);
+            if (!started) return;
             tickers.Clear();
             warnedComponents.Clear();
             var content = MishaNativeMainWindowRenderer.Build(
@@ -113,10 +125,6 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         {
             logger.Error("ClassIsland main-window runtime could not refresh.", exception);
             window?.Hide();
-        }
-        finally
-        {
-            refreshing = false;
         }
     }
 

@@ -13,6 +13,22 @@ namespace ExusiAI.Extension.Runtime.Tests;
 
 public sealed class RuntimeTests
 {
+    [Fact]
+    public void MishaRefreshQueueCoalescesChangesWithoutDroppingLatestRequest()
+    {
+        var queue = new CoalescingRefreshQueue();
+
+        Assert.True(queue.Request());
+        Assert.True(queue.TakeNext());
+
+        Assert.False(queue.Request());
+        Assert.False(queue.Request());
+        Assert.True(queue.TakeNext());
+        Assert.False(queue.TakeNext());
+
+        Assert.True(queue.Request());
+    }
+
     [Theory]
     [InlineData("../escape.dll")]
     [InlineData("..\\escape.dll")]
