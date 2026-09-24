@@ -24,6 +24,9 @@ internal sealed class ViewerWindow : Window
         Height = 860;
         MinWidth = 960;
         MinHeight = 640;
+        UseLayoutRounding = true;
+        SnapsToDevicePixels = true;
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         AllowDrop = true;
         Content = BuildShell();
