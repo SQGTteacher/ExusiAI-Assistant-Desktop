@@ -52,6 +52,7 @@ public sealed class StreamingDocxDocument : ViewerDocument, ITextPreviewDocument
         ObjectDisposedException.ThrowIf(disposed, this);
         if (Interlocked.Exchange(ref reading, 1) != 0) throw new InvalidOperationException("This document already has an active reader.");
         long offset = 0;
+        long totalCharacters = 0;
         var buffer = new StringBuilder(options.TextChunkCharacters);
         try
         {
@@ -61,28 +62,22 @@ public sealed class StreamingDocxDocument : ViewerDocument, ITextPreviewDocument
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (reader.NodeType != XmlNodeType.Element || reader.NamespaceURI != WordprocessingNamespace) continue;
-                switch (reader.LocalName)
+                string? block = reader.LocalName switch
                 {
-                    case "t":
-                        Append(buffer, await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
-                        break;
-                    case "tab":
-                        buffer.Append('\t');
-                        break;
-                    case "br":
-                    case "cr":
-                        buffer.AppendLine();
-                        break;
-                    case "p" when buffer.Length > 0 && buffer[^1] != '\n':
-                        buffer.AppendLine();
-                        break;
-                }
+                    "p" => await ReadParagraphAsync(reader, cancellationToken).ConfigureAwait(false),
+                    "tbl" => await ReadTableAsync(reader, cancellationToken).ConfigureAwait(false),
+                    _ => null
+                };
+                if (block is null) continue;
+                Append(buffer, block, ref totalCharacters);
 
-                if (buffer.Length < options.TextChunkCharacters) continue;
-                var text = buffer.ToString();
-                buffer.Clear();
-                yield return new(offset, text, false);
-                offset += text.Length;
+                while (buffer.Length >= options.TextChunkCharacters)
+                {
+                    var text = buffer.ToString(0, options.TextChunkCharacters);
+                    buffer.Remove(0, options.TextChunkCharacters);
+                    yield return new(offset, text, false);
+                    offset += text.Length;
+                }
             }
 
             if (buffer.Length > 0)
@@ -96,11 +91,109 @@ public sealed class StreamingDocxDocument : ViewerDocument, ITextPreviewDocument
         finally { Volatile.Write(ref reading, 0); }
     }
 
-    private void Append(StringBuilder buffer, string text)
+    private void Append(StringBuilder buffer, string text, ref long totalCharacters)
     {
-        if ((long)buffer.Length + text.Length > options.MaximumXmlCharacters)
+        totalCharacters = checked(totalCharacters + text.Length);
+        if (totalCharacters > options.MaximumXmlCharacters)
             throw new FileRejectedException("DOCX text exceeds the configured XML character safety limit.");
         buffer.Append(text);
+    }
+
+    private static async Task<string> ReadParagraphAsync(XmlReader source, CancellationToken cancellationToken)
+    {
+        using var reader = source.ReadSubtree();
+        var text = new StringBuilder();
+        string? style = null;
+        var numbered = false;
+
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (reader.NodeType != XmlNodeType.Element || reader.NamespaceURI != WordprocessingNamespace) continue;
+            switch (reader.LocalName)
+            {
+                case "pStyle":
+                    style = reader.GetAttribute("val", WordprocessingNamespace);
+                    break;
+                case "numPr":
+                    numbered = true;
+                    break;
+                case "t":
+                    text.Append(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
+                    break;
+                case "tab":
+                    text.Append('\t');
+                    break;
+                case "br":
+                case "cr":
+                    text.AppendLine();
+                    break;
+            }
+        }
+
+        var prefix = ResolveParagraphPrefix(style, numbered);
+        return prefix + text.ToString().TrimEnd() + Environment.NewLine;
+    }
+
+    private static string ResolveParagraphPrefix(string? style, bool numbered)
+    {
+        if (string.Equals(style, "Title", StringComparison.OrdinalIgnoreCase)) return "# ";
+        if (style?.StartsWith("Heading", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var suffix = style["Heading".Length..];
+            var level = int.TryParse(suffix, out var parsed) ? Math.Clamp(parsed, 1, 6) : 2;
+            return new string('#', level) + " ";
+        }
+        return numbered ? "• " : string.Empty;
+    }
+
+    private static async Task<string> ReadTableAsync(XmlReader source, CancellationToken cancellationToken)
+    {
+        using var reader = source.ReadSubtree();
+        var table = new StringBuilder();
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (reader.NodeType != XmlNodeType.Element ||
+                reader.NamespaceURI != WordprocessingNamespace ||
+                reader.LocalName != "tr") continue;
+            var cells = await ReadTableRowAsync(reader, cancellationToken).ConfigureAwait(false);
+            table.Append("| ").Append(string.Join(" | ", cells)).AppendLine(" |");
+        }
+        return table.AppendLine().ToString();
+    }
+
+    private static async Task<IReadOnlyList<string>> ReadTableRowAsync(XmlReader source, CancellationToken cancellationToken)
+    {
+        using var reader = source.ReadSubtree();
+        var cells = new List<string>();
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (reader.NodeType != XmlNodeType.Element ||
+                reader.NamespaceURI != WordprocessingNamespace ||
+                reader.LocalName != "tc") continue;
+            cells.Add(await ReadTableCellAsync(reader, cancellationToken).ConfigureAwait(false));
+        }
+        return cells;
+    }
+
+    private static async Task<string> ReadTableCellAsync(XmlReader source, CancellationToken cancellationToken)
+    {
+        using var reader = source.ReadSubtree();
+        var text = new StringBuilder();
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (reader.NodeType != XmlNodeType.Element || reader.NamespaceURI != WordprocessingNamespace) continue;
+            if (reader.LocalName == "t")
+                text.Append(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
+            else if (reader.LocalName == "tab")
+                text.Append(' ');
+            else if (reader.LocalName == "p" && text.Length > 0 && text[^1] != ' ')
+                text.Append(' ');
+        }
+        return text.ToString().Trim().Replace("|", "\\|", StringComparison.Ordinal);
     }
 
     public override ValueTask DisposeAsync()
