@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -35,6 +36,7 @@ internal sealed class ViewerWindow : Window
         PreviewMouseWheel += OnPreviewMouseWheel;
         PreviewDragOver += OnPreviewDragOver;
         Drop += OnDrop;
+        Closing += OnClosing;
         Closed += (_, _) => viewer.Dispose();
     }
 
@@ -94,6 +96,14 @@ internal sealed class ViewerWindow : Window
             e.Handled = true;
             await viewer.PickFileAsync();
         }
+        else if (control && e.Key == Key.S)
+        {
+            e.Handled = true;
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+                await viewer.SaveAsCurrentAsync();
+            else
+                await viewer.SaveCurrentAsync();
+        }
         else if (control && e.Key == Key.F)
         {
             e.Handled = true;
@@ -124,16 +134,26 @@ internal sealed class ViewerWindow : Window
             e.Handled = true;
             TogglePresentationMode();
         }
-        else if (viewer.CanNavigateSlides && e.Key is Key.PageDown or Key.Right or Key.Down or Key.Space)
+        else if (viewer.CanNavigateSlides &&
+                 Keyboard.FocusedElement is not TextBox &&
+                 e.Key is Key.PageDown or Key.Right or Key.Down or Key.Space)
         {
             e.Handled = true;
             await viewer.NextPageAsync();
         }
-        else if (viewer.CanNavigateSlides && e.Key is Key.PageUp or Key.Left or Key.Up)
+        else if (viewer.CanNavigateSlides &&
+                 Keyboard.FocusedElement is not TextBox &&
+                 e.Key is Key.PageUp or Key.Left or Key.Up)
         {
             e.Handled = true;
             await viewer.PreviousPageAsync();
         }
+    }
+
+    private void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (!viewer.ConfirmCanClose())
+            e.Cancel = true;
     }
 
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)

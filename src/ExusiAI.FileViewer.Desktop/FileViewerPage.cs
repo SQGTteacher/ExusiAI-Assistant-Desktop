@@ -118,7 +118,23 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     };
     private readonly StackPanel welcomeContent = new();
     private readonly Border welcomePanel;
+    private readonly TextBlock modeChipText = new()
+    {
+        Text = "只读",
+        FontSize = 11,
+        FontWeight = FontWeights.SemiBold
+    };
 
+    private readonly Button saveButton = CreateSecondaryButton("保存");
+    private readonly Button saveAsButton = CreateSecondaryButton("另存为");
+    private readonly Button editButton = CreateSecondaryButton("启用编辑");
+    private readonly Button undoButton = CreateSecondaryButton("撤销");
+    private readonly Button redoButton = CreateSecondaryButton("重做");
+    private readonly Button cutButton = CreateSecondaryButton("剪切");
+    private readonly Button copyButton = CreateSecondaryButton("复制");
+    private readonly Button pasteButton = CreateSecondaryButton("粘贴");
+    private readonly Button selectAllButton = CreateSecondaryButton("全选");
+    private readonly Button resetZoomButton = CreateSecondaryButton("重置缩放");
     private readonly Button loadMoreButton = CreateSecondaryButton("加载下一页");
     private readonly Button previousSlideButton = CreateSecondaryButton("上一页");
     private readonly Button nextSlideButton = CreateSecondaryButton("下一页");
@@ -143,6 +159,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private int currentSlideNumber;
     private bool disposed;
     private bool changingWorksheet;
+    private bool loadingTextPreview;
+    private bool textPreviewFullyLoaded;
+    private bool isDirty;
+    private Action? showHomeCommands;
     private Border? topBar;
     private Border? bottomBar;
     private Border? documentCanvas;
@@ -220,6 +240,36 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             if (changingWorksheet || worksheetBox.SelectedIndex < 0) return;
             await SelectWorksheetAsync(worksheetBox.SelectedIndex);
+        };
+
+        foreach (var button in new[]
+                 {
+                     saveButton, saveAsButton, editButton, undoButton, redoButton,
+                     cutButton, copyButton, pasteButton, selectAllButton
+                 })
+        {
+            button.Visibility = Visibility.Collapsed;
+        }
+
+        saveButton.IsEnabled = false;
+        saveButton.Click += async (_, _) => await SaveCurrentDocumentAsync();
+        saveAsButton.Click += async (_, _) => await SaveAsCurrentDocumentAsync();
+        editButton.Click += (_, _) => ToggleTextEditing();
+        undoButton.Click += (_, _) => ApplicationCommands.Undo.Execute(null, textPreview);
+        redoButton.Click += (_, _) => ApplicationCommands.Redo.Execute(null, textPreview);
+        cutButton.Click += (_, _) => ApplicationCommands.Cut.Execute(null, textPreview);
+        copyButton.Click += (_, _) => ApplicationCommands.Copy.Execute(null, textPreview);
+        pasteButton.Click += (_, _) => ApplicationCommands.Paste.Execute(null, textPreview);
+        selectAllButton.Click += (_, _) => ApplicationCommands.SelectAll.Execute(null, textPreview);
+        resetZoomButton.Click += (_, _) => ResetZoom();
+
+        textPreview.TextChanged += (_, _) =>
+        {
+            if (loadingTextPreview || textPreview.IsReadOnly || document is not IEditableTextDocument)
+                return;
+
+            isDirty = true;
+            UpdateEditingUi();
         };
 
         var slideSurface = new Border
@@ -316,35 +366,81 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             Padding = new Thickness(9, 4, 9, 4),
             CornerRadius = new CornerRadius(12),
-            Child = new TextBlock { Text = "只读", FontSize = 11, FontWeight = FontWeights.SemiBold }
+            Child = modeChipText
         };
         safetyChip.SetResourceReference(Border.BackgroundProperty, "AccentSoftBrush");
         Grid.SetColumn(safetyChip, 1);
         titleRow.Children.Add(safetyChip);
 
-        var documentCommands = new WrapPanel
+        var fileTabButton = CreateRibbonTabButton("文件");
+        var homeTabButton = CreateRibbonTabButton("开始");
+        var viewTabButton = CreateRibbonTabButton("查看");
+
+        var tabRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 0, 0, 4)
+            Margin = new Thickness(0, 0, 0, 5)
         };
-        AddCommand(documentCommands, openButton);
-        AddCommand(documentCommands, recentFilesBox);
-        AddCommand(documentCommands, worksheetBox);
+        tabRow.Children.Add(fileTabButton);
+        tabRow.Children.Add(homeTabButton);
+        tabRow.Children.Add(viewTabButton);
+
+        var fileCommands = new WrapPanel { Orientation = Orientation.Horizontal };
+        AddCommand(fileCommands, openButton);
+        AddCommand(fileCommands, recentFilesBox);
+        AddCommand(fileCommands, saveButton);
+        AddCommand(fileCommands, saveAsButton);
+
+        var homeCommands = new WrapPanel { Orientation = Orientation.Horizontal };
+        AddCommand(homeCommands, editButton);
+        AddCommand(homeCommands, undoButton);
+        AddCommand(homeCommands, redoButton);
+        AddCommand(homeCommands, cutButton);
+        AddCommand(homeCommands, copyButton);
+        AddCommand(homeCommands, pasteButton);
+        AddCommand(homeCommands, selectAllButton);
+        AddCommand(homeCommands, searchBox);
+        AddCommand(homeCommands, searchButton);
 
         var viewCommands = new WrapPanel { Orientation = Orientation.Horizontal };
-        AddCommand(viewCommands, searchBox);
-        AddCommand(viewCommands, searchButton);
+        AddCommand(viewCommands, worksheetBox);
         AddCommand(viewCommands, previousSlideButton);
         AddCommand(viewCommands, slideNumberBox);
         AddCommand(viewCommands, nextSlideButton);
         AddCommand(viewCommands, loadMoreButton);
         AddCommand(viewCommands, cancelButton);
+        AddCommand(viewCommands, resetZoomButton);
+
+        var commandHost = new Grid { MinHeight = 36 };
+        commandHost.Children.Add(fileCommands);
+        commandHost.Children.Add(homeCommands);
+        commandHost.Children.Add(viewCommands);
+
+        void SelectRibbonTab(WrapPanel selected, Button selectedTab)
+        {
+            foreach (var group in new[] { fileCommands, homeCommands, viewCommands })
+                group.Visibility = ReferenceEquals(group, selected) ? Visibility.Visible : Visibility.Collapsed;
+
+            foreach (var tab in new[] { fileTabButton, homeTabButton, viewTabButton })
+            {
+                if (ReferenceEquals(tab, selectedTab))
+                    tab.SetResourceReference(Button.BackgroundProperty, "AccentSoftBrush");
+                else
+                    tab.Background = Brushes.Transparent;
+            }
+        }
+
+        fileTabButton.Click += (_, _) => SelectRibbonTab(fileCommands, fileTabButton);
+        homeTabButton.Click += (_, _) => SelectRibbonTab(homeCommands, homeTabButton);
+        viewTabButton.Click += (_, _) => SelectRibbonTab(viewCommands, viewTabButton);
+        showHomeCommands = () => SelectRibbonTab(homeCommands, homeTabButton);
+        SelectRibbonTab(homeCommands, homeTabButton);
 
         topGrid.Children.Add(titleRow);
-        Grid.SetRow(documentCommands, 1);
-        topGrid.Children.Add(documentCommands);
-        Grid.SetRow(viewCommands, 2);
-        topGrid.Children.Add(viewCommands);
+        Grid.SetRow(tabRow, 1);
+        topGrid.Children.Add(tabRow);
+        Grid.SetRow(commandHost, 2);
+        topGrid.Children.Add(commandHost);
         top.Child = topGrid;
 
         var canvas = new Border
@@ -450,10 +546,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     }
 
     internal Task OpenFileAsync(string filePath) => OpenAsync(filePath);
+    internal Task SaveCurrentAsync() => SaveCurrentDocumentAsync();
+    internal Task SaveAsCurrentAsync() => SaveAsCurrentDocumentAsync();
 
     internal void FocusSearch()
     {
         if (!HasDocument) return;
+        showHomeCommands?.Invoke();
         searchBox.Focus();
         searchBox.SelectAll();
     }
@@ -476,11 +575,19 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         searchPane.Visibility = Visibility.Collapsed;
     }
 
-    private async Task OpenAsync(string filePath)
+    private async Task OpenAsync(string filePath, bool skipPendingPrompt = false)
     {
+        if (!skipPendingPrompt && !await ResolvePendingChangesAsync())
+            return;
+
         await CloseDocumentAsync();
 
+        loadingTextPreview = true;
         textPreview.Clear();
+        loadingTextPreview = false;
+        textPreview.IsReadOnly = true;
+        textPreviewFullyLoaded = false;
+        isDirty = false;
         tableRows.Clear();
         slideTitle.Text = string.Empty;
         slideTitle.Visibility = Visibility.Collapsed;
@@ -528,7 +635,21 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             {
                 case ITextPreviewDocument text:
                     textPreview.Visibility = Visibility.Visible;
-                    await LoadTextPreviewAsync(text, loadCancellation.Token);
+                    loadingTextPreview = true;
+                    try
+                    {
+                        textPreviewFullyLoaded = await LoadTextPreviewAsync(text, loadCancellation.Token);
+                    }
+                    finally
+                    {
+                        loadingTextPreview = false;
+                    }
+
+                    if (document is IEditableTextDocument && textPreviewFullyLoaded)
+                        status.Text = "TXT/Markdown 可编辑 · Ctrl+S 保存 · 保存采用同目录临时文件与原子替换";
+                    else if (document is IEditableTextDocument)
+                        status.Text = "文件超过 8 MiB 界面缓存，已保持只读以防止截断保存。";
+                    UpdateEditingUi();
                     break;
 
                 case IWorkbookPreviewDocument workbook:
@@ -575,15 +696,22 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
         finally
         {
+            loadingTextPreview = false;
             cancelButton.IsEnabled = false;
+            UpdateEditingUi();
         }
     }
 
-    private async Task LoadTextPreviewAsync(ITextPreviewDocument text, CancellationToken cancellationToken)
+    private async Task<bool> LoadTextPreviewAsync(ITextPreviewDocument text, CancellationToken cancellationToken)
     {
+        var complete = false;
         await foreach (var chunk in text.ReadChunksAsync(cancellationToken))
         {
-            if (chunk.IsFinal) break;
+            if (chunk.IsFinal)
+            {
+                complete = true;
+                break;
+            }
 
             var remaining = MaximumTextPreviewCharacters - textPreview.Text.Length;
             if (remaining <= 0)
@@ -603,6 +731,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
 
         textPreview.ScrollToHome();
+        return complete;
     }
 
     private async Task LoadNextTablePageAsync()
@@ -765,6 +894,17 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var timer = Stopwatch.StartNew();
         try
         {
+            if (document is IEditableTextDocument && textPreviewFullyLoaded)
+            {
+                SearchLoadedText(searchBox.Text.Trim());
+                timer.Stop();
+                searchPane.Visibility = searchResults.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+                status.Text = searchResults.Count == 0
+                    ? $"搜索 {timer.ElapsedMilliseconds:N0} ms · 未找到匹配项"
+                    : $"搜索 {timer.ElapsedMilliseconds:N0} ms · {searchResults.Count:N0} 个结果";
+                return;
+            }
+
             await using var searchDocument = await providers.OpenAsync(
                 document.Info.FilePath,
                 cancellationToken: loadCancellation.Token);
@@ -800,6 +940,39 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             cancelButton.IsEnabled = false;
         }
+    }
+
+    private void SearchLoadedText(string query)
+    {
+        var source = textPreview.Text;
+        var searchFrom = 0;
+        while (searchResults.Count < 50 && searchFrom <= source.Length - query.Length)
+        {
+            var index = source.IndexOf(query, searchFrom, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) break;
+
+            searchResults.Add(new(new(
+                ViewerSearchLocationKind.Text,
+                index,
+                0,
+                CreateSearchSnippet(source, index, query.Length))));
+            searchFrom = index + Math.Max(1, query.Length);
+        }
+    }
+
+    private static string CreateSearchSnippet(string text, int matchIndex, int matchLength)
+    {
+        const int context = 28;
+        var start = Math.Max(0, matchIndex - context);
+        var end = Math.Min(text.Length, matchIndex + matchLength + context);
+        var snippet = text[start..end]
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Replace("\t", " ", StringComparison.Ordinal)
+            .Trim();
+        if (start > 0) snippet = "…" + snippet;
+        if (end < text.Length) snippet += "…";
+        return snippet;
     }
 
     private async Task NavigateSearchResultAsync(ViewerSearchHit hit)
@@ -877,6 +1050,178 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         catch (InvalidDataException) { }
     }
 
+    private void ToggleTextEditing()
+    {
+        if (document is not IEditableTextDocument || !textPreviewFullyLoaded)
+            return;
+
+        textPreview.IsReadOnly = !textPreview.IsReadOnly;
+        UpdateEditingUi();
+        if (!textPreview.IsReadOnly)
+        {
+            textPreview.Focus();
+            status.Text = "编辑模式 · Ctrl+S 保存 · Ctrl+Z/Ctrl+Y 撤销与重做";
+        }
+        else
+        {
+            status.Text = isDirty ? "已退出编辑模式 · 仍有未保存更改" : "已退出编辑模式";
+        }
+    }
+
+    private void UpdateEditingUi()
+    {
+        var editable = document is IEditableTextDocument && textPreviewFullyLoaded;
+        foreach (var button in new[]
+                 {
+                     saveButton, saveAsButton, editButton, undoButton, redoButton,
+                     cutButton, copyButton, pasteButton, selectAllButton
+                 })
+        {
+            button.Visibility = editable ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        saveButton.IsEnabled = editable && isDirty;
+        saveAsButton.IsEnabled = editable;
+        editButton.IsEnabled = editable;
+        editButton.Content = textPreview.IsReadOnly ? "启用编辑" : "结束编辑";
+
+        var editing = editable && !textPreview.IsReadOnly;
+        undoButton.IsEnabled = editing;
+        redoButton.IsEnabled = editing;
+        cutButton.IsEnabled = editing;
+        pasteButton.IsEnabled = editing;
+        copyButton.IsEnabled = editable;
+        selectAllButton.IsEnabled = editable;
+
+        modeChipText.Text = editable
+            ? isDirty ? "已修改" : editing ? "编辑中" : "可编辑"
+            : "只读";
+
+        if (document is not null)
+            title.Text = document.Info.DisplayName + (isDirty ? " *" : string.Empty);
+    }
+
+    private async Task<bool> SaveCurrentDocumentAsync()
+    {
+        if (document is not IEditableTextDocument editable || !textPreviewFullyLoaded)
+            return false;
+
+        try
+        {
+            await editable.SaveTextAsync(textPreview.Text, document.Info.FilePath);
+            isDirty = false;
+            UpdateEditingUi();
+            status.Text = $"已保存 · {DateTime.Now:T}";
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            status.Text = $"保存失败：{exception.Message}";
+            MessageBox.Show(
+                $"无法保存文档。\n\n{exception.Message}",
+                "ExusiAI Viewer",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveAsCurrentDocumentAsync()
+    {
+        if (document is not IEditableTextDocument editable || !textPreviewFullyLoaded)
+            return false;
+
+        var extension = Path.GetExtension(document.Info.FilePath);
+        var dialog = new SaveFileDialog
+        {
+            Title = "另存为",
+            FileName = Path.GetFileName(document.Info.FilePath),
+            InitialDirectory = Path.GetDirectoryName(document.Info.FilePath),
+            Filter = extension.Equals(".txt", StringComparison.OrdinalIgnoreCase)
+                ? "纯文本|*.txt|Markdown|*.md;*.markdown"
+                : "Markdown|*.md;*.markdown|纯文本|*.txt",
+            AddExtension = true,
+            OverwritePrompt = true
+        };
+        if (dialog.ShowDialog() != true)
+            return false;
+
+        try
+        {
+            await editable.SaveTextAsync(textPreview.Text, dialog.FileName);
+            isDirty = false;
+            await OpenAsync(dialog.FileName, skipPendingPrompt: true);
+            status.Text = "已另存并切换到新文件。";
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            status.Text = $"另存为失败：{exception.Message}";
+            MessageBox.Show(
+                $"无法另存文档。\n\n{exception.Message}",
+                "ExusiAI Viewer",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return false;
+        }
+    }
+
+    private async Task<bool> ResolvePendingChangesAsync()
+    {
+        if (!isDirty)
+            return true;
+
+        var result = MessageBox.Show(
+            "当前文档有未保存的更改。是否先保存？",
+            "ExusiAI Viewer",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        return result switch
+        {
+            MessageBoxResult.Yes => await SaveCurrentDocumentAsync(),
+            MessageBoxResult.No => true,
+            _ => false
+        };
+    }
+
+    internal bool ConfirmCanClose()
+    {
+        if (!isDirty)
+            return true;
+
+        var result = MessageBox.Show(
+            "当前文档有未保存的更改。关闭前是否保存？",
+            "ExusiAI Viewer",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Cancel)
+            return false;
+        if (result == MessageBoxResult.No)
+            return true;
+        if (document is not IEditableTextDocument editable || !textPreviewFullyLoaded)
+            return false;
+
+        try
+        {
+            var text = textPreview.Text;
+            var path = document.Info.FilePath;
+            Task.Run(async () => await editable.SaveTextAsync(text, path)).GetAwaiter().GetResult();
+            isDirty = false;
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(
+                $"关闭前保存失败。\n\n{exception.Message}",
+                "ExusiAI Viewer",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return false;
+        }
+    }
+
     private async Task RefreshRecentFilesAsync()
     {
         recentFilesBox.Visibility = settings.RememberRecentFiles ? Visibility.Visible : Visibility.Collapsed;
@@ -894,7 +1239,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         });
         welcomeContent.Children.Add(new TextBlock
         {
-            Text = "拖入文件，或按 Ctrl+O。支持安全只读查看、全文搜索与演示模式。",
+            Text = "拖入文件，或按 Ctrl+O。TXT/Markdown 支持安全编辑与保存；Office 文档继续以可靠查看和演示为优先。",
             FontSize = 14,
             Margin = new Thickness(0, 8, 0, 24),
             Opacity = 0.72
@@ -937,6 +1282,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         if (document is not null) await document.DisposeAsync();
         document = null;
+        textPreview.IsReadOnly = true;
+        textPreviewFullyLoaded = false;
+        isDirty = false;
+        UpdateEditingUi();
     }
 
     private static Button CreatePrimaryButton(string text)
@@ -961,6 +1310,20 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             MinHeight = 32
         };
         button.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
+        button.SetResourceReference(Button.ForegroundProperty, "TextPrimaryBrush");
+        return button;
+    }
+
+    private static Button CreateRibbonTabButton(string text)
+    {
+        var button = new Button
+        {
+            Content = text,
+            Padding = new Thickness(13, 5, 13, 5),
+            MinHeight = 30,
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent
+        };
         button.SetResourceReference(Button.ForegroundProperty, "TextPrimaryBrush");
         return button;
     }

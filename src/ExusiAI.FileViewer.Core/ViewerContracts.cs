@@ -86,6 +86,14 @@ public interface ITextPreviewDocument
     IAsyncEnumerable<TextChunk> ReadChunksAsync(CancellationToken cancellationToken = default);
 }
 
+public interface IEditableTextDocument : ITextPreviewDocument
+{
+    ValueTask SaveTextAsync(
+        string text,
+        string destinationPath,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed record TabularPage(long StartRow, ImmutableArray<ImmutableArray<string>> Rows, bool IsFinal);
 
 public interface ITabularPreviewDocument
