@@ -43,14 +43,17 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         FontSize = 11,
         Opacity = 0.7,
-        Text = "安全只读查看器"
+        Text = "安全只读查看器",
+        TextTrimming = TextTrimming.CharacterEllipsis
     };
 
     private readonly TextBlock status = new()
     {
         FontSize = 11,
         Opacity = 0.72,
-        Text = "TXT · Markdown · CSV · DOCX · XLSX · PPTX"
+        Text = "TXT · Markdown · CSV · DOCX · XLSX · PPTX",
+        TextTrimming = TextTrimming.CharacterEllipsis,
+        VerticalAlignment = VerticalAlignment.Center
     };
 
     private readonly TextBox textPreview = new()
@@ -69,11 +72,30 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         Visibility = Visibility.Collapsed
     };
 
-    private readonly TextBlock slidePreview = new()
+    private readonly TextBlock slideTitle = new()
     {
-        FontSize = 24,
-        LineHeight = 38,
+        FontSize = 30,
+        FontWeight = FontWeights.SemiBold,
+        LineHeight = 39,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 0, 0, 20),
+        Visibility = Visibility.Collapsed
+    };
+
+    private readonly TextBlock slideBody = new()
+    {
+        FontSize = 20,
+        LineHeight = 32,
         TextWrapping = TextWrapping.Wrap
+    };
+
+    private readonly TextBlock slideEmpty = new()
+    {
+        FontSize = 16,
+        Opacity = 0.65,
+        Text = "此页没有可提取的文本内容。",
+        TextWrapping = TextWrapping.Wrap,
+        Visibility = Visibility.Collapsed
     };
 
     private readonly ScrollViewer slideScroll = new()
@@ -167,8 +189,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         welcomePanel = new Border
         {
-            Padding = new Thickness(48),
-            Child = welcomeContent
+            Child = new ScrollViewer
+            {
+                Padding = new Thickness(48),
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = welcomeContent
+            }
         };
         welcomePanel.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
 
@@ -195,17 +222,25 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             await SelectWorksheetAsync(worksheetBox.SelectedIndex);
         };
 
-        slideScroll.Content = new Border
+        var slideSurface = new Border
         {
-            MaxWidth = 920,
-            Margin = new Thickness(34),
-            Padding = new Thickness(54, 46, 54, 54),
+            MaxWidth = 1040,
+            MinHeight = 420,
+            Margin = new Thickness(24),
+            Padding = new Thickness(56, 46, 56, 54),
             CornerRadius = new CornerRadius(8),
-            Child = slidePreview
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        ((Border)slideScroll.Content).SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
-        ((Border)slideScroll.Content).SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        ((Border)slideScroll.Content).BorderThickness = new Thickness(1);
+        slideSurface.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        slideSurface.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        slideSurface.BorderThickness = new Thickness(1);
+
+        var slideContent = new StackPanel();
+        slideContent.Children.Add(slideTitle);
+        slideContent.Children.Add(slideBody);
+        slideContent.Children.Add(slideEmpty);
+        slideSurface.Child = slideContent;
+        slideScroll.Content = slideSurface;
 
         cancelButton.IsEnabled = false;
         cancelButton.Click += (_, _) => loadCancellation?.Cancel();
@@ -225,12 +260,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 await NavigateSlideAsync(target);
         };
 
-        zoom.ValueChanged += (_, _) =>
-        {
-            textPreview.FontSize = zoom.Value;
-            tablePreview.FontSize = Math.Max(11, zoom.Value - 1);
-            slidePreview.FontSize = Math.Max(18, zoom.Value + 7);
-        };
+        zoom.ValueChanged += (_, _) => ApplyZoom();
+        ApplyZoom();
 
         Content = BuildLayout();
 
@@ -270,6 +301,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var topGrid = new Grid();
         topGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         topGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        topGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var titleRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
         titleRow.ColumnDefinitions.Add(new ColumnDefinition());
@@ -290,29 +322,29 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         Grid.SetColumn(safetyChip, 1);
         titleRow.Children.Add(safetyChip);
 
-        var commandRow = new WrapPanel { Orientation = Orientation.Horizontal };
-        AddCommand(commandRow, openButton);
-        AddCommand(commandRow, recentFilesBox);
-        AddCommand(commandRow, worksheetBox);
+        var documentCommands = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        AddCommand(documentCommands, openButton);
+        AddCommand(documentCommands, recentFilesBox);
+        AddCommand(documentCommands, worksheetBox);
 
-        var separator1 = CreateSeparator();
-        commandRow.Children.Add(separator1);
-
-        AddCommand(commandRow, searchBox);
-        AddCommand(commandRow, searchButton);
-
-        var separator2 = CreateSeparator();
-        commandRow.Children.Add(separator2);
-
-        AddCommand(commandRow, previousSlideButton);
-        AddCommand(commandRow, slideNumberBox);
-        AddCommand(commandRow, nextSlideButton);
-        AddCommand(commandRow, loadMoreButton);
-        AddCommand(commandRow, cancelButton);
+        var viewCommands = new WrapPanel { Orientation = Orientation.Horizontal };
+        AddCommand(viewCommands, searchBox);
+        AddCommand(viewCommands, searchButton);
+        AddCommand(viewCommands, previousSlideButton);
+        AddCommand(viewCommands, slideNumberBox);
+        AddCommand(viewCommands, nextSlideButton);
+        AddCommand(viewCommands, loadMoreButton);
+        AddCommand(viewCommands, cancelButton);
 
         topGrid.Children.Add(titleRow);
-        Grid.SetRow(commandRow, 1);
-        topGrid.Children.Add(commandRow);
+        Grid.SetRow(documentCommands, 1);
+        topGrid.Children.Add(documentCommands);
+        Grid.SetRow(viewCommands, 2);
+        topGrid.Children.Add(viewCommands);
         top.Child = topGrid;
 
         var canvas = new Border
@@ -450,7 +482,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         textPreview.Clear();
         tableRows.Clear();
-        slidePreview.Text = string.Empty;
+        slideTitle.Text = string.Empty;
+        slideTitle.Visibility = Visibility.Collapsed;
+        slideBody.Text = string.Empty;
+        slideEmpty.Visibility = Visibility.Collapsed;
         searchResults.Clear();
 
         textPreview.Visibility = Visibility.Collapsed;
@@ -656,9 +691,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
             currentSlideNumber = slide.SlideNumber;
             slideNumberBox.Text = slide.SlideNumber.ToString(CultureInfo.CurrentCulture);
-            slidePreview.Text = string.IsNullOrWhiteSpace(slide.Text)
-                ? "此页没有可提取的文本内容。"
-                : slide.Text;
+            RenderSlideText(slide.Text);
 
             documentMeta.Text = $"{document.Info.FormatName} · 幻灯片 {slide.SlideNumber:N0} / {slides.SlideCount:N0}";
             status.Text = $"切页 {timer.ElapsedMilliseconds:N0} ms · 相邻页后台预热 · 有界缓存";
@@ -678,6 +711,46 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             slideNumberBox.IsEnabled = true;
             previousSlideButton.IsEnabled = currentSlideNumber > 1;
             nextSlideButton.IsEnabled = currentSlideNumber > 0 && currentSlideNumber < slides.SlideCount;
+        }
+    }
+
+    private void ApplyZoom()
+    {
+        textPreview.FontSize = zoom.Value;
+        tablePreview.FontSize = Math.Max(11, zoom.Value - 1);
+        slideTitle.FontSize = Math.Max(24, zoom.Value + 15);
+        slideTitle.LineHeight = slideTitle.FontSize * 1.3;
+        slideBody.FontSize = Math.Max(16, zoom.Value + 5);
+        slideBody.LineHeight = slideBody.FontSize * 1.55;
+    }
+
+    private void RenderSlideText(string text)
+    {
+        var lines = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        slideTitle.Text = string.Empty;
+        slideTitle.Visibility = Visibility.Collapsed;
+        slideBody.Text = string.Empty;
+
+        if (lines.Length == 0)
+        {
+            slideEmpty.Visibility = Visibility.Visible;
+            return;
+        }
+
+        slideEmpty.Visibility = Visibility.Collapsed;
+        if (lines[0].Length <= 90)
+        {
+            slideTitle.Text = lines[0];
+            slideTitle.Visibility = Visibility.Visible;
+            slideBody.Text = string.Join(Environment.NewLine + Environment.NewLine, lines.Skip(1));
+        }
+        else
+        {
+            slideBody.Text = string.Join(Environment.NewLine + Environment.NewLine, lines);
         }
     }
 
