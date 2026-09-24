@@ -22,6 +22,7 @@ public sealed record ThemeDefinition(
     ThemePalette? DarkPalette = null)
 {
     public bool FollowsSystem => DarkPalette is not null;
+    public string ModeGroup => FollowsSystem ? "自动" : IsDark ? "深色主题" : "浅色主题";
 }
 
 public static class ThemeCatalog
@@ -39,9 +40,11 @@ public static class ThemeCatalog
     public static IReadOnlyList<ThemeDefinition> All { get; } =
     [
         new("system", "跟随系统", "自动匹配 Windows 深浅色，并保持能天使的红黑白金视觉基调", false, Light, Dark),
-        new("exusiai", "Exusiai", "能天使主题：深石墨黑、黑白层级、酒红强调与光环金点缀", true, Dark),
         new("paper", "Paper", "克制清晰的暖白工作区", false,
             new("#EDF7F5F0", "#F9FFFDF8", "#E8EEE9E1", "#24231F", "#706E66", "#9ED8D3C8", "#3568D4", "#D8E4EDFF", "#2E8B68", "#B97818", "#C84B55")),
+        new("solarized", "Solarized Light", "适合长时间阅读的低对比浅色", false,
+            new("#EDFDF6E3", "#F9FFFBED", "#E8EEE8D5", "#586E75", "#7C8B8E", "#9ECBC4B4", "#268BD2", "#D8DCEAF0", "#2AA198", "#B58900", "#DC322F")),
+        new("exusiai", "Exusiai", "能天使主题：深石墨黑、黑白层级、酒红强调与光环金点缀", true, Dark),
         new("graphite", "Graphite", "中性的深灰编辑器配色", true,
             new("#EA17191C", "#EA202327", "#DC292D32", "#F2F4F7", "#AAB0BA", "#70464B53", "#7DA2F8", "#87314360", "#55C59A", "#E8B15B", "#ED7784")),
         new("nord", "Nord", "冷静的极地蓝灰色调", true,
@@ -51,9 +54,7 @@ public static class ThemeCatalog
         new("dracula", "Dracula", "紫色强调的经典暗色方案", true,
             new("#EA21222C", "#EA282A36", "#DC343746", "#F8F8F2", "#B7B8C3", "#705A5D72", "#BD93F9", "#71463264", "#50FA7B", "#F1FA8C", "#FF5555")),
         new("catppuccin", "Catppuccin", "柔和低刺激的摩卡色板", true,
-            new("#EA181825", "#EA1E1E2E", "#DC313244", "#CDD6F4", "#A6ADC8", "#70585B70", "#CBA6F7", "#704B3E63", "#A6E3A1", "#F9E2AF", "#F38BA8")),
-        new("solarized", "Solarized Light", "适合长时间阅读的低对比浅色", false,
-            new("#EDFDF6E3", "#F9FFFBED", "#E8EEE8D5", "#586E75", "#7C8B8E", "#9ECBC4B4", "#268BD2", "#D8DCEAF0", "#2AA198", "#B58900", "#DC322F"))
+            new("#EA181825", "#EA1E1E2E", "#DC313244", "#CDD6F4", "#A6ADC8", "#70585B70", "#CBA6F7", "#704B3E63", "#A6E3A1", "#F9E2AF", "#F38BA8"))
     ];
 
     public static ThemeDefinition Find(string? id) =>

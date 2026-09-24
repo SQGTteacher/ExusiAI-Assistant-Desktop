@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ExusiAI.Core;
@@ -271,12 +273,15 @@ public sealed partial class ThemeViewModel : ObservableObject
         this.settings = settings;
         this.logger = logger;
         Options = theme.AvailableThemes;
+        OptionsView = CollectionViewSource.GetDefaultView(Options);
+        OptionsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ThemeDefinition.ModeGroup)));
         BackdropOptions = backdrop.Options;
         selectedOption = theme.SelectedTheme;
         selectedBackdrop = BackdropOptions.First(x => x.Value == backdrop.Selection);
     }
 
     public IReadOnlyList<ThemeDefinition> Options { get; }
+    public ICollectionView OptionsView { get; }
     public IReadOnlyList<BackdropOption> BackdropOptions { get; }
 
     partial void OnSelectedOptionChanged(ThemeDefinition value)

@@ -29,5 +29,6 @@ public partial class App : Application
         Resources["SurfaceAltBrush"] = new SolidColorBrush(Color.FromRgb(236, 239, 244));
         Resources["BorderBrush"] = new SolidColorBrush(Color.FromRgb(210, 215, 224));
         Resources["TextPrimaryBrush"] = new SolidColorBrush(Color.FromRgb(28, 31, 38));
+        Resources["TextSecondaryBrush"] = new SolidColorBrush(Color.FromRgb(92, 99, 112));
     }
 }

@@ -44,15 +44,9 @@ internal static class MishaUi
 
     public static FrameworkElement SettingRow(string label, string description, FrameworkElement editor)
     {
-        var wrapper = new Grid();
-        wrapper.RowDefinitions.Add(new RowDefinition());
-        wrapper.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var wrapper = new StackPanel { Margin = new Thickness(0, 2, 0, 0) };
 
-        var grid = new Grid { MinHeight = 62 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition());
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 8, 20, 8) };
+        var info = new StackPanel { Margin = new Thickness(0, 8, 0, 4) };
         info.Children.Add(new TextBlock { Text = label, FontSize = 13.5, FontWeight = FontWeights.SemiBold });
         if (!string.IsNullOrWhiteSpace(description))
         {
@@ -60,17 +54,13 @@ internal static class MishaUi
             note.Margin = new Thickness(0, 3, 0, 0);
             info.Children.Add(note);
         }
-        grid.Children.Add(info);
+        wrapper.Children.Add(info);
 
         editor.VerticalAlignment = VerticalAlignment.Center;
-        editor.Margin = new Thickness(8, 6, 0, 6);
-        Grid.SetColumn(editor, 1);
-        grid.Children.Add(editor);
-        wrapper.Children.Add(grid);
-
-        var separator = new Separator { Opacity = 0.45 };
-        Grid.SetRow(separator, 1);
-        wrapper.Children.Add(separator);
+        editor.HorizontalAlignment = double.IsNaN(editor.Width) ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        editor.Margin = new Thickness(0, 4, 0, 10);
+        wrapper.Children.Add(editor);
+        wrapper.Children.Add(new Separator { Opacity = 0.45 });
         return wrapper;
     }
 

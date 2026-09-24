@@ -9,27 +9,140 @@
     <SolidColorBrush x:Key="AccentBrush" Color="#E6507A" />
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#33E6507A" />
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F6F7FA" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A6ADBC" />
+
     <Style TargetType="Window">
-      <Setter Property="Background" Value="{StaticResource AppBackgroundBrush}" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="{DynamicResource AppBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
+    </Style>
+    <Style TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
     </Style>
     <Style TargetType="Button">
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-      <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
-      <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="12,7" />
     </Style>
     <Style TargetType="TextBox">
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-      <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
-      <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
-      <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="9,6" />
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style x:Key="ViewerComboBoxItem" TargetType="ComboBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBoxItem">
+            <Border x:Name="ItemRoot" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+              <ContentPresenter />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="ItemRoot" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="ItemRoot" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <Style TargetType="ComboBox">
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-      <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="10,6,34,6" />
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="ItemContainerStyle" Value="{StaticResource ViewerComboBoxItem}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBox">
+            <Grid>
+              <Border x:Name="Chrome"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="8" />
+              <ContentPresenter Margin="{TemplateBinding Padding}"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Left"
+                                Content="{TemplateBinding SelectionBoxItem}"
+                                ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                TextElement.Foreground="{TemplateBinding Foreground}"
+                                IsHitTestVisible="False" />
+              <Path Width="9" Height="5" Margin="0,0,12,0"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Data="M 0 0 L 4.5 4.5 L 9 0"
+                    Stroke="{DynamicResource TextSecondaryBrush}"
+                    StrokeThickness="1.5"
+                    StrokeLineJoin="Round"
+                    IsHitTestVisible="False" />
+              <ToggleButton Focusable="False"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ClickMode="Press"
+                            IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Border Background="Transparent" />
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <Popup x:Name="PART_Popup"
+                     Placement="Bottom"
+                     IsOpen="{TemplateBinding IsDropDownOpen}"
+                     AllowsTransparency="True"
+                     PopupAnimation="Fade"
+                     MinWidth="{TemplateBinding ActualWidth}">
+                <Border Margin="0,4,0,0"
+                        Padding="4"
+                        MaxHeight="360"
+                        Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled"
+                                CanContentScroll="True">
+                    <ItemsPresenter />
+                  </ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ListBoxItem">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="8,6" />
     </Style>
   </Application.Resources>
 </Application>
