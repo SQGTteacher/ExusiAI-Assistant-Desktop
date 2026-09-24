@@ -13,6 +13,10 @@ public sealed class MishaShowcasePlugin : ExtensionPluginBase, IWpfNavigationExt
     {
         await base.InitializeAsync(context, cancellationToken);
         store = new MishaPlatformStore();
+        if (await store.RestoreLastWorkspaceAsync())
+            context.Logger.Information("Restored the last imported ClassIsland workspace from the ExusiAI data copy.");
+        else
+            context.Logger.Information("No reusable ClassIsland workspace binding was found; import is required once.");
         context.Logger.Information("ClassIsland 2.2 Misha feature port initialized; porter: SQGTteacher.");
     }
 
