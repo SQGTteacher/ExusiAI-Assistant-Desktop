@@ -10,7 +10,6 @@
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Abstractions\ExusiAI.Extension.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.SDK\ExusiAI.Extension.SDK.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
-    <ProjectReference Include="..\..\src\ExusiAI.FileViewer.Core\ExusiAI.FileViewer.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="package.json" CopyToOutputDirectory="PreserveNewest" />

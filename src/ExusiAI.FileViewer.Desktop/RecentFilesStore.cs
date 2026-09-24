@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace ExusiAI.Plugin.FileViewer;
+namespace ExusiAI.FileViewer.Desktop;
 
 internal sealed record RecentFileEntry(string Path, string DisplayName, DateTimeOffset LastOpenedUtc);
 

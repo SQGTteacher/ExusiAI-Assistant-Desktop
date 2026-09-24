@@ -3,7 +3,6 @@ using ExusiAI.Extension.Abstractions;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.SDK;
 using ExusiAI.Extension.Wpf;
-using ExusiAI.FileViewer.Core;
 using ExusiAI.Plugin.FileViewer;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -12,7 +11,7 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class FileViewerRuntimeTests
 {
     [Fact]
-    public async Task PackageLocalCoreDependencyLoadsAndPageCanBeCreated()
+    public async Task SettingsOnlyPluginLoadsWithoutViewerCoreAndPageCanBeCreated()
     {
         var root = Path.Combine(Path.GetTempPath(), "exusiai-file-viewer-tests", Guid.NewGuid().ToString("N"));
         var package = Path.Combine(root, "file-viewer");
@@ -39,7 +38,6 @@ public sealed class FileViewerRuntimeTests
                 Path.Combine(package, "package.json"),
                 JsonSerializer.Serialize(manifest, ManifestJson.Options));
             File.Copy(typeof(FileViewerPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Plugin.FileViewer.dll"));
-            File.Copy(typeof(FileViewerProviderRegistry).Assembly.Location, Path.Combine(package, "ExusiAI.FileViewer.Core.dll"));
             File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
 
             await using (var runtime = new ExtensionRuntime(
@@ -52,6 +50,9 @@ public sealed class FileViewerRuntimeTests
 
                 var entry = Assert.Single(runtime.Entries);
                 Assert.Equal(PackageState.Running, entry.State);
+                Assert.DoesNotContain(
+                    typeof(FileViewerPlugin).Assembly.GetReferencedAssemblies(),
+                    reference => reference.Name == "ExusiAI.FileViewer.Core");
                 var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
                 var page = Assert.Single(navigation.GetNavigationPages());
                 Assert.Equal("file-viewer.settings", page.Route);

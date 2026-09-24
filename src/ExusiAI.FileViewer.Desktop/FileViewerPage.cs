@@ -11,7 +11,7 @@ using System.Xml;
 using ExusiAI.FileViewer.Core;
 using Microsoft.Win32;
 
-namespace ExusiAI.Plugin.FileViewer;
+namespace ExusiAI.FileViewer.Desktop;
 
 internal sealed class FileViewerPage : UserControl, IDisposable
 {
@@ -27,6 +27,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     });
 
     private readonly RecentFilesStore recentFilesStore = new();
+    private readonly ViewerSettings settings;
     private readonly ObservableCollection<string> tableRows = [];
     private readonly ObservableCollection<SearchResultOption> searchResults = [];
 
@@ -117,8 +118,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private int currentSlideNumber;
     private bool disposed;
 
-    public FileViewerPage()
+    public FileViewerPage(ViewerSettings settings)
     {
+        this.settings = settings;
+        zoom.Value = Math.Clamp(15 * settings.DefaultZoomPercent / 100d, zoom.Minimum, zoom.Maximum);
         SetResourceReference(BackgroundProperty, "AppBackgroundBrush");
 
         tablePreview = new ListBox
@@ -413,8 +416,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             document = await providers.OpenAsync(filePath, cancellationToken: loadCancellation.Token);
             timer.Stop();
 
-            await recentFilesStore.AddAsync(filePath, loadCancellation.Token);
-            await RefreshRecentFilesAsync();
+            if (settings.RememberRecentFiles)
+            {
+                await recentFilesStore.AddAsync(filePath, loadCancellation.Token);
+                await RefreshRecentFilesAsync();
+            }
 
             title.Text = document.Info.DisplayName;
             documentMeta.Text = $"{document.Info.FormatName} · {FormatBytes(document.Info.Length)} · 打开 {timer.ElapsedMilliseconds:N0} ms";
@@ -693,7 +699,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     private async Task RefreshRecentFilesAsync()
     {
-        recentFilesBox.ItemsSource = await recentFilesStore.LoadAsync();
+        recentFilesBox.Visibility = settings.RememberRecentFiles ? Visibility.Visible : Visibility.Collapsed;
+        recentFilesBox.ItemsSource = settings.RememberRecentFiles ? await recentFilesStore.LoadAsync() : null;
     }
 
     private async Task CloseDocumentAsync()
