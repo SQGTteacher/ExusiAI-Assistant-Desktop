@@ -94,6 +94,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         CornerRadius = new CornerRadius(10),
         Visibility = Visibility.Collapsed
     };
+    private readonly StackPanel welcomeContent = new();
+    private readonly Border welcomePanel;
 
     private readonly Button loadMoreButton = CreateSecondaryButton("加载下一页");
     private readonly Button previousSlideButton = CreateSecondaryButton("上一页");
@@ -117,6 +119,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private IAsyncEnumerator<TabularPage>? tablePages;
     private int currentSlideNumber;
     private bool disposed;
+    private Border? topBar;
+    private Border? bottomBar;
+    private Border? documentCanvas;
+
+    public event EventHandler<string>? DocumentOpened;
+    public bool HasDocument => document is not null;
+    public bool CanNavigateSlides => document is ISlidePreviewDocument;
 
     public FileViewerPage(ViewerSettings settings)
     {
@@ -153,6 +162,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             if (searchResultList.SelectedItem is SearchResultOption result)
                 await NavigateSearchResultAsync(result.Hit);
         };
+
+        welcomePanel = new Border
+        {
+            Padding = new Thickness(48),
+            Child = welcomeContent
+        };
+        welcomePanel.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
 
         recentFilesBox.DisplayMemberPath = nameof(RecentFileEntry.DisplayName);
         recentFilesBox.SelectionChanged += async (_, _) =>
@@ -210,7 +226,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         Content = BuildLayout();
 
-        Loaded += async (_, _) => await RefreshRecentFilesAsync();
+        Loaded += async (_, _) =>
+        {
+            await RefreshRecentFilesAsync();
+            await RefreshWelcomeAsync();
+        };
         Unloaded += (_, _) => loadCancellation?.Cancel();
     }
 
@@ -237,6 +257,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         };
         top.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
         top.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        topBar = top;
 
         var topGrid = new Grid();
         topGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -294,11 +315,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         };
         canvas.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
         canvas.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        documentCanvas = canvas;
 
         var contentGrid = new Grid();
         contentGrid.Children.Add(textPreview);
         contentGrid.Children.Add(tablePreview);
         contentGrid.Children.Add(slideScroll);
+        contentGrid.Children.Add(welcomePanel);
         canvas.Child = contentGrid;
 
         var resultHeader = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 0, 0, 10) };
@@ -338,6 +361,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         };
         bottom.SetResourceReference(Border.BackgroundProperty, "SurfaceAltBrush");
         bottom.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        bottomBar = bottom;
 
         var bottomGrid = new Grid();
         bottomGrid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -370,7 +394,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         return root;
     }
 
-    private async void OpenButton_OnClick(object sender, RoutedEventArgs e)
+    private async void OpenButton_OnClick(object sender, RoutedEventArgs e) => await PickFileAsync();
+
+    internal async Task PickFileAsync()
     {
         var picker = new OpenFileDialog
         {
@@ -383,6 +409,31 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     }
 
     internal Task OpenFileAsync(string filePath) => OpenAsync(filePath);
+
+    internal void FocusSearch()
+    {
+        if (!HasDocument) return;
+        searchBox.Focus();
+        searchBox.SelectAll();
+    }
+
+    internal void ZoomBy(double delta) => zoom.Value = Math.Clamp(zoom.Value + delta, zoom.Minimum, zoom.Maximum);
+    internal void ResetZoom() => zoom.Value = Math.Clamp(15 * settings.DefaultZoomPercent / 100d, zoom.Minimum, zoom.Maximum);
+    internal Task PreviousPageAsync() => NavigateSlideAsync(currentSlideNumber - 1);
+    internal Task NextPageAsync() => NavigateSlideAsync(currentSlideNumber + 1);
+
+    internal void SetPresentationMode(bool enabled)
+    {
+        if (topBar is not null) topBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        if (bottomBar is not null) bottomBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        if (documentCanvas is not null)
+        {
+            documentCanvas.Margin = enabled ? new Thickness(0) : new Thickness(16);
+            documentCanvas.CornerRadius = enabled ? new CornerRadius(0) : new CornerRadius(10);
+            documentCanvas.BorderThickness = enabled ? new Thickness(0) : new Thickness(1);
+        }
+        searchPane.Visibility = Visibility.Collapsed;
+    }
 
     private async Task OpenAsync(string filePath)
     {
@@ -404,6 +455,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideNumberBox.Visibility = Visibility.Collapsed;
 
         currentSlideNumber = 0;
+        welcomePanel.Visibility = Visibility.Collapsed;
         loadCancellation = new CancellationTokenSource();
         cancelButton.IsEnabled = true;
         title.Text = Path.GetFileName(filePath);
@@ -423,6 +475,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             }
 
             title.Text = document.Info.DisplayName;
+            DocumentOpened?.Invoke(this, document.Info.FilePath);
             documentMeta.Text = $"{document.Info.FormatName} · {FormatBytes(document.Info.Length)} · 打开 {timer.ElapsedMilliseconds:N0} ms";
             status.Text = "安全只读 · 不执行宏、脚本、外部链接或嵌入对象";
 
@@ -456,10 +509,12 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         catch (UnsupportedFileFormatException)
         {
             status.Text = "此格式尚未启用可靠 Provider。DOC、XLS、PPT、RTF 当前明确为未实现。";
+            welcomePanel.Visibility = Visibility.Visible;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or XmlException)
         {
             status.Text = $"文件被安全拒绝：{exception.Message}";
+            welcomePanel.Visibility = Visibility.Visible;
         }
         finally
         {
@@ -701,6 +756,49 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         recentFilesBox.Visibility = settings.RememberRecentFiles ? Visibility.Visible : Visibility.Collapsed;
         recentFilesBox.ItemsSource = settings.RememberRecentFiles ? await recentFilesStore.LoadAsync() : null;
+    }
+
+    private async Task RefreshWelcomeAsync()
+    {
+        welcomeContent.Children.Clear();
+        welcomeContent.Children.Add(new TextBlock
+        {
+            Text = "打开课堂文档",
+            FontSize = 30,
+            FontWeight = FontWeights.SemiBold
+        });
+        welcomeContent.Children.Add(new TextBlock
+        {
+            Text = "拖入文件，或按 Ctrl+O。支持安全只读查看、全文搜索与演示模式。",
+            FontSize = 14,
+            Margin = new Thickness(0, 8, 0, 24),
+            Opacity = 0.72
+        });
+
+        var open = CreatePrimaryButton("选择文件");
+        open.HorizontalAlignment = HorizontalAlignment.Left;
+        open.Click += async (_, _) => await PickFileAsync();
+        welcomeContent.Children.Add(open);
+
+        if (!settings.RememberRecentFiles) return;
+        var recent = await recentFilesStore.LoadAsync();
+        if (recent.Count == 0) return;
+        welcomeContent.Children.Add(new TextBlock
+        {
+            Text = "最近使用",
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 30, 0, 10)
+        });
+        foreach (var item in recent.Take(6))
+        {
+            var button = CreateSecondaryButton(item.DisplayName);
+            button.HorizontalContentAlignment = HorizontalAlignment.Left;
+            button.ToolTip = item.Path;
+            button.Margin = new Thickness(0, 0, 0, 6);
+            button.Click += async (_, _) => await OpenAsync(item.Path);
+            welcomeContent.Children.Add(button);
+        }
     }
 
     private async Task CloseDocumentAsync()
