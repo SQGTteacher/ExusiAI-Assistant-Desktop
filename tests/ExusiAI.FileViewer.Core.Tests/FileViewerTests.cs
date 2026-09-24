@@ -11,7 +11,7 @@ public sealed class FileViewerTests : IDisposable
     public FileViewerTests() => Directory.CreateDirectory(directory);
 
     [Fact]
-    public async Task Text_provider_reads_incrementally_without_edit_capability()
+    public async Task Text_provider_reads_incrementally_and_exposes_safe_edit_capability()
     {
         var path = Path.Combine(directory, "lesson.md");
         await File.WriteAllTextAsync(path, new string('课', 5000), new UTF8Encoding(false));
@@ -24,8 +24,30 @@ public sealed class FileViewerTests : IDisposable
 
         Assert.True(chunks.Count >= 5);
         Assert.True(chunks[^1].IsFinal);
-        Assert.True(document.Info.IsReadOnly);
-        Assert.False(document.Info.Capabilities.HasFlag(ViewerCapabilities.Edit));
+        Assert.False(document.Info.IsReadOnly);
+        Assert.True(document.Info.Capabilities.HasFlag(ViewerCapabilities.Edit));
+        Assert.True(document.Info.Capabilities.HasFlag(ViewerCapabilities.Save));
+        Assert.IsAssignableFrom<IEditableTextDocument>(document);
+    }
+
+    [Fact]
+    public async Task Text_editor_atomically_saves_and_preserves_utf8_bom()
+    {
+        var path = Path.Combine(directory, "lesson.txt");
+        var original = Encoding.UTF8.GetBytes("旧内容");
+        await File.WriteAllBytesAsync(path, [0xEF, 0xBB, 0xBF, .. original]);
+
+        await using var opened = await CreateRegistry().OpenAsync(path);
+        var editable = Assert.IsAssignableFrom<IEditableTextDocument>(opened);
+        await editable.SaveTextAsync("新内容\r\n第二行", path);
+
+        var saved = await File.ReadAllBytesAsync(path);
+        Assert.True(saved.Length >= 3);
+        Assert.Equal((byte)0xEF, saved[0]);
+        Assert.Equal((byte)0xBB, saved[1]);
+        Assert.Equal((byte)0xBF, saved[2]);
+        Assert.Equal("新内容\r\n第二行", Encoding.UTF8.GetString(saved, 3, saved.Length - 3));
+        Assert.Empty(Directory.EnumerateFiles(directory, "*.tmp", SearchOption.TopDirectoryOnly));
     }
 
     [Fact]
