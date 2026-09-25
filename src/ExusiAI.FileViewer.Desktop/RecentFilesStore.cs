@@ -68,6 +68,13 @@ internal sealed class RecentFilesStore
         finally { gate.Release(); }
     }
 
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try { await SaveCoreAsync([], cancellationToken); }
+        finally { gate.Release(); }
+    }
+
     private async Task<List<RecentFileEntry>> LoadCoreAsync(CancellationToken cancellationToken)
     {
         try

@@ -56,6 +56,15 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         VerticalAlignment = VerticalAlignment.Center
     };
 
+    private readonly TextBlock textStatistics = new()
+    {
+        FontSize = 11,
+        Opacity = 0.72,
+        Margin = new Thickness(16, 0, 16, 0),
+        VerticalAlignment = VerticalAlignment.Center,
+        Visibility = Visibility.Collapsed
+    };
+
     private readonly TextBox textPreview = new()
     {
         IsReadOnly = true,
@@ -116,6 +125,15 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         CornerRadius = new CornerRadius(10),
         Visibility = Visibility.Collapsed
     };
+    private readonly StackPanel documentInfoContent = new();
+    private readonly Border documentInfoPane = new()
+    {
+        Width = 330,
+        Margin = new Thickness(0, 16, 16, 16),
+        Padding = new Thickness(18),
+        CornerRadius = new CornerRadius(10),
+        Visibility = Visibility.Collapsed
+    };
     private readonly StackPanel welcomeContent = new();
     private readonly Border welcomePanel;
     private readonly TextBlock modeChipText = new()
@@ -139,6 +157,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly Button previousSlideButton = CreateSecondaryButton("上一页");
     private readonly Button nextSlideButton = CreateSecondaryButton("下一页");
     private readonly Button cancelButton = CreateSecondaryButton("取消");
+    private readonly Button reloadButton = CreateSecondaryButton("重新加载");
+    private readonly Button documentInfoButton = CreateSecondaryButton("文档信息");
+    private readonly Button openFolderButton = CreateSecondaryButton("打开位置");
+    private readonly Button copyPathButton = CreateSecondaryButton("复制路径");
+    private readonly Button clearRecentButton = CreateSecondaryButton("清除最近记录");
+    private readonly Button previousSearchButton = CreateSecondaryButton("上一项");
+    private readonly Button nextSearchButton = CreateSecondaryButton("下一项");
+    private readonly Button wrapTextButton = CreateSecondaryButton("自动换行");
     private readonly TextBox slideNumberBox = new() { Width = 56, ToolTip = "输入幻灯片页码并按 Enter" };
     private readonly TextBox searchBox = new() { Width = 230, ToolTip = "搜索当前文档全部可索引内容" };
     private readonly ComboBox recentFilesBox = new() { Width = 205, ToolTip = "最近打开" };
@@ -162,6 +188,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private bool loadingTextPreview;
     private bool textPreviewFullyLoaded;
     private bool isDirty;
+    private bool externalChangePending;
+    private FileSystemWatcher? fileWatcher;
+    private DateTime lastKnownWriteTimeUtc;
+    private readonly System.Windows.Threading.DispatcherTimer statisticsTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(250)
+    };
     private Action? showHomeCommands;
     private Border? topBar;
     private Border? bottomBar;
@@ -262,6 +295,26 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         pasteButton.Click += (_, _) => ApplicationCommands.Paste.Execute(null, textPreview);
         selectAllButton.Click += (_, _) => ApplicationCommands.SelectAll.Execute(null, textPreview);
         resetZoomButton.Click += (_, _) => ResetZoom();
+        reloadButton.Click += async (_, _) => await ReloadCurrentDocumentAsync();
+        documentInfoButton.Click += (_, _) => ToggleDocumentInfo();
+        openFolderButton.Click += (_, _) => OpenCurrentFileLocation();
+        copyPathButton.Click += (_, _) => CopyCurrentFilePath();
+        clearRecentButton.Click += async (_, _) => await ClearRecentFilesAsync();
+        previousSearchButton.Click += async (_, _) => await NavigateSearchSelectionAsync(-1);
+        nextSearchButton.Click += async (_, _) => await NavigateSearchSelectionAsync(1);
+        wrapTextButton.Click += (_, _) => ToggleTextWrapping();
+        reloadButton.IsEnabled = false;
+        documentInfoButton.IsEnabled = false;
+        openFolderButton.IsEnabled = false;
+        copyPathButton.IsEnabled = false;
+        previousSearchButton.IsEnabled = false;
+        nextSearchButton.IsEnabled = false;
+
+        statisticsTimer.Tick += (_, _) =>
+        {
+            statisticsTimer.Stop();
+            UpdateTextStatistics();
+        };
 
         textPreview.TextChanged += (_, _) =>
         {
@@ -270,7 +323,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
             isDirty = true;
             UpdateEditingUi();
+            ScheduleTextStatistics();
         };
+        textPreview.SelectionChanged += (_, _) => ScheduleTextStatistics();
 
         var slideSurface = new Border
         {
@@ -390,6 +445,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         AddCommand(fileCommands, recentFilesBox);
         AddCommand(fileCommands, saveButton);
         AddCommand(fileCommands, saveAsButton);
+        AddCommand(fileCommands, reloadButton);
+        AddCommand(fileCommands, documentInfoButton);
+        AddCommand(fileCommands, openFolderButton);
+        AddCommand(fileCommands, copyPathButton);
+        AddCommand(fileCommands, clearRecentButton);
 
         var homeCommands = new WrapPanel { Orientation = Orientation.Horizontal };
         AddCommand(homeCommands, editButton);
@@ -401,6 +461,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         AddCommand(homeCommands, selectAllButton);
         AddCommand(homeCommands, searchBox);
         AddCommand(homeCommands, searchButton);
+        AddCommand(homeCommands, previousSearchButton);
+        AddCommand(homeCommands, nextSearchButton);
 
         var viewCommands = new WrapPanel { Orientation = Orientation.Horizontal };
         AddCommand(viewCommands, worksheetBox);
@@ -410,6 +472,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         AddCommand(viewCommands, loadMoreButton);
         AddCommand(viewCommands, cancelButton);
         AddCommand(viewCommands, resetZoomButton);
+        AddCommand(viewCommands, wrapTextButton);
 
         var commandHost = new Grid { MinHeight = 36 };
         commandHost.Children.Add(fileCommands);
@@ -483,12 +546,24 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         searchPane.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         searchPane.BorderThickness = new Thickness(1);
 
+        documentInfoPane.Child = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = documentInfoContent
+        };
+        documentInfoPane.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        documentInfoPane.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        documentInfoPane.BorderThickness = new Thickness(1);
+
         var workspace = new Grid();
         workspace.ColumnDefinitions.Add(new ColumnDefinition());
         workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         workspace.Children.Add(canvas);
         Grid.SetColumn(searchPane, 1);
         workspace.Children.Add(searchPane);
+        Grid.SetColumn(documentInfoPane, 1);
+        workspace.Children.Add(documentInfoPane);
 
         var bottom = new Border
         {
@@ -503,7 +578,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var bottomGrid = new Grid();
         bottomGrid.ColumnDefinitions.Add(new ColumnDefinition());
         bottomGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bottomGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bottomGrid.Children.Add(status);
+        Grid.SetColumn(textStatistics, 1);
+        bottomGrid.Children.Add(textStatistics);
 
         var zoomPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         zoomPanel.Children.Add(new TextBlock
@@ -515,7 +593,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             Margin = new Thickness(0, 0, 8, 0)
         });
         zoomPanel.Children.Add(zoom);
-        Grid.SetColumn(zoomPanel, 1);
+        Grid.SetColumn(zoomPanel, 2);
         bottomGrid.Children.Add(zoomPanel);
         bottom.Child = bottomGrid;
 
@@ -548,6 +626,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     internal Task OpenFileAsync(string filePath) => OpenAsync(filePath);
     internal Task SaveCurrentAsync() => SaveCurrentDocumentAsync();
     internal Task SaveAsCurrentAsync() => SaveAsCurrentDocumentAsync();
+    internal Task ReloadCurrentAsync() => ReloadCurrentDocumentAsync();
+    internal Task NavigateSearchAsync(bool previous) => NavigateSearchSelectionAsync(previous ? -1 : 1);
 
     internal void FocusSearch()
     {
@@ -573,6 +653,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             documentCanvas.BorderThickness = enabled ? new Thickness(0) : new Thickness(1);
         }
         searchPane.Visibility = Visibility.Collapsed;
+        documentInfoPane.Visibility = Visibility.Collapsed;
     }
 
     private async Task OpenAsync(string filePath, bool skipPendingPrompt = false)
@@ -599,6 +680,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         tablePreview.Visibility = Visibility.Collapsed;
         slideScroll.Visibility = Visibility.Collapsed;
         searchPane.Visibility = Visibility.Collapsed;
+        documentInfoPane.Visibility = Visibility.Collapsed;
 
         loadMoreButton.Visibility = Visibility.Collapsed;
         previousSlideButton.Visibility = Visibility.Collapsed;
@@ -627,6 +709,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             }
 
             title.Text = document.Info.DisplayName;
+            lastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(document.Info.FilePath);
+            externalChangePending = false;
+            StartWatchingCurrentFile();
             DocumentOpened?.Invoke(this, document.Info.FilePath);
             documentMeta.Text = $"{document.Info.FormatName} · {FormatBytes(document.Info.Length)} · 打开 {timer.ElapsedMilliseconds:N0} ms";
             status.Text = "安全只读 · 不执行宏、脚本、外部链接或嵌入对象";
@@ -650,6 +735,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     else if (document is IEditableTextDocument)
                         status.Text = "文件超过 8 MiB 界面缓存，已保持只读以防止截断保存。";
                     UpdateEditingUi();
+                    UpdateTextStatistics();
                     break;
 
                 case IWorkbookPreviewDocument workbook:
@@ -699,6 +785,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             loadingTextPreview = false;
             cancelButton.IsEnabled = false;
             UpdateEditingUi();
+            UpdateDocumentCommandState();
         }
     }
 
@@ -766,6 +853,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         finally
         {
             cancelButton.IsEnabled = false;
+            UpdateDocumentCommandState();
         }
     }
 
@@ -889,6 +977,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         searchResults.Clear();
         searchPane.Visibility = Visibility.Collapsed;
+        documentInfoPane.Visibility = Visibility.Collapsed;
         cancelButton.IsEnabled = true;
 
         var timer = Stopwatch.StartNew();
@@ -923,6 +1012,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             timer.Stop();
 
             foreach (var hit in hits) searchResults.Add(new(hit));
+            if (searchResults.Count > 0) searchResultList.SelectedIndex = 0;
             searchPane.Visibility = hits.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
             status.Text = hits.Length == 0
                 ? $"搜索 {timer.ElapsedMilliseconds:N0} ms · 未找到匹配项"
@@ -939,7 +1029,244 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         finally
         {
             cancelButton.IsEnabled = false;
+            UpdateDocumentCommandState();
         }
+    }
+
+    private async Task NavigateSearchSelectionAsync(int direction)
+    {
+        if (searchResults.Count == 0)
+        {
+            await SearchCurrentDocumentAsync();
+            if (searchResults.Count == 0) return;
+        }
+
+        var current = searchResultList.SelectedIndex;
+        var next = current < 0
+            ? direction < 0 ? searchResults.Count - 1 : 0
+            : (current + direction + searchResults.Count) % searchResults.Count;
+        searchResultList.SelectedIndex = next;
+        searchResultList.ScrollIntoView(searchResultList.SelectedItem);
+        searchPane.Visibility = Visibility.Visible;
+        status.Text = $"搜索结果 {next + 1:N0} / {searchResults.Count:N0}";
+    }
+
+    private void ToggleTextWrapping()
+    {
+        textPreview.TextWrapping = textPreview.TextWrapping == TextWrapping.NoWrap
+            ? TextWrapping.Wrap
+            : TextWrapping.NoWrap;
+        textPreview.HorizontalScrollBarVisibility = textPreview.TextWrapping == TextWrapping.Wrap
+            ? ScrollBarVisibility.Disabled
+            : ScrollBarVisibility.Auto;
+        wrapTextButton.Content = textPreview.TextWrapping == TextWrapping.Wrap ? "取消换行" : "自动换行";
+        status.Text = textPreview.TextWrapping == TextWrapping.Wrap ? "已启用自动换行。" : "已关闭自动换行。";
+    }
+
+    private void ScheduleTextStatistics()
+    {
+        if (textPreview.Visibility != Visibility.Visible) return;
+        statisticsTimer.Stop();
+        statisticsTimer.Start();
+    }
+
+    private void UpdateTextStatistics()
+    {
+        if (textPreview.Visibility != Visibility.Visible) return;
+
+        var statistics = TextDocumentStatistics.Calculate(textPreview.Text);
+        var caret = Math.Clamp(textPreview.CaretIndex, 0, textPreview.Text.Length);
+        var line = textPreview.GetLineIndexFromCharacterIndex(caret);
+        var lineStart = line >= 0 ? textPreview.GetCharacterIndexFromLineIndex(line) : 0;
+        var column = Math.Max(0, caret - lineStart);
+        textStatistics.Text = $"{statistics.Lines:N0} 行 · {statistics.Words:N0} 词 · {statistics.Characters:N0} 字符 · 第 {line + 1:N0} 行，第 {column + 1:N0} 列";
+        textStatistics.Visibility = Visibility.Visible;
+    }
+
+    private async Task ReloadCurrentDocumentAsync()
+    {
+        if (document is null) return;
+        if (!await ResolvePendingChangesAsync()) return;
+
+        var path = document.Info.FilePath;
+        if (!File.Exists(path))
+        {
+            status.Text = "源文件已被移动或删除，无法重新加载。";
+            return;
+        }
+
+        await OpenAsync(path, skipPendingPrompt: true);
+        status.Text = "已从磁盘重新加载。";
+    }
+
+    private void ToggleDocumentInfo()
+    {
+        if (document is null) return;
+        if (documentInfoPane.Visibility == Visibility.Visible)
+        {
+            documentInfoPane.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        searchPane.Visibility = Visibility.Collapsed;
+        BuildDocumentInfo();
+        documentInfoPane.Visibility = Visibility.Visible;
+    }
+
+    private void BuildDocumentInfo()
+    {
+        documentInfoContent.Children.Clear();
+        if (document is null) return;
+
+        documentInfoContent.Children.Add(new TextBlock
+        {
+            Text = "文档信息",
+            FontSize = 19,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 16)
+        });
+
+        var file = new FileInfo(document.Info.FilePath);
+        AddInfoRow("名称", document.Info.DisplayName);
+        AddInfoRow("类型", document.Info.FormatName);
+        AddInfoRow("大小", FormatBytes(document.Info.Length));
+        AddInfoRow("修改时间", file.Exists ? file.LastWriteTime.ToString("g", CultureInfo.CurrentCulture) : "文件已不存在");
+        AddInfoRow("模式", document is IEditableTextDocument && textPreviewFullyLoaded ? "可编辑文本" : "安全只读");
+        AddInfoRow("路径", document.Info.FilePath);
+
+        if (!document.Info.Warnings.IsDefaultOrEmpty)
+        {
+            documentInfoContent.Children.Add(new TextBlock
+            {
+                Text = "安全与兼容性",
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 18, 0, 8)
+            });
+            foreach (var warning in document.Info.Warnings)
+            {
+                documentInfoContent.Children.Add(new TextBlock
+                {
+                    Text = "• " + warning,
+                    TextWrapping = TextWrapping.Wrap,
+                    Opacity = 0.76,
+                    Margin = new Thickness(0, 0, 0, 7)
+                });
+            }
+        }
+
+        void AddInfoRow(string label, string value)
+        {
+            documentInfoContent.Children.Add(new TextBlock
+            {
+                Text = label,
+                FontSize = 11,
+                Opacity = 0.62,
+                Margin = new Thickness(0, 0, 0, 2)
+            });
+            documentInfoContent.Children.Add(new TextBlock
+            {
+                Text = value,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+        }
+    }
+
+    private void OpenCurrentFileLocation()
+    {
+        if (document is null) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{document.Info.FilePath}\"")
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            status.Text = $"无法打开文件位置：{exception.Message}";
+        }
+    }
+
+    private void CopyCurrentFilePath()
+    {
+        if (document is null) return;
+        try
+        {
+            Clipboard.SetText(document.Info.FilePath);
+            status.Text = "已复制完整路径。";
+        }
+        catch (System.Runtime.InteropServices.ExternalException exception)
+        {
+            status.Text = $"复制路径失败：{exception.Message}";
+        }
+    }
+
+    private async Task ClearRecentFilesAsync()
+    {
+        await recentFilesStore.ClearAsync();
+        await RefreshRecentFilesAsync();
+        await RefreshWelcomeAsync();
+        status.Text = "已清除最近使用记录；不会删除任何文档。";
+    }
+
+    private void UpdateDocumentCommandState()
+    {
+        var hasDocument = document is not null;
+        reloadButton.IsEnabled = hasDocument;
+        documentInfoButton.IsEnabled = hasDocument;
+        openFolderButton.IsEnabled = hasDocument;
+        copyPathButton.IsEnabled = hasDocument;
+        wrapTextButton.IsEnabled = document is ITextPreviewDocument;
+        previousSearchButton.IsEnabled = searchResults.Count > 0;
+        nextSearchButton.IsEnabled = searchResults.Count > 0;
+    }
+
+    private void StartWatchingCurrentFile()
+    {
+        fileWatcher?.Dispose();
+        fileWatcher = null;
+        if (document is null) return;
+
+        var directory = Path.GetDirectoryName(document.Info.FilePath);
+        var fileName = Path.GetFileName(document.Info.FilePath);
+        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(fileName)) return;
+
+        try
+        {
+            fileWatcher = new FileSystemWatcher(directory, fileName)
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+                EnableRaisingEvents = true
+            };
+            fileWatcher.Changed += CurrentFile_OnDiskChanged;
+            fileWatcher.Deleted += CurrentFile_OnDiskChanged;
+            fileWatcher.Renamed += CurrentFile_OnDiskChanged;
+        }
+        catch (Exception exception) when (exception is IOException or ArgumentException or PlatformNotSupportedException)
+        {
+            fileWatcher?.Dispose();
+            fileWatcher = null;
+        }
+    }
+
+    private void CurrentFile_OnDiskChanged(object sender, FileSystemEventArgs e)
+    {
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            if (document is null) return;
+            var currentWriteTime = File.Exists(document.Info.FilePath)
+                ? File.GetLastWriteTimeUtc(document.Info.FilePath)
+                : DateTime.MinValue;
+            if (currentWriteTime == lastKnownWriteTimeUtc) return;
+
+            externalChangePending = true;
+            reloadButton.SetResourceReference(Button.BackgroundProperty, "AccentSoftBrush");
+            status.Text = isDirty
+                ? "磁盘上的文件已更改；当前编辑尚未保存，请保存或重新加载后处理冲突。"
+                : "磁盘上的文件已更改，点击“重新加载”获取最新内容。";
+        });
     }
 
     private void SearchLoadedText(string query)
@@ -958,6 +1285,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 CreateSearchSnippet(source, index, query.Length))));
             searchFrom = index + Math.Max(1, query.Length);
         }
+
+        if (searchResults.Count > 0) searchResultList.SelectedIndex = 0;
     }
 
     private static string CreateSearchSnippet(string text, int matchIndex, int matchLength)
@@ -1106,9 +1435,22 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         if (document is not IEditableTextDocument editable || !textPreviewFullyLoaded)
             return false;
 
+        if (externalChangePending)
+        {
+            var overwrite = MessageBox.Show(
+                "磁盘上的文件已被其他程序修改。继续保存会覆盖外部更改。是否仍要保存？",
+                "检测到外部更改",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (overwrite != MessageBoxResult.Yes) return false;
+        }
+
         try
         {
             await editable.SaveTextAsync(textPreview.Text, document.Info.FilePath);
+            lastKnownWriteTimeUtc = File.GetLastWriteTimeUtc(document.Info.FilePath);
+            externalChangePending = false;
+            reloadButton.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
             isDirty = false;
             UpdateEditingUi();
             status.Text = $"已保存 · {DateTime.Now:T}";
@@ -1225,6 +1567,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private async Task RefreshRecentFilesAsync()
     {
         recentFilesBox.Visibility = settings.RememberRecentFiles ? Visibility.Visible : Visibility.Collapsed;
+        clearRecentButton.Visibility = settings.RememberRecentFiles ? Visibility.Visible : Visibility.Collapsed;
         recentFilesBox.ItemsSource = settings.RememberRecentFiles ? await recentFilesStore.LoadAsync() : null;
     }
 
@@ -1273,6 +1616,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     private async Task CloseDocumentAsync()
     {
+        statisticsTimer.Stop();
+        fileWatcher?.Dispose();
+        fileWatcher = null;
         loadCancellation?.Cancel();
         loadCancellation?.Dispose();
         loadCancellation = null;
@@ -1283,9 +1629,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         if (document is not null) await document.DisposeAsync();
         document = null;
         textPreview.IsReadOnly = true;
+        textStatistics.Visibility = Visibility.Collapsed;
         textPreviewFullyLoaded = false;
         isDirty = false;
+        externalChangePending = false;
+        documentInfoPane.Visibility = Visibility.Collapsed;
+        reloadButton.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
         UpdateEditingUi();
+        UpdateDocumentCommandState();
     }
 
     private static Button CreatePrimaryButton(string text)
@@ -1368,6 +1719,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         loadCancellation?.Cancel();
         loadCancellation?.Dispose();
         loadCancellation = null;
+        statisticsTimer.Stop();
+        fileWatcher?.Dispose();
+        fileWatcher = null;
         GC.SuppressFinalize(this);
     }
 
