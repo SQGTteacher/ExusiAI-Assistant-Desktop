@@ -43,6 +43,7 @@ public partial class App : Application
             backdrop.Apply(backdropSelection);
             runtime = host.Services.GetRequiredService<ExtensionRuntime>();
             var paths = host.Services.GetRequiredService<IAppPaths>();
+            RemoveLegacyBundledSample(paths.ApplicationDirectory);
 
             var window = host.Services.GetRequiredService<MainWindow>();
             window.DataContext = host.Services.GetRequiredService<ShellViewModel>();
@@ -63,6 +64,21 @@ public partial class App : Application
             else
                 MessageBox.Show("ExusiAI 无法启动。请检查本地日志后重试。", "启动失败", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(-1);
+        }
+    }
+
+    private static void RemoveLegacyBundledSample(string applicationDirectory)
+    {
+        var samplePath = Path.Combine(applicationDirectory, "packages", "exusiai.sample");
+        try
+        {
+            if (Directory.Exists(samplePath))
+                Directory.Delete(samplePath, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A locked legacy package must not prevent the host from starting. It is no longer
+            // produced or registered and will be removed by the next clean install/build.
         }
     }
 
