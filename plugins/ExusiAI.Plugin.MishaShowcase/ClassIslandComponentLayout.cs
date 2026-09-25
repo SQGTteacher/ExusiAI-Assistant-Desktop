@@ -249,6 +249,12 @@ internal sealed class ClassIslandComponentRow
     public double MarginTop { get => ClassIslandComponentLayoutDocument.ReadDouble(Node, "MarginTop"); set => Node["MarginTop"] = value; }
     public double MarginRight { get => ClassIslandComponentLayoutDocument.ReadDouble(Node, "MarginRight"); set => Node["MarginRight"] = value; }
     public double MarginBottom { get => ClassIslandComponentLayoutDocument.ReadDouble(Node, "MarginBottom"); set => Node["MarginBottom"] = value; }
+    public bool IsCustomForegroundColorEnabled { get => ClassIslandComponentLayoutDocument.ReadBool(Node, "IsCustomForegroundColorEnabled"); set => Node["IsCustomForegroundColorEnabled"] = value; }
+    public string ForegroundColor { get => Node["ForegroundColor"]?.ToJsonString() ?? "null"; set => Node["ForegroundColor"] = JsonNode.Parse(value); }
+    public bool IsCustomBackgroundColorEnabled { get => ClassIslandComponentLayoutDocument.ReadBool(Node, "IsCustomBackgroundColorEnabled"); set => Node["IsCustomBackgroundColorEnabled"] = value; }
+    public string BackgroundColor { get => Node["BackgroundColor"]?.ToJsonString() ?? "null"; set => Node["BackgroundColor"] = JsonNode.Parse(value); }
+    public bool IsCustomCornerRadiusEnabled { get => ClassIslandComponentLayoutDocument.ReadBool(Node, "IsCustomCornerRadiusEnabled"); set => Node["IsCustomCornerRadiusEnabled"] = value; }
+    public double CustomCornerRadius { get => ClassIslandComponentLayoutDocument.ReadDouble(Node, "CustomCornerRadius", 8); set => Node["CustomCornerRadius"] = value; }
 
     public string SettingsJson
     {

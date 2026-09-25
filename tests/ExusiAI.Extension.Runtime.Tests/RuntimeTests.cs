@@ -767,6 +767,34 @@ public sealed class RuntimeTests
     }
 
     [Fact]
+    public async Task ComponentLayoutPreservesNativeVisualOverrides()
+    {
+        using var root = new TemporaryDirectory();
+        var path = Path.Combine(root.Path, "Visuals.json");
+        await File.WriteAllTextAsync(path, """
+        {"Lines":[{"Children":[{"Id":"ee8f66bd-c423-4e7c-ab46-aa9976b00e08","ForegroundColor":{"A":255,"R":1,"G":2,"B":3}}]}]}
+        """);
+
+        var document = await ClassIslandComponentLayoutDocument.LoadAsync(path);
+        var component = Assert.Single(Assert.Single(document.Lines).Components);
+        component.IsCustomForegroundColorEnabled = true;
+        component.IsCustomBackgroundColorEnabled = true;
+        component.BackgroundColor = "{\"A\":255,\"R\":4,\"G\":5,\"B\":6}";
+        component.IsCustomCornerRadiusEnabled = true;
+        component.CustomCornerRadius = 12;
+        await document.SaveAsync();
+
+        var saved = JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var node = saved["Lines"]![0]!["Children"]![0]!;
+        Assert.True(node["IsCustomForegroundColorEnabled"]!.GetValue<bool>());
+        Assert.Equal(1, node["ForegroundColor"]!["R"]!.GetValue<int>());
+        Assert.True(node["IsCustomBackgroundColorEnabled"]!.GetValue<bool>());
+        Assert.Equal(6, node["BackgroundColor"]!["B"]!.GetValue<int>());
+        Assert.True(node["IsCustomCornerRadiusEnabled"]!.GetValue<bool>());
+        Assert.Equal(12, node["CustomCornerRadius"]!.GetValue<double>());
+    }
+
+    [Fact]
     public void MishaStoreNotifiesRuntimeAfterAnEditedConfigurationIsSaved()
     {
         using var root = new TemporaryDirectory();

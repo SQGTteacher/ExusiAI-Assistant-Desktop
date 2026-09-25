@@ -162,6 +162,12 @@ internal sealed class MishaComponentLayoutsPage : UserControl
         components.Columns.Add(new DataGridCheckBoxColumn { Header = "固定宽度", Binding = new Binding(nameof(ClassIslandComponentRow.IsFixedWidthEnabled)), Width = 80 });
         components.Columns.Add(new DataGridTextColumn { Header = "宽度", Binding = new Binding(nameof(ClassIslandComponentRow.FixedWidth)), Width = 80 });
         components.Columns.Add(new DataGridTextColumn { Header = "透明度", Binding = new Binding(nameof(ClassIslandComponentRow.Opacity)), Width = 80 });
+        components.Columns.Add(new DataGridCheckBoxColumn { Header = "自定义前景", Binding = new Binding(nameof(ClassIslandComponentRow.IsCustomForegroundColorEnabled)), Width = 95 });
+        components.Columns.Add(new DataGridTextColumn { Header = "前景色 JSON", Binding = new Binding(nameof(ClassIslandComponentRow.ForegroundColor)), Width = 150 });
+        components.Columns.Add(new DataGridCheckBoxColumn { Header = "自定义背景", Binding = new Binding(nameof(ClassIslandComponentRow.IsCustomBackgroundColorEnabled)), Width = 95 });
+        components.Columns.Add(new DataGridTextColumn { Header = "背景色 JSON", Binding = new Binding(nameof(ClassIslandComponentRow.BackgroundColor)), Width = 150 });
+        components.Columns.Add(new DataGridCheckBoxColumn { Header = "自定义圆角", Binding = new Binding(nameof(ClassIslandComponentRow.IsCustomCornerRadiusEnabled)), Width = 95 });
+        components.Columns.Add(new DataGridTextColumn { Header = "圆角", Binding = new Binding(nameof(ClassIslandComponentRow.CustomCornerRadius)), Width = 70 });
     }
 
     private void RefreshConfigList()

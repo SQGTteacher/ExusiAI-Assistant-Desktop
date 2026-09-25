@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -8,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Xml;
 using ExusiAI.FileViewer.Core;
 using Microsoft.Win32;
@@ -1139,7 +1141,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private void RenderSlide(SlidePreview slide)
     {
         slideVisualCanvas.Children.Clear();
-        if (slide.Visual is { Elements.Length: > 0 } visual && visual.Width > 0 && visual.Height > 0)
+        if (slide.Visual is { } visual && visual.Width > 0 && visual.Height > 0 &&
+            (visual.Elements.Length > 0 || !visual.Images.IsDefaultOrEmpty))
         {
             slideTitle.Visibility = Visibility.Collapsed;
             slideBody.Text = string.Empty;
@@ -1147,6 +1150,34 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             slideVisualCanvas.Visibility = Visibility.Visible;
             var scaleX = slideVisualCanvas.Width / visual.Width;
             var scaleY = slideVisualCanvas.Height / visual.Height;
+            foreach (var image in visual.Images.IsDefault ? ImmutableArray<SlideImagePreview>.Empty : visual.Images)
+            {
+                try
+                {
+                    using var stream = new MemoryStream(image.Data.ToArray(), writable: false);
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.DecodePixelWidth = 1920;
+                    bitmap.StreamSource = stream;
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+                    var view = new Image
+                    {
+                        Source = bitmap,
+                        Stretch = Stretch.Uniform,
+                        Width = Math.Max(1, image.Width * scaleX),
+                        Height = Math.Max(1, image.Height * scaleY)
+                    };
+                    Canvas.SetLeft(view, Math.Max(0, image.X * scaleX));
+                    Canvas.SetTop(view, Math.Max(0, image.Y * scaleY));
+                    slideVisualCanvas.Children.Add(view);
+                }
+                catch (Exception exception) when (exception is IOException or NotSupportedException or FileFormatException)
+                {
+                    // A malformed image degrades to the remaining safe slide content.
+                }
+            }
             foreach (var element in visual.Elements)
             {
                 var box = new Border

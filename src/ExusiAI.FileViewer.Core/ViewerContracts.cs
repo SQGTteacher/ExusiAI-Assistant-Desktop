@@ -28,6 +28,7 @@ public sealed record ViewerOpenOptions
     public int MaximumSpreadsheetSharedStrings { get; init; } = 1_000_000;
     public int MaximumPresentationSlides { get; init; } = 2_000;
     public int MaximumPresentationTextCharactersPerSlide { get; init; } = 2 * 1024 * 1024;
+    public int MaximumPresentationImageBytes { get; init; } = 16 * 1024 * 1024;
     public int MaximumCachedSlides { get; init; } = 12;
     public int MaximumArchiveEntries { get; init; } = 4096;
     public long MaximumArchiveEntryBytes { get; init; } = 256L * 1024 * 1024;
@@ -47,6 +48,7 @@ public sealed record ViewerOpenOptions
         if (MaximumSpreadsheetSharedStrings is < 1 or > 10_000_000) throw new ArgumentOutOfRangeException(nameof(MaximumSpreadsheetSharedStrings));
         if (MaximumPresentationSlides is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationSlides));
         if (MaximumPresentationTextCharactersPerSlide is < 1 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationTextCharactersPerSlide));
+        if (MaximumPresentationImageBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationImageBytes));
         if (MaximumCachedSlides is < 1 or > 128) throw new ArgumentOutOfRangeException(nameof(MaximumCachedSlides));
         if (MaximumArchiveEntries is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntries));
         if (MaximumArchiveEntryBytes <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntryBytes));
@@ -122,7 +124,16 @@ public sealed record SlideElementPreview(
 public sealed record SlideVisualPreview(
     double Width,
     double Height,
-    ImmutableArray<SlideElementPreview> Elements);
+    ImmutableArray<SlideElementPreview> Elements,
+    ImmutableArray<SlideImagePreview> Images = default);
+
+public sealed record SlideImagePreview(
+    ImmutableArray<byte> Data,
+    string ContentType,
+    double X,
+    double Y,
+    double Width,
+    double Height);
 
 public sealed record SlidePreview(
     int SlideNumber,

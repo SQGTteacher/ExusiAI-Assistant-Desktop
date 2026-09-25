@@ -48,6 +48,20 @@ internal sealed class OpenXmlPackageGuard : IDisposable
         return entry is null ? null : OpenXml(entry, entryName);
     }
 
+    public byte[] ReadRequiredPart(string entryName, int maximumBytes)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var entry = archive.GetEntry(entryName)
+            ?? throw new FileRejectedException($"Open XML package is missing required part '{entryName}'.");
+        if (entry.Length > maximumBytes)
+            throw new FileRejectedException($"Package part '{entryName}' exceeds its configured content limit.");
+
+        using var input = entry.Open();
+        using var output = new MemoryStream(checked((int)entry.Length));
+        input.CopyTo(output);
+        return output.ToArray();
+    }
+
     private XmlReader OpenXml(ZipArchiveEntry entry, string entryName)
     {
         if (entry.Length > options.MaximumArchiveEntryBytes)
