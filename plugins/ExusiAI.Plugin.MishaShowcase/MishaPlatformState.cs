@@ -129,6 +129,8 @@ internal sealed class MishaPlatformStore
 
     public int ResolveRotationWeek(DateTime date) => Workspace?.ResolveRotationWeek(date) ?? 1;
 
+    public void NotifyConfigurationChanged() => Changed?.Invoke(this, EventArgs.Empty);
+
     private async Task LoadImportedWorkspaceAsync(string settingsPath, string? sourceRootDirectory)
     {
         var workspace = await ClassIslandWorkspace.LoadAsync(settingsPath);

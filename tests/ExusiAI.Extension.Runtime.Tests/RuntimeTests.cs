@@ -767,6 +767,19 @@ public sealed class RuntimeTests
     }
 
     [Fact]
+    public void MishaStoreNotifiesRuntimeAfterAnEditedConfigurationIsSaved()
+    {
+        using var root = new TemporaryDirectory();
+        var store = new MishaPlatformStore(root.Path);
+        var notifications = 0;
+        store.Changed += (_, _) => notifications++;
+
+        store.NotifyConfigurationChanged();
+
+        Assert.Equal(1, notifications);
+    }
+
+    [Fact]
     public async Task AutomationRoundTripsUnknownWorkflowNodesWithoutExecutingActions()
     {
         using var root = new TemporaryDirectory();

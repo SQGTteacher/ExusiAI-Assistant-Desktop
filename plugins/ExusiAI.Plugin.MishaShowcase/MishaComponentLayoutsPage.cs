@@ -298,6 +298,7 @@ internal sealed class MishaComponentLayoutsPage : UserControl
 
         components.CommitEdit(DataGridEditingUnit.Row, true);
         await document.SaveAsync();
+        store.NotifyConfigurationChanged();
         status.Text = $"已保存：{document.FilePath}";
     }
 }
