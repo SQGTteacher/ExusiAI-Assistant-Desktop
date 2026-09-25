@@ -351,8 +351,8 @@ internal static class PptxPackageReader
         var extension = Path.GetExtension(partName).ToLowerInvariant();
         return extension switch
         {
-            ".png" when data.AsSpan().StartsWith([0x89, 0x50, 0x4E, 0x47]) => "image/png",
-            ".jpg" or ".jpeg" when data.AsSpan().StartsWith([0xFF, 0xD8, 0xFF]) => "image/jpeg",
+            ".png" when data.AsSpan().StartsWith(new byte[] { 0x89, 0x50, 0x4E, 0x47 }) => "image/png",
+            ".jpg" or ".jpeg" when data.AsSpan().StartsWith(new byte[] { 0xFF, 0xD8, 0xFF }) => "image/jpeg",
             ".gif" when data.AsSpan().StartsWith("GIF8"u8) => "image/gif",
             ".bmp" when data.AsSpan().StartsWith("BM"u8) => "image/bmp",
             _ => null
