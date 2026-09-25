@@ -6,9 +6,9 @@ using ExusiAI.Extension.Abstractions;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.SDK;
 using ExusiAI.Extension.Wpf;
-using ExusiAI.Extension.TestPlugin;
 using ExusiAI.Plugin.MishaShowcase;
 using Microsoft.Extensions.Logging.Abstractions;
+using RuntimeTestPlugin = ExusiAI.Extension.TestPlugin.TestPlugin;
 
 namespace ExusiAI.Extension.Runtime.Tests;
 
@@ -404,7 +404,7 @@ public sealed class RuntimeTests
         using var root = new TemporaryDirectory();
         var package = Path.Combine(root.Path, "bad-type");
         await WriteManifestAsync(package, ValidManifest with { EntryPoint = new() { Assembly = "ExusiAI.Extension.TestPlugin.dll", Type = "Missing.Plugin" } });
-        File.Copy(typeof(TestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
+        File.Copy(typeof(RuntimeTestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
         await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
         await runtime.DiscoverAsync(root.Path);
         await runtime.StartAsync();
@@ -447,7 +447,7 @@ public sealed class RuntimeTests
         using var root = new TemporaryDirectory();
         var package = Path.Combine(root.Path, "sample");
         await WriteManifestAsync(package, ValidManifest);
-        File.Copy(typeof(TestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
+        File.Copy(typeof(RuntimeTestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
         File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
         await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
         await runtime.DiscoverAsync(root.Path);
@@ -948,7 +948,7 @@ public sealed class RuntimeTests
     {
         var package = Path.Combine(rootPath, "sample");
         await WriteManifestAsync(package, ValidManifest);
-        File.Copy(typeof(TestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
+        File.Copy(typeof(RuntimeTestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
         File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
         var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
         await runtime.DiscoverAsync(rootPath);
