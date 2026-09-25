@@ -45,7 +45,7 @@ SQGTteacher。
 
 ## 0.5.0：本地原生工作区与主信息岛运行时
 
-- 导入 ClassIsland `Settings.json` 时，递归复制来源目录内全部 `*.json` 到 ExusiAI 自有工作区，并保持相对目录、文件内容和 ClassIsland 原生 schema；
+- 导入 ClassIsland `Settings.json` 时，复制 `Settings.json`、`Profiles/` 与整个 `Config/` 到 ExusiAI 自有工作区；JSON、AXAML、主题包、图片、校验文件等均保持原相对路径，来源目录仍只读；
 - 后续设置、Profile、ComponentLayouts、Automations 编辑只写 ExusiAI 副本；来源目录仅记录为同步来源，不直接修改；
 - 单独导入 Profile 也会先复制到 ExusiAI 本地存储；“导出副本”不会切换当前编辑文件；
 - 主信息岛运行时直接读取 `CurrentComponentConfig` 指向的原生 `ComponentProfile -> Lines -> Children`；
@@ -53,3 +53,17 @@ SQGTteacher。
 - 主窗口读取 ClassIsland 的 `IsMainWindowVisible`、`WindowDockingLocation`、偏移、监视器索引、`WindowLayer`、`Scale`、`Opacity`、`RadiusX`、`IsIslandSeperated`、字体与点击设置；
 - 未实现的第三方组件不会生成伪 UI 或空白模板，只跳过并写入插件日志，后续通过真实插件兼容层补齐；
 - 自动化配置仍只编辑/保存，不执行 `classisland.os.run` 等外部行动。
+
+
+## 0.7.0：安全 XAML 主题兼容层
+
+- 读取 ClassIsland 原生 `Config/EnabledThemes.json`，保持启用顺序与“后加载主题覆盖先加载主题”的语义；
+- 发现 `Config/Themes/` 下的目录主题和 ZIP 主题包，读取 `manifest.yml`、`Styles.axaml` 与主题内相对 `StyleInclude`；
+- AXAML 只通过禁用 DTD/外部解析器的 XML 读取器转换成 ExusiAI 中间模型，不调用 Avalonia Runtime XAML Loader；
+- 区分 ClassIsland JSON 颜色的 RRGGBBAA 与 Avalonia AXAML 颜色的 AARRGGBB；
+- 中间模型支持主题字典 Default/Light/Dark、Color、SolidColorBrush、Linear/Radial/Conic Gradient、DrawingBrush、Dynamic/StaticResource、简单类型/类/附加属性选择器与常用 Setter；
+- WPF 适配器可将安全静态样式应用到信息岛；ConicGradient 采用 WPF 可表达的近似，DrawingBrush 多层渐变保持层结构；
+- `MainWindowBackgroundMaterialControl.line-background`、`Border.line-background` 与 `Border.line-background-frame` 作为 ClassIsland 主窗口背景语义别名兼容；
+- `verticalSafeAreaPx` 会参与顶部信息岛布局，降低玻璃阴影/高光被窗口边界裁剪的风险；
+- Binding、ControlTemplate、Transition、复杂伪类/组合选择器、外部 URI 和主题脚本不会执行；兼容层记录诊断，避免把主题兼容变成任意代码执行入口；
+- “ClassIsland 主题”页可查看安全解析状态、启用/禁用主题并调整加载顺序；主题变化会刷新共享主题快照并通知信息岛重绘。

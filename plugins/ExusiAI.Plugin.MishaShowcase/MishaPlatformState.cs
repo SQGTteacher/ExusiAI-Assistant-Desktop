@@ -25,6 +25,7 @@ internal sealed class MishaPlatformStore
 
     public ClassIslandWorkspace? Workspace { get; private set; }
     public ClassIslandProfileDocument? Profile { get; private set; }
+    public ClassIslandThemeSnapshot ThemeSnapshot { get; private set; } = ClassIslandThemeSnapshot.Empty;
     public string? SourceRootDirectory { get; private set; }
     public string StorageRoot => storageRoot;
 
@@ -102,6 +103,30 @@ internal sealed class MishaPlatformStore
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public Task ReloadThemesAsync()
+    {
+        if (Workspace is null)
+            throw new InvalidOperationException("尚未连接 ClassIsland 工作区。");
+        ThemeSnapshot = ClassIslandThemeCompatibilityLayer.Load(Workspace);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
+    public async Task UpdateEnabledThemesAsync(IReadOnlyList<string> themeIds)
+    {
+        if (Workspace is null)
+            throw new InvalidOperationException("尚未连接 ClassIsland 工作区。");
+
+        var normalized = themeIds
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var array = new JsonArray(normalized.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
+        await ClassIslandWorkspace.WriteJsonAtomicAsync(Workspace.EnabledThemesPath, array);
+        ThemeSnapshot = ClassIslandThemeCompatibilityLayer.Load(Workspace);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     public int ResolveRotationWeek(DateTime date) => Workspace?.ResolveRotationWeek(date) ?? 1;
 
     private async Task LoadImportedWorkspaceAsync(string settingsPath, string? sourceRootDirectory)
@@ -115,6 +140,7 @@ internal sealed class MishaPlatformStore
         SourceRootDirectory = sourceRootDirectory;
         Workspace = workspace;
         Profile = profile;
+        ThemeSnapshot = ClassIslandThemeCompatibilityLayer.Load(workspace);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -154,11 +180,20 @@ internal static class ClassIslandWorkspaceImporter
         var destination = Path.Combine(destinationRoot, $"{workspaceName}-{hash}-{DateTime.UtcNow:yyyyMMddHHmmssfff}");
         Directory.CreateDirectory(destination);
 
-        foreach (var sourceFile in Directory.EnumerateFiles(sourceRoot, "*.json", SearchOption.AllDirectories))
+        foreach (var sourceFile in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(sourceRoot, sourceFile);
             if (relative.StartsWith("..", StringComparison.Ordinal))
                 continue;
+
+            var normalized = relative.Replace(Path.DirectorySeparatorChar, '/');
+            var preserve =
+                normalized.Equals("Settings.json", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("Profiles/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("Config/", StringComparison.OrdinalIgnoreCase);
+            if (!preserve)
+                continue;
+
             var target = Path.Combine(destination, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(sourceFile, target, false);
@@ -232,8 +267,11 @@ internal sealed class ClassIslandWorkspace
     public JsonObject Settings { get; private set; }
 
     public string ProfilesDirectory => Path.Combine(RootDirectory, "Profiles");
-    public string ComponentLayoutsDirectory => Path.Combine(RootDirectory, "Config", "ComponentLayouts");
-    public string AutomationsDirectory => Path.Combine(RootDirectory, "Config", "Automations");
+    public string ConfigDirectory => Path.Combine(RootDirectory, "Config");
+    public string ComponentLayoutsDirectory => Path.Combine(ConfigDirectory, "ComponentLayouts");
+    public string AutomationsDirectory => Path.Combine(ConfigDirectory, "Automations");
+    public string ThemesDirectory => Path.Combine(ConfigDirectory, "Themes");
+    public string EnabledThemesPath => Path.Combine(ConfigDirectory, "EnabledThemes.json");
 
     public string SelectedProfile => GetString("SelectedProfile");
     public string CurrentComponentConfig => GetString("CurrentComponentConfig");
