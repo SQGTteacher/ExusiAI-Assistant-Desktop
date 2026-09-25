@@ -15,6 +15,7 @@ internal sealed class MishaSettingsHostPage : UserControl
         var pages = new List<MishaSection>
         {
             new("workspace", "工作区", "⌂", () => new MishaWorkspacePage(store)),
+            new("main-window", "信息岛外观与位置", "▤", () => new MishaMainWindowSettingsPage(store)),
             new("subjects", "科目", "字", () => new MishaSubjectsPage(store)),
             new("time-layouts", "时间表", "◷", () => new MishaTimeLayoutsPage(store)),
             new("class-plans", "课表", "▦", () => new MishaClassPlansPage(store)),
@@ -48,6 +49,9 @@ internal sealed class MishaSettingsHostPage : UserControl
 
         foreach (var category in MishaSettingsCatalog.Categories)
         {
+            if (category.Id is "appearance" or "window")
+                continue;
+
             var captured = category;
             pages.Add(new MishaSection(
                 "settings-" + category.Id,
@@ -60,11 +64,7 @@ internal sealed class MishaSettingsHostPage : UserControl
         [
             new("components", "组件配置", "◩", () => new MishaComponentLayoutsPage(store)),
             new("automation", "自动化配置", "⚡", () => new MishaAutomationEditorPage(store)),
-            new("settings-source", "Settings 原文", "{}", () => new MishaNativeJsonConfigPage(
-                store,
-                "ClassIsland Settings.json 原文",
-                "兼容性兜底：直接查看或编辑当前工作区真实 Settings.json。通常优先使用上方对应设置页。",
-                workspace => workspace.SettingsPath)),
+            new("sync", "同步", "⇅", () => new MishaSyncPage(store)),
             new("about", "关于", "ⓘ", static () => new MishaAboutPage())
         ]);
 

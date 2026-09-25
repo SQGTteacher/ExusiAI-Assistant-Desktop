@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
@@ -27,6 +28,88 @@ public sealed class RuntimeTests
         Assert.False(queue.TakeNext());
 
         Assert.True(queue.Request());
+    }
+
+    [Fact]
+    public void ClassIslandColorCodecUsesAvaloniaRgbaOrdering()
+    {
+        Assert.True(ClassIslandColorCodec.TryParse("#000000FF", out var black));
+        Assert.Equal(System.Windows.Media.Color.FromArgb(255, 0, 0, 0), black);
+
+        Assert.True(ClassIslandColorCodec.TryParse("#1E90FFFF", out var dodgerBlue));
+        Assert.Equal(System.Windows.Media.Color.FromArgb(255, 30, 144, 255), dodgerBlue);
+        Assert.Equal("#1E90FFFF", ClassIslandColorCodec.Format(dodgerBlue));
+
+        Assert.True(ClassIslandColorCodec.TryParse("#FF000080", out var halfRed));
+        Assert.Equal(System.Windows.Media.Color.FromArgb(128, 255, 0, 0), halfRed);
+    }
+
+    [Fact]
+    public async Task ClassIslandAutoBackupWithBackslashEntriesSynchronizesNativeWorkspace()
+    {
+        using var root = new TemporaryDirectory();
+        var archivePath = Path.Combine(root.Path, "Auto_Backup_26-9月-24_22-24-22.zip");
+
+        using (var stream = File.Create(archivePath))
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+        {
+            Write("Settings.json", """
+            {
+              "SelectedProfile":"Default.json",
+              "CurrentComponentConfig":"Default",
+              "Theme":0,
+              "BackgroundColor":"#000000FF",
+              "FutureField":{"keep":true}
+            }
+            """);
+            Write(@"Profiles\Default.json", """
+            {
+              "Name":"同步档案",
+              "Subjects":{},
+              "TimeLayouts":{},
+              "ClassPlans":{}
+            }
+            """);
+            Write(@"Config\ComponentLayouts\Default.json", """{"Lines":[]}""");
+            Write(@"Config\Automations\Default.json", "[]");
+            Write(@"Config\Themes\Example\Styles.axaml", "<Styles />");
+            Write(@"Config\Themes\Example\tools\validate.py", "raise RuntimeError('must never execute during sync')");
+
+            void Write(string name, string value)
+            {
+                var entry = archive.CreateEntry(name);
+                using var writer = new StreamWriter(entry.Open());
+                writer.Write(value);
+            }
+        }
+
+        var summary = ClassIslandBackupImporter.Inspect(archivePath);
+        Assert.Equal(1, summary.ProfileFileCount);
+        Assert.Equal(4, summary.ConfigFileCount);
+        Assert.Equal(6, summary.TotalFileCount);
+
+        var store = new MishaPlatformStore(Path.Combine(root.Path, "ExusiAIStore"));
+        var synchronized = await store.SyncBackupAsync(archivePath);
+
+        Assert.Equal(summary.TotalFileCount, synchronized.TotalFileCount);
+        Assert.NotNull(store.Workspace);
+        Assert.NotNull(store.Profile);
+        Assert.Equal("同步档案", store.Profile!.Name);
+        Assert.Equal(archivePath, store.SourceRootDirectory);
+        Assert.True(store.Workspace!.Settings["FutureField"]?["keep"]?.GetValue<bool>());
+        Assert.True(File.Exists(Path.Combine(
+            store.Workspace.RootDirectory,
+            "Config",
+            "Themes",
+            "Example",
+            "Styles.axaml")));
+        Assert.True(File.Exists(Path.Combine(
+            store.Workspace.RootDirectory,
+            "Config",
+            "Themes",
+            "Example",
+            "tools",
+            "validate.py")));
     }
 
     [Theory]
@@ -440,6 +523,8 @@ public sealed class RuntimeTests
                 System.Windows.FrameworkElement[] pages =
                 [
                     new MishaWorkspacePage(store),
+                    new MishaMainWindowSettingsPage(store),
+                    new MishaSyncPage(store),
                     new MishaSubjectsPage(store),
                     new MishaTimeLayoutsPage(store),
                     new MishaClassPlansPage(store),

@@ -50,6 +50,42 @@
                 </Grid>
             </Border>
 
+            <TextBlock Text="开始" FontSize="17" FontWeight="SemiBold" Margin="0,24,0,12" />
+            <UniformGrid Columns="4">
+                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="workspace" Margin="0,0,6,0" Padding="16" HorizontalContentAlignment="Stretch">
+                    <StackPanel>
+                        <TextBlock Text="插件工作台" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="打开 Misha、文件查看器等插件" Margin="0,5,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="extensions" Margin="2,0,4,0" Padding="16" HorizontalContentAlignment="Stretch">
+                    <StackPanel>
+                        <TextBlock Text="扩展管理" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="查看加载状态、启用与故障信息" Margin="0,5,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="theme" Margin="4,0,2,0" Padding="16" HorizontalContentAlignment="Stretch">
+                    <StackPanel>
+                        <TextBlock Text="主题与外观" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="调整主程序主题与窗口材质" Margin="0,5,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="settings" Margin="6,0,0,0" Padding="16" HorizontalContentAlignment="Stretch">
+                    <StackPanel>
+                        <TextBlock Text="软件设置" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="版本、目录与运行环境" Margin="0,5,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" />
+                    </StackPanel>
+                </Button>
+            </UniformGrid>
+
             <TextBlock Text="运行概览" FontSize="17" FontWeight="SemiBold" Margin="0,24,0,12" />
             <UniformGrid Columns="3">
                 <Border Style="{StaticResource LaunchCard}" Margin="0,0,8,0">
@@ -84,8 +120,8 @@
                               HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <StackPanel Grid.Column="1">
-                        <TextBlock Text="第二阶段 · 可用功能迭代" FontSize="15" FontWeight="SemiBold" />
-                        <TextBlock Text="主界面正在收敛为简洁 Launchpad 结构；插件、文件查看器与主题系统继续独立演进。"
+                        <TextBlock Text="启动策略 · 主页面优先" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="ExusiAI 主窗口会先显示并保持可操作；扩展发现与初始化随后进行。插件状态会在上方运行概览中实时更新。"
                                    TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
                 </Grid>

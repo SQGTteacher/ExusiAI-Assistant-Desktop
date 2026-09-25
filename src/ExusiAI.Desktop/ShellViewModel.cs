@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using ExusiAI.Core;
 
 namespace ExusiAI.Desktop;
@@ -31,6 +32,18 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public ObservableCollection<NavigationItem> NavigationItems { get; }
     public string PreviewVersion => ApplicationInfo.PreviewLabel;
+
+    [RelayCommand]
+    private void Navigate(string? route)
+    {
+        if (string.IsNullOrWhiteSpace(route))
+            return;
+
+        var target = NavigationItems.FirstOrDefault(
+            x => string.Equals(x.Route, route, StringComparison.OrdinalIgnoreCase));
+        if (target is not null)
+            SelectedItem = target;
+    }
 
     partial void OnSelectedItemChanged(NavigationItem? value)
     {

@@ -59,6 +59,19 @@ internal sealed class MishaPlatformStore
         await PersistWorkspaceBindingAsync();
     }
 
+    public async Task<ClassIslandBackupSummary> SyncBackupAsync(
+        string archivePath,
+        CancellationToken cancellationToken = default)
+    {
+        var imported = await ClassIslandBackupImporter.ImportAsync(
+            archivePath,
+            Path.Combine(storageRoot, "workspaces"),
+            cancellationToken);
+        await LoadImportedWorkspaceAsync(imported.SettingsPath, imported.SourceArchivePath);
+        await PersistWorkspaceBindingAsync();
+        return imported.Summary;
+    }
+
     public async Task OpenProfileAsync(string profilePath)
     {
         var imported = await ClassIslandWorkspaceImporter.ImportStandaloneProfileAsync(
