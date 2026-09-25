@@ -16,6 +16,7 @@ internal sealed class MishaSettingsHostPage : UserControl
         {
             new("workspace", "工作区", "⌂", () => new MishaWorkspacePage(store)),
             new("main-window", "信息岛外观与位置", "▤", () => new MishaMainWindowSettingsPage(store)),
+            new("themes-native", "ClassIsland 主题", "色", () => new MishaThemeCompatibilityPage(store)),
             new("subjects", "科目", "字", () => new MishaSubjectsPage(store)),
             new("time-layouts", "时间表", "◷", () => new MishaTimeLayoutsPage(store)),
             new("class-plans", "课表", "▦", () => new MishaClassPlansPage(store)),
@@ -49,7 +50,7 @@ internal sealed class MishaSettingsHostPage : UserControl
 
         foreach (var category in MishaSettingsCatalog.Categories)
         {
-            if (category.Id is "appearance" or "window")
+            if (category.Id is "appearance" or "window" or "themes")
                 continue;
 
             var captured = category;

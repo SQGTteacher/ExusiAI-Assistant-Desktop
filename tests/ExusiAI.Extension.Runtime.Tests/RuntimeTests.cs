@@ -112,6 +112,168 @@ public sealed class RuntimeTests
             "validate.py")));
     }
 
+    [Fact]
+    public async Task ClassIslandThemeCompatibilityParsesAxamlWithoutExecutingThemeContent()
+    {
+        using var root = new TemporaryDirectory();
+        var source = Path.Combine(root.Path, "ClassIslandSource");
+        Directory.CreateDirectory(Path.Combine(source, "Profiles"));
+        Directory.CreateDirectory(Path.Combine(source, "Config", "Themes", "Glass", "tools"));
+
+        await File.WriteAllTextAsync(Path.Combine(source, "Settings.json"), """
+        {
+          "SelectedProfile":"Default.json",
+          "CurrentComponentConfig":"Default",
+          "Theme":2,
+          "Opacity":0.75,
+          "IsCustomBackgroundColorEnabled":false
+        }
+        """);
+        await File.WriteAllTextAsync(Path.Combine(source, "Profiles", "Default.json"), """
+        {
+          "Name":"Theme test",
+          "Subjects":{},
+          "TimeLayouts":{},
+          "ClassPlans":{}
+        }
+        """);
+        await File.WriteAllTextAsync(Path.Combine(source, "Config", "EnabledThemes.json"), """
+        ["classisland.fluent","dev.test.glass"]
+        """);
+        await File.WriteAllTextAsync(Path.Combine(source, "Config", "Themes", "Glass", "manifest.yml"), """
+        id: dev.test.glass
+        name: Glass Test
+        author: ExusiAI Tests
+        version: '1.0.0.0'
+        verticalSafeAreaPx: 24
+        """);
+        await File.WriteAllTextAsync(Path.Combine(source, "Config", "Themes", "Glass", "Styles.axaml"), """
+        <Styles xmlns="https://github.com/avaloniaui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:ci="http://classisland.tech/schemas/xaml/core">
+          <Styles.Resources>
+            <ResourceDictionary>
+              <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                  <DrawingBrush x:Key="Test.Surface" Stretch="Fill" TileMode="None">
+                    <DrawingBrush.Drawing>
+                      <DrawingGroup>
+                        <DrawingGroup.Children>
+                          <GeometryDrawing>
+                            <GeometryDrawing.Geometry>
+                              <RectangleGeometry Rect="0,0,100,100" />
+                            </GeometryDrawing.Geometry>
+                            <GeometryDrawing.Brush>
+                              <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                <GradientStop Offset="0" Color="#40112233" />
+                                <GradientStop Offset="1" Color="#C0445566" />
+                              </LinearGradientBrush>
+                            </GeometryDrawing.Brush>
+                          </GeometryDrawing>
+                        </DrawingGroup.Children>
+                      </DrawingGroup>
+                    </DrawingBrush.Drawing>
+                  </DrawingBrush>
+                  <ConicGradientBrush x:Key="Test.Edge" Center="50%,50%" Angle="0">
+                    <GradientStop Offset="0" Color="#F5FFFFFF" />
+                    <GradientStop Offset="1" Color="#80445566" />
+                  </ConicGradientBrush>
+                </ResourceDictionary>
+              </ResourceDictionary.ThemeDictionaries>
+            </ResourceDictionary>
+          </Styles.Resources>
+          <StyleInclude Source="https://example.invalid/never-load.axaml" />
+          <Style Selector="Border.line-background">
+            <Setter Property="BorderBrush" Value="{DynamicResource Test.Edge}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BoxShadow" Value="0 5 12 0 #22020B19, inset 0 1 0 0 #B8FFFFFF" />
+          </Style>
+          <Style Selector="Border[(ci|MainWindowStylesAssist.IsCustomBackgroundColorEnabled)=False].line-background">
+            <Setter Property="Background" Value="{DynamicResource Test.Surface}" />
+          </Style>
+        </Styles>
+        """);
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Config", "Themes", "Glass", "tools", "validate.py"),
+            "raise RuntimeError('must never execute')");
+
+        var store = new MishaPlatformStore(Path.Combine(root.Path, "ExusiAIStore"));
+        await store.AttachWorkspaceAsync(Path.Combine(source, "Settings.json"));
+
+        Assert.Equal(new[] { "classisland.fluent", "dev.test.glass" }, store.ThemeSnapshot.EnabledThemeIds);
+        Assert.Equal(24, store.ThemeSnapshot.ActualVerticalSafeAreaPx);
+        var package = Assert.Single(store.ThemeSnapshot.Packages.Where(x => x.Manifest.Id == "dev.test.glass"));
+        Assert.NotNull(package.Document);
+        Assert.Contains(package.Diagnostics, x => x.Contains("忽略外部 StyleInclude", StringComparison.Ordinal));
+
+        var darkSurface = Assert.IsType<ClassIslandThemeDrawingBrushResource>(
+            store.ThemeSnapshot.ResolveResource("Test.Surface", ClassIslandThemeVariant.Dark));
+        var firstLayer = Assert.Single(darkSurface.Layers);
+        var firstGradient = Assert.IsType<ClassIslandThemeLinearGradientResource>(firstLayer.Brush);
+        Assert.Equal((byte)0x40, firstGradient.Stops[0].Color.A);
+        Assert.Equal((byte)0x11, firstGradient.Stops[0].Color.R);
+        Assert.Equal((byte)0x22, firstGradient.Stops[0].Color.G);
+        Assert.Equal((byte)0x33, firstGradient.Stops[0].Color.B);
+        Assert.IsType<ClassIslandThemeConicGradientResource>(
+            store.ThemeSnapshot.ResolveResource("Test.Edge", ClassIslandThemeVariant.Dark));
+
+        Assert.True(File.Exists(Path.Combine(
+            store.Workspace!.RootDirectory,
+            "Config",
+            "Themes",
+            "Glass",
+            "tools",
+            "validate.py")));
+
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var border = new System.Windows.Controls.Border
+                {
+                    Background = System.Windows.Media.Brushes.Black
+                };
+                ClassIslandThemeWpfAdapter.ApplyIslandStyle(
+                    border,
+                    store.ThemeSnapshot,
+                    ClassIslandThemeVariant.Dark,
+                    customBackgroundEnabled: false);
+
+                Assert.IsType<System.Windows.Media.DrawingBrush>(border.Background);
+                Assert.Equal(new System.Windows.Thickness(1), border.BorderThickness);
+                Assert.IsType<System.Windows.Media.LinearGradientBrush>(border.BorderBrush);
+                Assert.IsType<System.Windows.Media.Effects.DropShadowEffect>(border.Effect);
+
+                var custom = new System.Windows.Controls.Border
+                {
+                    Background = System.Windows.Media.Brushes.Red
+                };
+                ClassIslandThemeWpfAdapter.ApplyIslandStyle(
+                    custom,
+                    store.ThemeSnapshot,
+                    ClassIslandThemeVariant.Dark,
+                    customBackgroundEnabled: true);
+                Assert.Same(System.Windows.Media.Brushes.Red, custom.Background);
+                Assert.IsType<System.Windows.Media.SolidColorBrush>(custom.BorderBrush);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "ClassIsland theme adapter test timed out.");
+        Assert.Null(failure);
+
+        await store.UpdateEnabledThemesAsync(new[] { "dev.test.glass", "classisland.fluent" });
+        Assert.Equal(new[] { "dev.test.glass", "classisland.fluent" }, store.ThemeSnapshot.EnabledThemeIds);
+        var persisted = JsonNode.Parse(await File.ReadAllTextAsync(store.Workspace.EnabledThemesPath))!.AsArray();
+        Assert.Equal("dev.test.glass", persisted[0]!.GetValue<string>());
+        Assert.Equal("classisland.fluent", persisted[1]!.GetValue<string>());
+    }
+
     [Theory]
     [InlineData("../escape.dll")]
     [InlineData("..\\escape.dll")]
@@ -524,6 +686,7 @@ public sealed class RuntimeTests
                 [
                     new MishaWorkspacePage(store),
                     new MishaMainWindowSettingsPage(store),
+                    new MishaThemeCompatibilityPage(store),
                     new MishaSyncPage(store),
                     new MishaSubjectsPage(store),
                     new MishaTimeLayoutsPage(store),

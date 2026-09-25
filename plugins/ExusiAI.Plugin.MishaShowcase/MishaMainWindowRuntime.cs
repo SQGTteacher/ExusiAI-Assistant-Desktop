@@ -111,10 +111,10 @@ internal sealed class MishaMainWindowRuntime : IDisposable
                 });
 
             window ??= new MishaMainWindow();
-            window.ApplySettings(workspace);
+            window.ApplySettings(workspace, store.ThemeSnapshot.ActualVerticalSafeAreaPx);
             window.Content = content;
             window.UpdateLayout();
-            window.Reposition(workspace);
+            window.Reposition(workspace, store.ThemeSnapshot.ActualVerticalSafeAreaPx);
             if (MishaNativeMainWindowRenderer.ShouldShow(store, workspace, GetClassIslandNow(workspace)))
                 window.ShowWithoutActivation();
             else
@@ -160,6 +160,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
 internal sealed class MishaMainWindow : Window
 {
     private bool shuttingDown;
+    private double verticalSafeAreaPx;
 
     public MishaMainWindow()
     {
@@ -181,7 +182,7 @@ internal sealed class MishaMainWindow : Window
         SizeChanged += (_, _) =>
         {
             if (Tag is ClassIslandWorkspace workspace)
-                Dispatcher.BeginInvoke(() => Reposition(workspace), DispatcherPriority.Loaded);
+                Dispatcher.BeginInvoke(() => Reposition(workspace, verticalSafeAreaPx), DispatcherPriority.Loaded);
         };
         Closing += (_, e) =>
         {
@@ -191,9 +192,10 @@ internal sealed class MishaMainWindow : Window
         };
     }
 
-    public void ApplySettings(ClassIslandWorkspace workspace)
+    public void ApplySettings(ClassIslandWorkspace workspace, double themeVerticalSafeAreaPx)
     {
         Tag = workspace;
+        verticalSafeAreaPx = Math.Max(0, themeVerticalSafeAreaPx);
         Topmost = workspace.GetInt("WindowLayer", 1) > 0;
         IsHitTestVisible = workspace.GetBool("IsMouseClickingEnabled", false);
         ApplyExtendedStyle();
@@ -211,7 +213,7 @@ internal sealed class MishaMainWindow : Window
         Close();
     }
 
-    public void Reposition(ClassIslandWorkspace workspace)
+    public void Reposition(ClassIslandWorkspace workspace, double themeVerticalSafeAreaPx)
     {
         var monitors = NativeMonitor.GetMonitors();
         if (monitors.Count == 0) return;
@@ -238,9 +240,13 @@ internal sealed class MishaMainWindow : Window
             1 => area.Left + (area.Width - width) / 2,
             _ => area.Right - width
         };
-        var y = docking < 3 ? area.Top : area.Bottom - height;
+        var offsetY = workspace.GetInt("WindowDockingOffsetY");
+        var safeArea = Math.Max(0, themeVerticalSafeAreaPx);
+        var y = docking < 3
+            ? area.Top + offsetY - safeArea
+            : area.Bottom - height + offsetY + safeArea;
         Left = x + workspace.GetInt("WindowDockingOffsetX");
-        Top = y + workspace.GetInt("WindowDockingOffsetY");
+        Top = y;
     }
 
     private void ApplyExtendedStyle()
@@ -371,7 +377,12 @@ internal static class MishaNativeMainWindowRenderer
         var root = new StackPanel
         {
             Orientation = Orientation.Vertical,
-            LayoutTransform = new ScaleTransform(scale, scale)
+            LayoutTransform = new ScaleTransform(scale, scale),
+            Margin = new Thickness(
+                0,
+                store.ThemeSnapshot.ActualVerticalSafeAreaPx,
+                0,
+                store.ThemeSnapshot.ActualVerticalSafeAreaPx)
         };
 
         var font = workspace.GetString("MainWindowFont");
@@ -400,14 +411,14 @@ internal static class MishaNativeMainWindowRenderer
                 if (rendered is null) continue;
                 var view = ApplyComponentLayout(rendered, component.Node, workspace);
                 linePanel.Children.Add(separated
-                    ? WrapIsland(view, workspace, component.Node)
+                    ? WrapIsland(view, store, workspace, component.Node)
                     : view);
             }
 
             if (linePanel.Children.Count == 0) continue;
             FrameworkElement lineView = separated
                 ? linePanel
-                : WrapIsland(linePanel, workspace, line.Node);
+                : WrapIsland(linePanel, store, workspace, line.Node);
             lineView.Opacity = Math.Clamp(ClassIslandComponentLayoutDocument.ReadDouble(line.Node, "Opacity", 1), 0, 1);
             lineView.Margin = new Thickness(0, 0, 0, lineMargin);
             root.Children.Add(lineView);
@@ -763,7 +774,11 @@ internal static class MishaNativeMainWindowRenderer
         return container;
     }
 
-    private static Border WrapIsland(FrameworkElement child, ClassIslandWorkspace workspace, JsonObject? overrides)
+    private static Border WrapIsland(
+        FrameworkElement child,
+        MishaPlatformStore store,
+        ClassIslandWorkspace workspace,
+        JsonObject? overrides)
     {
         var opacity = ReadBool(overrides, "IsCustomBackgroundOpacityEnabled")
             ? ReadDouble(overrides, "BackgroundOpacity", workspace.GetDouble("Opacity", 0.5))
@@ -772,14 +787,31 @@ internal static class MishaNativeMainWindowRenderer
         var radius = ReadBool(overrides, "IsCustomCornerRadiusEnabled")
             ? ReadDouble(overrides, "CustomCornerRadius", workspace.GetDouble("RadiusX", 8))
             : workspace.GetDouble("RadiusX", 8);
+        var customBackgroundEnabled =
+            ReadBool(overrides, "IsCustomBackgroundColorEnabled") ||
+            workspace.GetBool("IsCustomBackgroundColorEnabled");
 
-        return new Border
+        var border = new Border
         {
             Child = child,
-            Background = new SolidColorBrush(color) { Opacity = Math.Clamp(opacity, 0, 1) },
+            Background = new SolidColorBrush(color),
             CornerRadius = new CornerRadius(Math.Max(0, radius)),
             Padding = new Thickness(8, 4, 8, 4)
         };
+
+        var variant = store.ThemeSnapshot.ResolveVariant(
+            workspace.GetInt("Theme", 2),
+            ReadSystemLightTheme());
+        ClassIslandThemeWpfAdapter.ApplyIslandStyle(
+            border,
+            store.ThemeSnapshot,
+            variant,
+            customBackgroundEnabled);
+
+        if (border.Background is not null)
+            border.Background.Opacity *= Math.Clamp(opacity, 0, 1);
+
+        return border;
     }
 
     private static TextBlock BaseText(double fontSize, string text = "") =>
