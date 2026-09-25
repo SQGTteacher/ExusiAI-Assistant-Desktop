@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.Wpf;
 using ExusiAI.Infrastructure;
@@ -18,6 +19,8 @@ public partial class App : Application
     private ExtensionRuntime? runtime;
     private WpfExtensionCoordinator? wpfExtensions;
     private ICrashReporter? crashReporter;
+    private CancellationTokenSource? extensionStartupCancellation;
+    private Task? extensionStartupTask;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -40,15 +43,17 @@ public partial class App : Application
             backdrop.Apply(backdropSelection);
             runtime = host.Services.GetRequiredService<ExtensionRuntime>();
             var paths = host.Services.GetRequiredService<IAppPaths>();
-            await runtime.DiscoverAsync([Path.Combine(paths.ApplicationDirectory, "packages"), paths.PackagesDirectory]);
-            await runtime.StartAsync(settings.DisabledPackages ?? []);
-            wpfExtensions = host.Services.GetRequiredService<WpfExtensionCoordinator>();
-            wpfExtensions.Start();
 
             var window = host.Services.GetRequiredService<MainWindow>();
             window.DataContext = host.Services.GetRequiredService<ShellViewModel>();
             MainWindow = window;
             window.Show();
+
+            extensionStartupCancellation = new CancellationTokenSource();
+            extensionStartupTask = InitializeExtensionsAsync(
+                paths,
+                settings.DisabledPackages ?? [],
+                extensionStartupCancellation.Token);
         }
         catch (Exception exception)
         {
@@ -65,6 +70,10 @@ public partial class App : Application
     {
         try
         {
+            extensionStartupCancellation?.Cancel();
+            if (extensionStartupTask is not null)
+                await extensionStartupTask;
+
             wpfExtensions?.Dispose();
             if (runtime is not null) await runtime.DisposeAsync();
             if (host is not null)
@@ -79,10 +88,53 @@ public partial class App : Application
         }
         finally
         {
+            extensionStartupCancellation?.Dispose();
+            extensionStartupCancellation = null;
             DispatcherUnhandledException -= App_DispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
             TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
             base.OnExit(e);
+        }
+    }
+
+    private async Task InitializeExtensionsAsync(
+        IAppPaths paths,
+        IEnumerable<string> disabledPackages,
+        CancellationToken cancellationToken)
+    {
+        if (runtime is null || host is null)
+            return;
+
+        try
+        {
+            // Let the shell render and become interactive before package discovery/initialization.
+            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ContextIdle, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await runtime.DiscoverAsync(
+                [Path.Combine(paths.ApplicationDirectory, "packages"), paths.PackagesDirectory],
+                cancellationToken);
+            await runtime.StartAsync(disabledPackages, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await Dispatcher.InvokeAsync(
+                () =>
+                {
+                    if (cancellationToken.IsCancellationRequested || host is null)
+                        return;
+                    wpfExtensions = host.Services.GetRequiredService<WpfExtensionCoordinator>();
+                    wpfExtensions.Start();
+                },
+                DispatcherPriority.Background,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            host.Services.GetService<ILogger<App>>()?.LogError(exception, "Deferred extension startup failed.");
+            crashReporter?.Report(exception, "扩展延迟加载失败");
         }
     }
 

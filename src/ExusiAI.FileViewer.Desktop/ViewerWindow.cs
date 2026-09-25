@@ -4,22 +4,27 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace ExusiAI.FileViewer.Desktop;
 
 internal sealed class ViewerWindow : Window
 {
-    private readonly FileViewerPage viewer;
+    private readonly ViewerSettings settings;
     private readonly ColumnDefinition railColumn = new() { Width = new GridLength(72) };
+    private readonly ContentControl viewerHost = new();
     private Border? rail;
+    private FileViewerPage? viewer;
+    private string? pendingFile;
+    private bool initializing;
     private bool presentationMode;
     private WindowState previousWindowState;
     private WindowStyle previousWindowStyle;
     private ResizeMode previousResizeMode;
 
-    public ViewerWindow(FileViewerPage viewer)
+    public ViewerWindow(ViewerSettings settings)
     {
-        this.viewer = viewer;
+        this.settings = settings;
         Title = "ExusiAI Viewer";
         Width = 1360;
         Height = 860;
@@ -30,14 +35,53 @@ internal sealed class ViewerWindow : Window
         TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         AllowDrop = true;
+        viewerHost.Content = BuildStartupSurface();
         Content = BuildShell();
-        viewer.DocumentOpened += (_, path) => Title = $"{Path.GetFileName(path)} — ExusiAI Viewer";
         PreviewKeyDown += OnPreviewKeyDown;
         PreviewMouseWheel += OnPreviewMouseWheel;
         PreviewDragOver += OnPreviewDragOver;
         Drop += OnDrop;
         Closing += OnClosing;
-        Closed += (_, _) => viewer.Dispose();
+        Closed += (_, _) => viewer?.Dispose();
+    }
+
+    public async Task InitializeAsync(string? initialFile = null)
+    {
+        if (!string.IsNullOrWhiteSpace(initialFile))
+            pendingFile = initialFile;
+
+        if (viewer is not null)
+        {
+            var existingPending = pendingFile;
+            pendingFile = null;
+            if (!string.IsNullOrWhiteSpace(existingPending) && File.Exists(existingPending))
+                await viewer.OpenFileAsync(existingPending);
+            return;
+        }
+
+        if (initializing)
+            return;
+
+        initializing = true;
+        try
+        {
+            // Allow the lightweight window shell to render before constructing the full document workspace.
+            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ContextIdle);
+
+            var page = new FileViewerPage(settings);
+            page.DocumentOpened += (_, path) => Title = $"{Path.GetFileName(path)} — ExusiAI Viewer";
+            viewer = page;
+            viewerHost.Content = page;
+
+            var file = pendingFile;
+            pendingFile = null;
+            if (!string.IsNullOrWhiteSpace(file) && File.Exists(file))
+                await page.OpenFileAsync(file);
+        }
+        finally
+        {
+            initializing = false;
+        }
     }
 
     private FrameworkElement BuildShell()
@@ -83,9 +127,64 @@ internal sealed class ViewerWindow : Window
         rail.Child = railContent;
         shell.Children.Add(rail);
 
-        Grid.SetColumn(viewer, 1);
-        shell.Children.Add(viewer);
+        Grid.SetColumn(viewerHost, 1);
+        shell.Children.Add(viewerHost);
         return shell;
+    }
+
+    private FrameworkElement BuildStartupSurface()
+    {
+        var root = new Grid();
+        root.SetResourceReference(Panel.BackgroundProperty, "AppBackgroundBrush");
+
+        var card = new Border
+        {
+            MaxWidth = 720,
+            Padding = new Thickness(42, 36, 42, 38),
+            CornerRadius = new CornerRadius(14),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            BorderThickness = new Thickness(1)
+        };
+        card.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        card.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+
+        var content = new StackPanel();
+        content.Children.Add(new TextBlock
+        {
+            Text = "ExusiAI Viewer",
+            FontSize = 30,
+            FontWeight = FontWeights.SemiBold
+        });
+        var subtitle = new TextBlock
+        {
+            Text = "窗口已就绪，正在按需装载文档工作区。",
+            FontSize = 14,
+            Margin = new Thickness(0, 8, 0, 20)
+        };
+        subtitle.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        content.Children.Add(subtitle);
+
+        var progress = new ProgressBar
+        {
+            IsIndeterminate = true,
+            Height = 4,
+            BorderThickness = new Thickness(0)
+        };
+        content.Children.Add(progress);
+
+        var note = new TextBlock
+        {
+            Text = "启动阶段不会预读取 Office 文档，也不会提前构建搜索、缩略图或分页内容。",
+            FontSize = 11,
+            Margin = new Thickness(0, 16, 0, 0),
+            TextWrapping = TextWrapping.Wrap
+        };
+        note.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        content.Children.Add(note);
+        card.Child = content;
+        root.Children.Add(card);
+        return root;
     }
 
     private async void OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -94,9 +193,10 @@ internal sealed class ViewerWindow : Window
         if (control && e.Key == Key.O)
         {
             e.Handled = true;
-            await viewer.PickFileAsync();
+            if (viewer is null) await InitializeAsync();
+            if (viewer is not null) await viewer.PickFileAsync();
         }
-        else if (control && e.Key == Key.S)
+        else if (control && e.Key == Key.S && viewer is not null)
         {
             e.Handled = true;
             if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
@@ -104,47 +204,47 @@ internal sealed class ViewerWindow : Window
             else
                 await viewer.SaveCurrentAsync();
         }
-        else if (control && e.Key == Key.F)
+        else if (control && e.Key == Key.F && viewer is not null)
         {
             e.Handled = true;
             viewer.FocusSearch();
         }
-        else if (control && e.Key == Key.R)
+        else if (control && e.Key == Key.R && viewer is not null)
         {
             e.Handled = true;
             await viewer.ReloadCurrentAsync();
         }
-        else if (control && e.Key == Key.P)
+        else if (control && e.Key == Key.P && viewer is not null)
         {
             e.Handled = true;
             viewer.PrintCurrent();
         }
-        else if (control && e.Key == Key.G)
+        else if (control && e.Key == Key.G && viewer is not null)
         {
             e.Handled = true;
             viewer.FocusGoToLine();
         }
-        else if (e.Key == Key.F3)
+        else if (e.Key == Key.F3 && viewer is not null)
         {
             e.Handled = true;
             await viewer.NavigateSearchAsync(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         }
-        else if (control && (e.Key == Key.Add || e.Key == Key.OemPlus))
+        else if (control && (e.Key == Key.Add || e.Key == Key.OemPlus) && viewer is not null)
         {
             e.Handled = true;
             viewer.ZoomBy(1);
         }
-        else if (control && (e.Key == Key.Subtract || e.Key == Key.OemMinus))
+        else if (control && (e.Key == Key.Subtract || e.Key == Key.OemMinus) && viewer is not null)
         {
             e.Handled = true;
             viewer.ZoomBy(-1);
         }
-        else if (control && (e.Key == Key.D0 || e.Key == Key.NumPad0))
+        else if (control && (e.Key == Key.D0 || e.Key == Key.NumPad0) && viewer is not null)
         {
             e.Handled = true;
             viewer.ResetZoom();
         }
-        else if (e.Key == Key.F5 && viewer.HasDocument)
+        else if (e.Key == Key.F5 && viewer?.HasDocument == true)
         {
             e.Handled = true;
             TogglePresentationMode();
@@ -154,14 +254,14 @@ internal sealed class ViewerWindow : Window
             e.Handled = true;
             TogglePresentationMode();
         }
-        else if (viewer.CanNavigateSlides &&
+        else if (viewer?.CanNavigateSlides == true &&
                  Keyboard.FocusedElement is not TextBox &&
                  e.Key is Key.PageDown or Key.Right or Key.Down or Key.Space)
         {
             e.Handled = true;
             await viewer.NextPageAsync();
         }
-        else if (viewer.CanNavigateSlides &&
+        else if (viewer?.CanNavigateSlides == true &&
                  Keyboard.FocusedElement is not TextBox &&
                  e.Key is Key.PageUp or Key.Left or Key.Up)
         {
@@ -172,13 +272,13 @@ internal sealed class ViewerWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (!viewer.ConfirmCanClose())
+        if (viewer is not null && !viewer.ConfirmCanClose())
             e.Cancel = true;
     }
 
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
+        if (viewer is null || !Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
         e.Handled = true;
         viewer.ZoomBy(e.Delta > 0 ? 1 : -1);
     }
@@ -202,11 +302,14 @@ internal sealed class ViewerWindow : Window
     {
         if (!TryGetDroppedFile(e, out var filePath)) return;
         e.Handled = true;
-        await viewer.OpenFileAsync(filePath);
+        await InitializeAsync(filePath);
     }
 
     private void TogglePresentationMode()
     {
+        if (viewer is null)
+            return;
+
         presentationMode = !presentationMode;
         if (presentationMode)
         {

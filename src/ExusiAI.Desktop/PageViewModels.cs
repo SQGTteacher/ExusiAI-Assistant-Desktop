@@ -18,20 +18,40 @@ using Microsoft.Extensions.Logging;
 
 namespace ExusiAI.Desktop;
 
-public sealed class HomeViewModel
+public sealed partial class HomeViewModel : ObservableObject
 {
+    private readonly ExtensionRuntime runtime;
+
+    [ObservableProperty] private int installedCount;
+    [ObservableProperty] private int runningCount;
+    [ObservableProperty] private int failedCount;
+
     public HomeViewModel(ExtensionRuntime runtime)
+    {
+        this.runtime = runtime;
+        RefreshRuntimeSummary();
+        runtime.EntriesChanged += Runtime_OnEntriesChanged;
+    }
+
+    public string ProductName => ApplicationInfo.ProductName;
+    public string Version => ApplicationInfo.Version;
+    public string BuildNumber => ApplicationInfo.BuildNumber;
+
+    private void Runtime_OnEntriesChanged(object? sender, EventArgs e)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            RefreshRuntimeSummary();
+        else
+            _ = dispatcher.InvokeAsync(RefreshRuntimeSummary);
+    }
+
+    private void RefreshRuntimeSummary()
     {
         InstalledCount = runtime.Entries.Count;
         RunningCount = runtime.Entries.Count(x => x.State == PackageState.Running);
         FailedCount = runtime.Entries.Count(x => x.State == PackageState.Failed) + runtime.DiscoveryFailures.Length;
     }
-    public string ProductName => ApplicationInfo.ProductName;
-    public string Version => ApplicationInfo.Version;
-    public string BuildNumber => ApplicationInfo.BuildNumber;
-    public int InstalledCount { get; }
-    public int RunningCount { get; }
-    public int FailedCount { get; }
 }
 
 public sealed partial class MarketplaceViewModel : ObservableObject

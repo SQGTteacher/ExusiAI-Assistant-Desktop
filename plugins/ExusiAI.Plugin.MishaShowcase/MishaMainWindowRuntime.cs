@@ -10,6 +10,7 @@ using System.Windows.Documents;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using ExusiAI.Extension.Abstractions;
 
 namespace ExusiAI.Plugin.MishaShowcase;
@@ -171,7 +172,12 @@ internal sealed class MishaMainWindow : Window
         ShowActivated = false;
         Focusable = false;
         SizeToContent = SizeToContent.WidthAndHeight;
-        SourceInitialized += (_, _) => ApplyExtendedStyle();
+        SourceInitialized += (_, _) =>
+        {
+            ApplyExtendedStyle();
+            if (Tag is ClassIslandWorkspace workspace)
+                ApplyWindowLayer(workspace);
+        };
         SizeChanged += (_, _) =>
         {
             if (Tag is ClassIslandWorkspace workspace)
@@ -191,6 +197,7 @@ internal sealed class MishaMainWindow : Window
         Topmost = workspace.GetInt("WindowLayer", 1) > 0;
         IsHitTestVisible = workspace.GetBool("IsMouseClickingEnabled", false);
         ApplyExtendedStyle();
+        ApplyWindowLayer(workspace);
     }
 
     public void ShowWithoutActivation()
@@ -253,11 +260,36 @@ internal sealed class MishaMainWindow : Window
         _ = SetWindowLong(handle, gwlExStyle, style);
     }
 
+    private void ApplyWindowLayer(ClassIslandWorkspace workspace)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+
+        var insertAfter = workspace.GetInt("WindowLayer", 1) > 0
+            ? new IntPtr(-1) // HWND_TOPMOST
+            : new IntPtr(1); // HWND_BOTTOM
+        const uint noMove = 0x0002;
+        const uint noSize = 0x0001;
+        const uint noActivate = 0x0010;
+        _ = SetWindowPos(handle, insertAfter, 0, 0, 0, 0, noMove | noSize | noActivate);
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
 }
 
 internal static class NativeMonitor
@@ -600,7 +632,8 @@ internal static class MishaNativeMainWindowRenderer
         {
             Width = 1,
             Height = Math.Max(18, workspace.GetDouble("MainWindowBodyFontSize", 16) + 4),
-            Background = new SolidColorBrush(Color.FromArgb(110, 255, 255, 255)),
+            Background = ResolveForeground(workspace, null),
+            Opacity = 0.42,
             Margin = new Thickness(6, 0, 6, 0)
         };
 
@@ -735,9 +768,7 @@ internal static class MishaNativeMainWindowRenderer
         var opacity = ReadBool(overrides, "IsCustomBackgroundOpacityEnabled")
             ? ReadDouble(overrides, "BackgroundOpacity", workspace.GetDouble("Opacity", 0.5))
             : workspace.GetDouble("Opacity", 0.5);
-        var color = ReadBool(overrides, "IsCustomBackgroundColorEnabled")
-            ? ParseColor(overrides?["BackgroundColor"], Colors.Black)
-            : ParseColor(workspace.Settings["BackgroundColor"], Colors.Black);
+        var color = ResolveBackgroundColor(workspace, overrides);
         var radius = ReadBool(overrides, "IsCustomCornerRadiusEnabled")
             ? ReadDouble(overrides, "CustomCornerRadius", workspace.GetDouble("RadiusX", 8))
             : workspace.GetDouble("RadiusX", 8);
@@ -766,33 +797,52 @@ internal static class MishaNativeMainWindowRenderer
             return ParseBrush(node["ForegroundColor"], Brushes.White);
         if (workspace.GetBool("IsCustomForegroundColorEnabled"))
             return ParseBrush(workspace.Settings["CustomForegroundColor"], Brushes.White);
-        return Brushes.White;
+
+        return new SolidColorBrush(IsLightTheme(workspace)
+            ? Color.FromRgb(31, 33, 38)
+            : Color.FromRgb(246, 247, 250));
+    }
+
+    private static Color ResolveBackgroundColor(ClassIslandWorkspace workspace, JsonObject? node)
+    {
+        if (node is not null && ReadBool(node, "IsCustomBackgroundColorEnabled"))
+            return ParseColor(node["BackgroundColor"], Colors.Black);
+        if (workspace.GetBool("IsCustomBackgroundColorEnabled"))
+            return ParseColor(workspace.Settings["BackgroundColor"], Colors.Black);
+
+        return IsLightTheme(workspace)
+            ? Color.FromRgb(247, 248, 250)
+            : Color.FromRgb(28, 30, 36);
+    }
+
+    private static bool IsLightTheme(ClassIslandWorkspace workspace)
+    {
+        return workspace.GetInt("Theme", 2) switch
+        {
+            1 => true,
+            2 => false,
+            _ => ReadSystemLightTheme()
+        };
+    }
+
+    private static bool ReadSystemLightTheme()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("AppsUseLightTheme") is int value && value != 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static Brush ParseBrush(JsonNode? node, Brush fallback) =>
         new SolidColorBrush(ParseColor(node, fallback is SolidColorBrush solid ? solid.Color : Colors.White));
 
-    private static Color ParseColor(JsonNode? node, Color fallback)
-    {
-        if (node is JsonValue value && value.TryGetValue<string>(out var text) && !string.IsNullOrWhiteSpace(text))
-        {
-            try
-            {
-                var parsed = ColorConverter.ConvertFromString(text);
-                if (parsed is Color color) return color;
-            }
-            catch { }
-        }
-        if (node is JsonObject obj)
-        {
-            var a = Math.Clamp(ReadInt(obj, "A", 255), 0, 255);
-            var r = Math.Clamp(ReadInt(obj, "R"), 0, 255);
-            var g = Math.Clamp(ReadInt(obj, "G"), 0, 255);
-            var b = Math.Clamp(ReadInt(obj, "B"), 0, 255);
-            return Color.FromArgb((byte)a, (byte)r, (byte)g, (byte)b);
-        }
-        return fallback;
-    }
+    private static Color ParseColor(JsonNode? node, Color fallback) =>
+        ClassIslandColorCodec.Parse(node, fallback);
 
     private static string ReadString(JsonObject? node, string key, string fallback = "") =>
         node is null ? fallback : NodeString(node[key], fallback);

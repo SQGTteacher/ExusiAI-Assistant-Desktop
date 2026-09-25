@@ -20,7 +20,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private const int MaximumPrintCharacters = 2 * 1024 * 1024;
     private const int SlideThumbnailBatchSize = 16;
 
-    private readonly FileViewerProviderRegistry providers = new(new IFileViewerProvider[]
+    private FileViewerProviderRegistry? providers;
+
+    private FileViewerProviderRegistry Providers => providers ??= new(new IFileViewerProvider[]
     {
         new TextFileViewerProvider(),
         new CsvFileViewerProvider(),
@@ -36,6 +38,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly ObservableCollection<SlideThumbnailOption> slideThumbnails = [];
     private readonly ObservableCollection<MarkdownOutlineOption> markdownOutline = [];
     private readonly Dictionary<int, Block> markdownBlocksByLine = [];
+    private IReadOnlyList<RecentFileEntry> recentEntries = [];
 
     private readonly TextBlock title = new()
     {
@@ -847,7 +850,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         try
         {
             var timer = Stopwatch.StartNew();
-            document = await providers.OpenAsync(filePath, cancellationToken: loadCancellation.Token);
+            document = await Providers.OpenAsync(filePath, cancellationToken: loadCancellation.Token);
             timer.Stop();
 
             if (settings.RememberRecentFiles)
@@ -1247,7 +1250,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         status.Text = "正在流式导出安全提取内容…";
         try
         {
-            await using var exportDocument = await providers.OpenAsync(
+            await using var exportDocument = await Providers.OpenAsync(
                 document.Info.FilePath,
                 cancellationToken: operation.Token);
             if (document is IWorkbookPreviewDocument currentWorkbook &&
@@ -1541,7 +1544,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 return;
             }
 
-            await using var searchDocument = await providers.OpenAsync(
+            await using var searchDocument = await Providers.OpenAsync(
                 document.Info.FilePath,
                 cancellationToken: loadCancellation.Token);
             if (document is IWorkbookPreviewDocument currentWorkbook &&
@@ -2140,10 +2143,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         recentFilesBox.Visibility = settings.RememberRecentFiles ? Visibility.Visible : Visibility.Collapsed;
         clearRecentButton.Visibility = settings.RememberRecentFiles ? Visibility.Visible : Visibility.Collapsed;
-        recentFilesBox.ItemsSource = settings.RememberRecentFiles ? await recentFilesStore.LoadAsync() : null;
+        recentEntries = settings.RememberRecentFiles ? await recentFilesStore.LoadAsync() : [];
+        recentFilesBox.ItemsSource = settings.RememberRecentFiles ? recentEntries : null;
     }
 
-    private async Task RefreshWelcomeAsync()
+    private Task RefreshWelcomeAsync()
     {
         welcomeContent.Children.Clear();
         welcomeContent.Children.Add(new TextBlock
@@ -2165,9 +2169,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         open.Click += async (_, _) => await PickFileAsync();
         welcomeContent.Children.Add(open);
 
-        if (!settings.RememberRecentFiles) return;
-        var recent = await recentFilesStore.LoadAsync();
-        if (recent.Count == 0) return;
+        if (!settings.RememberRecentFiles) return Task.CompletedTask;
+        var recent = recentEntries;
+        if (recent.Count == 0) return Task.CompletedTask;
         welcomeContent.Children.Add(new TextBlock
         {
             Text = "最近使用",
@@ -2184,6 +2188,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             button.Click += async (_, _) => await OpenAsync(item.Path);
             welcomeContent.Children.Add(button);
         }
+
+        return Task.CompletedTask;
     }
 
     private async Task CloseDocumentAsync()

@@ -161,13 +161,8 @@ internal sealed class MishaSettingsCategoryPage : UserControl
         {
             if (!workspace.Settings.TryGetPropertyValue(key, out var node))
             {
-                var missing = new TextBox
-                {
-                    Text = "当前 Settings.json 中不存在此字段",
-                    IsReadOnly = true,
-                    MinWidth = 320
-                };
-                missing.SetResourceReference(Control.ForegroundProperty, "TextSecondaryBrush");
+                var missing = MishaUi.Note("当前 Settings.json 中没有写入此字段；保留 ClassIsland 自身的默认行为，不创建占位配置。");
+                missing.Margin = new Thickness(0);
                 fields.Children.Add(MishaUi.SettingRow(key, "不会自动补写上游未保存的默认值。", missing));
                 continue;
             }
@@ -245,7 +240,7 @@ internal sealed class MishaSettingsCategoryPage : UserControl
             {
                 if (value.TryGetValue<bool>(out var boolean))
                 {
-                    var checkBox = new CheckBox { IsChecked = boolean, MinWidth = 70 };
+                    var checkBox = new CheckBox { IsChecked = boolean, Content = "启用", MinWidth = 90 };
                     return new(SettingEditorKind.Boolean, checkBox, checkBox: checkBox);
                 }
 

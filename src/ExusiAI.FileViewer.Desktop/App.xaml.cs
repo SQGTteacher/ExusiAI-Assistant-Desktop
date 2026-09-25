@@ -11,15 +11,13 @@ public partial class App : Application
         base.OnStartup(e);
         var settings = await ViewerSettings.LoadAsync();
         if (!settings.PreferDarkTheme) ApplyLightTheme();
-        var viewer = new FileViewerPage(settings);
-        var window = new ViewerWindow(viewer);
+        var window = new ViewerWindow(settings);
         if (settings.StartMaximized) window.WindowState = WindowState.Maximized;
         MainWindow = window;
         window.Show();
 
         var filePath = e.Args.FirstOrDefault(File.Exists);
-        if (filePath is not null)
-            await viewer.OpenFileAsync(filePath);
+        await window.InitializeAsync(filePath);
     }
 
     private void ApplyLightTheme()
