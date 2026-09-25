@@ -255,7 +255,7 @@ public sealed class RuntimeTests
                     ClassIslandThemeVariant.Dark,
                     customBackgroundEnabled: true);
                 Assert.Same(System.Windows.Media.Brushes.Red, custom.Background);
-                Assert.IsType<System.Windows.Media.SolidColorBrush>(custom.BorderBrush);
+                Assert.IsType<System.Windows.Media.LinearGradientBrush>(custom.BorderBrush);
             }
             catch (Exception exception)
             {
