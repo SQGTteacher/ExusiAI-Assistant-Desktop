@@ -311,9 +311,9 @@ public sealed class FileViewerTests : IDisposable
         Assert.Equal(1, slides[0].SlideNumber);
         Assert.Contains("课堂标题", slides[0].Text);
         Assert.Contains("第一点", slides[0].Text);
-        Assert.NotNull(slides[0].Visual);
-        Assert.Single(slides[0].Visual!.Elements);
-        Assert.Contains("课堂标题", slides[0].Visual.Elements[0].Text);
+        var visual = Assert.IsType<SlideVisualPreview>(slides[0].Visual);
+        Assert.Single(visual.Elements);
+        Assert.Contains("课堂标题", visual.Elements[0].Text);
         Assert.Equal(2, slides[1].SlideNumber);
         Assert.Contains("第二页", slides[1].Text);
         Assert.True(slides[1].IsFinal);
