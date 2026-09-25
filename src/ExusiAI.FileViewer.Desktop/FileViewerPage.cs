@@ -34,6 +34,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly ObservableCollection<string> tableRows = [];
     private readonly ObservableCollection<SearchResultOption> searchResults = [];
     private readonly ObservableCollection<SlideThumbnailOption> slideThumbnails = [];
+    private readonly ObservableCollection<MarkdownOutlineOption> markdownOutline = [];
+    private readonly Dictionary<int, Block> markdownBlocksByLine = [];
 
     private readonly TextBlock title = new()
     {
@@ -85,6 +87,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         Visibility = Visibility.Collapsed
     };
 
+    private readonly FlowDocumentScrollViewer markdownPreview = new()
+    {
+        IsToolBarVisible = false,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        Visibility = Visibility.Collapsed
+    };
+
     private readonly TextBlock slideTitle = new()
     {
         FontSize = 30,
@@ -121,6 +131,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly ListBox tablePreview;
     private readonly ListBox searchResultList;
     private readonly ListBox slideThumbnailList;
+    private readonly ListBox markdownOutlineList;
 
     private readonly Border searchPane = new()
     {
@@ -174,6 +185,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly Button printButton = CreateSecondaryButton("打印 / PDF");
     private readonly Button loadMoreSlidesButton = CreateSecondaryButton("更多幻灯片");
     private readonly Button goToLineButton = CreateSecondaryButton("转到行");
+    private readonly Button markdownPreviewButton = CreateSecondaryButton("Markdown 预览");
     private readonly TextBox goToLineBox = new() { Width = 76, ToolTip = "输入文本行号并按 Enter" };
     private readonly Border slideNavigationPane = new()
     {
@@ -182,6 +194,12 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         Padding = new Thickness(10),
         CornerRadius = new CornerRadius(10),
         Visibility = Visibility.Collapsed
+    };
+    private readonly TextBlock navigationPaneTitle = new()
+    {
+        FontSize = 15,
+        FontWeight = FontWeights.SemiBold,
+        Margin = new Thickness(5, 3, 5, 10)
     };
     private readonly TextBox slideNumberBox = new() { Width = 56, ToolTip = "输入幻灯片页码并按 Enter" };
     private readonly TextBox searchBox = new() { Width = 230, ToolTip = "搜索当前文档全部可索引内容" };
@@ -209,6 +227,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private bool isDirty;
     private bool externalChangePending;
     private bool changingSlideThumbnailSelection;
+    private bool isMarkdownDocument;
+    private bool markdownPreviewMode;
+    private MarkdownParseResult? markdownParseResult;
     private FileSystemWatcher? fileWatcher;
     private DateTime lastKnownWriteTimeUtc;
     private readonly System.Windows.Threading.DispatcherTimer statisticsTimer = new()
@@ -274,6 +295,23 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             if (changingSlideThumbnailSelection || slideThumbnailList.SelectedItem is not SlideThumbnailOption option) return;
             await NavigateSlideAsync(option.SlideNumber);
+        };
+
+        markdownOutlineList = new ListBox
+        {
+            ItemsSource = markdownOutline,
+            DisplayMemberPath = nameof(MarkdownOutlineOption.DisplayText),
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Visibility = Visibility.Collapsed
+        };
+        VirtualizingPanel.SetIsVirtualizing(markdownOutlineList, true);
+        VirtualizingPanel.SetVirtualizationMode(markdownOutlineList, VirtualizationMode.Recycling);
+        markdownOutlineList.SelectionChanged += (_, _) =>
+        {
+            if (markdownOutlineList.SelectedItem is not MarkdownOutlineOption option) return;
+            NavigateMarkdownHeading(option);
         };
 
         welcomePanel = new Border
@@ -343,6 +381,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         printButton.Click += (_, _) => PrintCurrentView();
         loadMoreSlidesButton.Click += async (_, _) => await LoadMoreSlideThumbnailsAsync();
         goToLineButton.Click += (_, _) => GoToTextLine();
+        markdownPreviewButton.Click += (_, _) => ToggleMarkdownPreview();
         goToLineBox.KeyDown += (_, args) =>
         {
             if (args.Key == Key.Enter) GoToTextLine();
@@ -358,6 +397,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         loadMoreSlidesButton.IsEnabled = false;
         goToLineBox.Visibility = Visibility.Collapsed;
         goToLineButton.Visibility = Visibility.Collapsed;
+        markdownPreviewButton.Visibility = Visibility.Collapsed;
 
         statisticsTimer.Tick += (_, _) =>
         {
@@ -530,6 +570,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         AddCommand(viewCommands, wrapTextButton);
         AddCommand(viewCommands, goToLineBox);
         AddCommand(viewCommands, goToLineButton);
+        AddCommand(viewCommands, markdownPreviewButton);
 
         var commandHost = new Grid { MinHeight = 36 };
         commandHost.Children.Add(fileCommands);
@@ -576,6 +617,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         var contentGrid = new Grid();
         contentGrid.Children.Add(textPreview);
+        contentGrid.Children.Add(markdownPreview);
         contentGrid.Children.Add(tablePreview);
         contentGrid.Children.Add(slideScroll);
         contentGrid.Children.Add(welcomePanel);
@@ -617,15 +659,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideNavigationGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         slideNavigationGrid.RowDefinitions.Add(new RowDefinition());
         slideNavigationGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        slideNavigationGrid.Children.Add(new TextBlock
-        {
-            Text = "幻灯片",
-            FontSize = 15,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(5, 3, 5, 10)
-        });
+        slideNavigationGrid.Children.Add(navigationPaneTitle);
         Grid.SetRow(slideThumbnailList, 1);
         slideNavigationGrid.Children.Add(slideThumbnailList);
+        Grid.SetRow(markdownOutlineList, 1);
+        slideNavigationGrid.Children.Add(markdownOutlineList);
         loadMoreSlidesButton.Margin = new Thickness(0, 10, 0, 0);
         Grid.SetRow(loadMoreSlidesButton, 2);
         slideNavigationGrid.Children.Add(loadMoreSlidesButton);
@@ -726,6 +764,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     internal void FocusGoToLine()
     {
+        if (isMarkdownDocument && markdownPreviewMode) SetMarkdownPreviewMode(false);
         if (textPreview.Visibility != Visibility.Visible) return;
         goToLineBox.Focus();
         goToLineBox.SelectAll();
@@ -743,7 +782,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
         searchPane.Visibility = Visibility.Collapsed;
         documentInfoPane.Visibility = Visibility.Collapsed;
-        slideNavigationPane.Visibility = enabled || document is not ISlidePreviewDocument
+        var hasNavigation = document is ISlidePreviewDocument || isMarkdownDocument && markdownOutline.Count > 0;
+        slideNavigationPane.Visibility = enabled || !hasNavigation
             ? Visibility.Collapsed
             : Visibility.Visible;
     }
@@ -773,8 +813,15 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideEmpty.Visibility = Visibility.Collapsed;
         searchResults.Clear();
         slideThumbnails.Clear();
+        markdownOutline.Clear();
+        markdownBlocksByLine.Clear();
+        markdownParseResult = null;
+        isMarkdownDocument = false;
+        markdownPreviewMode = false;
 
         textPreview.Visibility = Visibility.Collapsed;
+        markdownPreview.Visibility = Visibility.Collapsed;
+        markdownPreview.Document = new FlowDocument();
         tablePreview.Visibility = Visibility.Collapsed;
         slideScroll.Visibility = Visibility.Collapsed;
         searchPane.Visibility = Visibility.Collapsed;
@@ -786,6 +833,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideNumberBox.Visibility = Visibility.Collapsed;
         worksheetBox.Visibility = Visibility.Collapsed;
         slideNavigationPane.Visibility = Visibility.Collapsed;
+        slideThumbnailList.Visibility = Visibility.Collapsed;
+        markdownOutlineList.Visibility = Visibility.Collapsed;
 
         currentSlideNumber = 0;
         welcomePanel.Visibility = Visibility.Collapsed;
@@ -833,6 +882,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                         status.Text = "TXT/Markdown 可编辑 · Ctrl+S 保存 · 保存采用同目录临时文件与原子替换";
                     else if (document is IEditableTextDocument)
                         status.Text = "文件超过 8 MiB 界面缓存，已保持只读以防止截断保存。";
+                    var extension = Path.GetExtension(document.Info.FilePath);
+                    isMarkdownDocument = extension.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+                                         extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase);
+                    if (isMarkdownDocument)
+                    {
+                        RenderMarkdownPreview();
+                        SetMarkdownPreviewMode(true);
+                    }
                     UpdateEditingUi();
                     UpdateTextStatistics();
                     break;
@@ -859,6 +916,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 case ISlidePreviewDocument:
                     slideScroll.Visibility = Visibility.Visible;
                     slideNavigationPane.Visibility = Visibility.Visible;
+                    navigationPaneTitle.Text = "幻灯片";
+                    slideThumbnailList.Visibility = Visibility.Visible;
+                    markdownOutlineList.Visibility = Visibility.Collapsed;
+                    loadMoreSlidesButton.Visibility = Visibility.Visible;
                     previousSlideButton.Visibility = Visibility.Visible;
                     nextSlideButton.Visibility = Visibility.Visible;
                     slideNumberBox.Visibility = Visibility.Visible;
@@ -1048,6 +1109,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private void ApplyZoom()
     {
         textPreview.FontSize = zoom.Value;
+        markdownPreview.Zoom = Math.Clamp(zoom.Value / 15d * 100d, markdownPreview.MinZoom, markdownPreview.MaxZoom);
         tablePreview.FontSize = Math.Max(11, zoom.Value - 1);
         slideTitle.FontSize = Math.Max(24, zoom.Value + 15);
         slideTitle.LineHeight = slideTitle.FontSize * 1.3;
@@ -1218,13 +1280,15 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         if (document is null) return;
 
-        var content = textPreview.Visibility == Visibility.Visible
-            ? textPreview.Text
-            : tablePreview.Visibility == Visibility.Visible
-                ? string.Join(Environment.NewLine, tableRows)
-                : slideScroll.Visibility == Visibility.Visible
-                    ? string.Join(Environment.NewLine + Environment.NewLine, new[] { slideTitle.Text, slideBody.Text }.Where(value => !string.IsNullOrWhiteSpace(value)))
-                    : string.Empty;
+        var content = markdownPreview.Visibility == Visibility.Visible && markdownParseResult is not null
+            ? textPreview.Text[..Math.Min(textPreview.Text.Length, markdownParseResult.ParsedCharacters)]
+            : textPreview.Visibility == Visibility.Visible
+                ? textPreview.Text
+                : tablePreview.Visibility == Visibility.Visible
+                    ? string.Join(Environment.NewLine, tableRows)
+                    : slideScroll.Visibility == Visibility.Visible
+                        ? string.Join(Environment.NewLine + Environment.NewLine, new[] { slideTitle.Text, slideBody.Text }.Where(value => !string.IsNullOrWhiteSpace(value)))
+                        : string.Empty;
 
         if (string.IsNullOrEmpty(content))
         {
@@ -1242,17 +1306,19 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         try
         {
-            var flow = new FlowDocument(new Paragraph(new Run(content)))
-            {
-                FontFamily = textPreview.Visibility == Visibility.Visible
-                    ? new FontFamily("Cascadia Mono, Consolas")
-                    : new FontFamily("Segoe UI"),
-                FontSize = 12,
-                PagePadding = new Thickness(48),
-                ColumnWidth = double.PositiveInfinity,
-                PageWidth = dialog.PrintableAreaWidth,
-                PageHeight = dialog.PrintableAreaHeight
-            };
+            var flow = markdownPreview.Visibility == Visibility.Visible && markdownParseResult is not null
+                ? CreateMarkdownFlowDocument(markdownParseResult, forPrint: true)
+                : new FlowDocument(new Paragraph(new Run(content)))
+                {
+                    FontFamily = textPreview.Visibility == Visibility.Visible
+                        ? new FontFamily("Cascadia Mono, Consolas")
+                        : new FontFamily("Segoe UI"),
+                    FontSize = 12,
+                    PagePadding = new Thickness(48),
+                    ColumnWidth = double.PositiveInfinity
+                };
+            flow.PageWidth = dialog.PrintableAreaWidth;
+            flow.PageHeight = dialog.PrintableAreaHeight;
             dialog.PrintDocument(((IDocumentPaginatorSource)flow).DocumentPaginator, document.Info.DisplayName);
             status.Text = "打印任务已提交；可在系统打印对话框中选择 Microsoft Print to PDF。";
         }
@@ -1264,6 +1330,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     private void GoToTextLine()
     {
+        if (isMarkdownDocument && markdownPreviewMode) SetMarkdownPreviewMode(false);
         if (textPreview.Visibility != Visibility.Visible || !int.TryParse(goToLineBox.Text, out var requested)) return;
 
         var lineCount = TextDocumentStatistics.Calculate(textPreview.Text).Lines;
@@ -1276,6 +1343,179 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         status.Text = requested == target
             ? $"已转到第 {target:N0} 行。"
             : $"输入超出范围，已转到最后一行（共 {lineCount:N0} 行）。";
+    }
+
+    private void ToggleMarkdownPreview()
+    {
+        if (!isMarkdownDocument) return;
+        if (markdownPreviewMode)
+        {
+            SetMarkdownPreviewMode(false);
+            status.Text = "Markdown 源码视图 · 可使用“启用编辑”修改内容";
+            return;
+        }
+
+        textPreview.IsReadOnly = true;
+        RenderMarkdownPreview();
+        SetMarkdownPreviewMode(true);
+        UpdateEditingUi();
+        status.Text = markdownParseResult?.IsTruncated == true
+            ? "Markdown 安全预览已达到 1 Mi 字符或 2,000 区块预算；源码仍完整保留。"
+            : "Markdown 安全排版预览 · 不执行 HTML、脚本或外部资源";
+    }
+
+    private void SetMarkdownPreviewMode(bool enabled)
+    {
+        markdownPreviewMode = enabled && isMarkdownDocument;
+        markdownPreview.Visibility = markdownPreviewMode ? Visibility.Visible : Visibility.Collapsed;
+        textPreview.Visibility = markdownPreviewMode ? Visibility.Collapsed : Visibility.Visible;
+        markdownPreviewButton.Content = markdownPreviewMode ? "查看源码" : "Markdown 预览";
+
+        if (isMarkdownDocument)
+        {
+            slideNavigationPane.Visibility = markdownOutline.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            navigationPaneTitle.Text = "文档大纲";
+            markdownOutlineList.Visibility = Visibility.Visible;
+            slideThumbnailList.Visibility = Visibility.Collapsed;
+            loadMoreSlidesButton.Visibility = Visibility.Collapsed;
+        }
+        if (document is not null) UpdateEditingUi();
+    }
+
+    private void RenderMarkdownPreview()
+    {
+        markdownParseResult = SafeMarkdownParser.Parse(textPreview.Text);
+        markdownOutline.Clear();
+        markdownBlocksByLine.Clear();
+        var flow = CreateMarkdownFlowDocument(markdownParseResult, forPrint: false);
+        markdownPreview.Document = flow;
+    }
+
+    private FlowDocument CreateMarkdownFlowDocument(MarkdownParseResult result, bool forPrint)
+    {
+        var flow = new FlowDocument
+        {
+            PagePadding = forPrint ? new Thickness(48) : new Thickness(44, 32, 54, 48),
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 15,
+            LineHeight = 24,
+            ColumnWidth = double.PositiveInfinity
+        };
+        if (!forPrint) flow.SetResourceReference(TextElement.ForegroundProperty, "TextPrimaryBrush");
+
+        foreach (var source in result.Blocks)
+        {
+            Block block;
+            switch (source.Kind)
+            {
+                case MarkdownBlockKind.Heading:
+                    var heading = new Paragraph
+                    {
+                        FontSize = source.Level switch { 1 => 30, 2 => 24, 3 => 20, _ => 17 },
+                        FontWeight = FontWeights.SemiBold,
+                        Margin = new Thickness(0, source.Level <= 2 ? 22 : 14, 0, 8),
+                        KeepWithNext = true
+                    };
+                    AddMarkdownInlines(heading, source.Text);
+                    block = heading;
+                    if (!forPrint)
+                    {
+                        markdownOutline.Add(new(source.SourceLine, source.Level, source.Text));
+                        markdownBlocksByLine[source.SourceLine] = block;
+                    }
+                    break;
+                case MarkdownBlockKind.UnorderedListItem:
+                case MarkdownBlockKind.OrderedListItem:
+                    var prefix = source.Kind == MarkdownBlockKind.OrderedListItem ? $"{source.Level}.  " : "•  ";
+                    var listItem = new Paragraph { Margin = new Thickness(22, 2, 0, 4) };
+                    listItem.Inlines.Add(new Run(prefix) { FontWeight = FontWeights.SemiBold });
+                    AddMarkdownInlines(listItem, source.Text);
+                    block = listItem;
+                    break;
+                case MarkdownBlockKind.Quote:
+                    var quote = new Paragraph
+                    {
+                        FontStyle = FontStyles.Italic,
+                        Padding = new Thickness(14, 8, 12, 8),
+                        Margin = new Thickness(0, 8, 0, 10),
+                        BorderThickness = new Thickness(3, 0, 0, 0)
+                    };
+                    if (!forPrint) quote.SetResourceReference(Block.BorderBrushProperty, "AccentBrush");
+                    AddMarkdownInlines(quote, source.Text);
+                    block = quote;
+                    break;
+                case MarkdownBlockKind.Code:
+                    var code = new Paragraph(new Run(source.Text))
+                    {
+                        FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+                        FontSize = 13,
+                        LineHeight = 20,
+                        Padding = new Thickness(14),
+                        Margin = new Thickness(0, 8, 0, 12),
+                        TextAlignment = TextAlignment.Left
+                    };
+                    if (!forPrint) code.SetResourceReference(TextElement.BackgroundProperty, "SurfaceAltBrush");
+                    block = code;
+                    break;
+                case MarkdownBlockKind.Rule:
+                    var rule = new BlockUIContainer(new Border { Height = 1, Margin = new Thickness(0, 12, 0, 12) });
+                    if (rule.Child is Border border && !forPrint)
+                        border.SetResourceReference(Border.BackgroundProperty, "BorderBrush");
+                    block = rule;
+                    break;
+                default:
+                    var paragraph = new Paragraph { Margin = new Thickness(0, 3, 0, 9) };
+                    AddMarkdownInlines(paragraph, source.Text);
+                    block = paragraph;
+                    break;
+            }
+            flow.Blocks.Add(block);
+        }
+
+        if (result.IsTruncated)
+        {
+            flow.Blocks.Add(new Paragraph(new Run("预览已达到安全预算；请切换源码视图查看其余内容。"))
+            {
+                FontStyle = FontStyles.Italic,
+                Margin = new Thickness(0, 24, 0, 0)
+            });
+        }
+        return flow;
+    }
+
+    private static void AddMarkdownInlines(Paragraph paragraph, string text)
+    {
+        foreach (var item in SafeMarkdownParser.ParseInlines(text))
+        {
+            var run = new Run(item.Text);
+            switch (item.Kind)
+            {
+                case MarkdownInlineKind.Bold:
+                    run.FontWeight = FontWeights.Bold;
+                    break;
+                case MarkdownInlineKind.Italic:
+                    run.FontStyle = FontStyles.Italic;
+                    break;
+                case MarkdownInlineKind.Code:
+                    run.FontFamily = new FontFamily("Cascadia Mono, Consolas");
+                    break;
+            }
+            paragraph.Inlines.Add(run);
+        }
+    }
+
+    private void NavigateMarkdownHeading(MarkdownOutlineOption option)
+    {
+        if (markdownPreviewMode && markdownBlocksByLine.TryGetValue(option.SourceLine, out var block))
+        {
+            block.BringIntoView();
+            status.Text = $"大纲 · 第 {option.SourceLine:N0} 行 · {option.Title}";
+            return;
+        }
+
+        SetMarkdownPreviewMode(false);
+        goToLineBox.Text = option.SourceLine.ToString(CultureInfo.CurrentCulture);
+        GoToTextLine();
     }
 
     private async Task SearchCurrentDocumentAsync()
@@ -1372,14 +1612,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     private void ScheduleTextStatistics()
     {
-        if (textPreview.Visibility != Visibility.Visible) return;
+        if (textPreview.Visibility != Visibility.Visible && !isMarkdownDocument) return;
         statisticsTimer.Stop();
         statisticsTimer.Start();
     }
 
     private void UpdateTextStatistics()
     {
-        if (textPreview.Visibility != Visibility.Visible) return;
+        if (textPreview.Visibility != Visibility.Visible && !isMarkdownDocument) return;
 
         var statistics = TextDocumentStatistics.Calculate(textPreview.Text);
         var caret = Math.Clamp(textPreview.CaretIndex, 0, textPreview.Text.Length);
@@ -1532,6 +1772,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         goToLineBox.Visibility = document is ITextPreviewDocument ? Visibility.Visible : Visibility.Collapsed;
         goToLineButton.IsEnabled = document is ITextPreviewDocument;
         goToLineButton.Visibility = document is ITextPreviewDocument ? Visibility.Visible : Visibility.Collapsed;
+        markdownPreviewButton.IsEnabled = isMarkdownDocument;
+        markdownPreviewButton.Visibility = isMarkdownDocument ? Visibility.Visible : Visibility.Collapsed;
         loadMoreSlidesButton.IsEnabled = operationCancellation is null &&
                                          document is ISlidePreviewDocument slides &&
                                          slideThumbnails.Count < slides.SlideCount;
@@ -1627,6 +1869,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 break;
 
             case ViewerSearchLocationKind.Text:
+                if (isMarkdownDocument && markdownPreviewMode) SetMarkdownPreviewMode(false);
                 if (textPreview.Visibility != Visibility.Visible) return;
                 var index = checked((int)Math.Min(hit.PrimaryIndex, int.MaxValue));
                 if (index < textPreview.Text.Length)
@@ -1698,7 +1941,20 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         if (document is not IEditableTextDocument || !textPreviewFullyLoaded)
             return;
 
-        textPreview.IsReadOnly = !textPreview.IsReadOnly;
+        if (isMarkdownDocument && markdownPreviewMode)
+        {
+            SetMarkdownPreviewMode(false);
+            textPreview.IsReadOnly = false;
+        }
+        else
+        {
+            textPreview.IsReadOnly = !textPreview.IsReadOnly;
+            if (isMarkdownDocument && textPreview.IsReadOnly)
+            {
+                RenderMarkdownPreview();
+                SetMarkdownPreviewMode(true);
+            }
+        }
         UpdateEditingUi();
         if (!textPreview.IsReadOnly)
         {
@@ -1707,7 +1963,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
         else
         {
-            status.Text = isDirty ? "已退出编辑模式 · 仍有未保存更改" : "已退出编辑模式";
+            status.Text = isDirty
+                ? "已退出编辑模式 · Markdown 预览已刷新 · 仍有未保存更改"
+                : "已退出编辑模式";
         }
     }
 
@@ -1726,18 +1984,18 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         saveButton.IsEnabled = editable && isDirty;
         saveAsButton.IsEnabled = editable;
         editButton.IsEnabled = editable;
-        editButton.Content = textPreview.IsReadOnly ? "启用编辑" : "结束编辑";
+        editButton.Content = markdownPreviewMode || textPreview.IsReadOnly ? "启用编辑" : "结束编辑";
 
-        var editing = editable && !textPreview.IsReadOnly;
+        var editing = editable && !textPreview.IsReadOnly && !markdownPreviewMode;
         undoButton.IsEnabled = editing;
         redoButton.IsEnabled = editing;
         cutButton.IsEnabled = editing;
         pasteButton.IsEnabled = editing;
-        copyButton.IsEnabled = editable;
-        selectAllButton.IsEnabled = editable;
+        copyButton.IsEnabled = editable && !markdownPreviewMode;
+        selectAllButton.IsEnabled = editable && !markdownPreviewMode;
 
         modeChipText.Text = editable
-            ? isDirty ? "已修改" : editing ? "编辑中" : "可编辑"
+            ? isDirty ? "已修改" : editing ? "编辑中" : markdownPreviewMode ? "预览" : "可编辑"
             : "只读";
 
         if (document is not null)
@@ -1950,6 +2208,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         documentInfoPane.Visibility = Visibility.Collapsed;
         slideNavigationPane.Visibility = Visibility.Collapsed;
         slideThumbnails.Clear();
+        markdownOutline.Clear();
+        markdownBlocksByLine.Clear();
+        markdownParseResult = null;
+        isMarkdownDocument = false;
+        markdownPreviewMode = false;
+        markdownPreview.Visibility = Visibility.Collapsed;
+        markdownPreview.Document = new FlowDocument();
         reloadButton.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
         UpdateEditingUi();
         UpdateDocumentCommandState();
@@ -2055,5 +2320,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private sealed record SlideThumbnailOption(int SlideNumber, string Summary)
     {
         public string DisplayText => $"{SlideNumber:N0}  {Summary}";
+    }
+
+    private sealed record MarkdownOutlineOption(int SourceLine, int Level, string Title)
+    {
+        public string DisplayText => $"{new string('　', Math.Max(0, Level - 1))}{Title}";
     }
 }

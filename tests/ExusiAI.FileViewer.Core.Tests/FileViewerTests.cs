@@ -36,6 +36,49 @@ public sealed class FileViewerTests : IDisposable
         Assert.Equal(text.Length, TextDocumentStatistics.GetLineStart(text, 99));
     }
 
+    [Fact]
+    public void Markdown_parser_builds_safe_structured_blocks_and_outline_lines()
+    {
+        const string markdown = """
+            # Lesson title
+
+            Intro with **bold** and `code`.
+
+            - first
+            2. second
+            > remember this
+
+            <script>alert('display only')</script>
+
+            ```csharp
+            Console.WriteLine("safe text");
+            ```
+            """;
+
+        var result = SafeMarkdownParser.Parse(markdown);
+
+        Assert.False(result.IsTruncated);
+        Assert.Contains(result.Blocks, block => block.Kind == MarkdownBlockKind.Heading && block.Level == 1 && block.Text == "Lesson title");
+        Assert.Contains(result.Blocks, block => block.Kind == MarkdownBlockKind.UnorderedListItem && block.Text == "first");
+        Assert.Contains(result.Blocks, block => block.Kind == MarkdownBlockKind.OrderedListItem && block.Level == 2);
+        Assert.Contains(result.Blocks, block => block.Kind == MarkdownBlockKind.Quote && block.Text == "remember this");
+        Assert.Contains(result.Blocks, block => block.Kind == MarkdownBlockKind.Paragraph && block.Text.Contains("<script>", StringComparison.Ordinal));
+        Assert.Contains(result.Blocks, block => block.Kind == MarkdownBlockKind.Code && block.Text.Contains("Console.WriteLine", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Markdown_parser_enforces_budgets_and_parses_safe_inline_emphasis()
+    {
+        var limited = SafeMarkdownParser.Parse("# one\n\n# two\n\n# three", maximumCharacters: 14, maximumBlocks: 2);
+        var inlines = SafeMarkdownParser.ParseInlines("plain **bold** *italic* `code`");
+
+        Assert.True(limited.IsTruncated);
+        Assert.Equal(2, limited.Blocks.Length);
+        Assert.Contains(inlines, item => item.Kind == MarkdownInlineKind.Bold && item.Text == "bold");
+        Assert.Contains(inlines, item => item.Kind == MarkdownInlineKind.Italic && item.Text == "italic");
+        Assert.Contains(inlines, item => item.Kind == MarkdownInlineKind.Code && item.Text == "code");
+    }
+
     public FileViewerTests() => Directory.CreateDirectory(directory);
 
     [Fact]
