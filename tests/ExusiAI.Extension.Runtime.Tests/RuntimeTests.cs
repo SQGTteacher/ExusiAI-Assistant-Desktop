@@ -6,7 +6,7 @@ using ExusiAI.Extension.Abstractions;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.SDK;
 using ExusiAI.Extension.Wpf;
-using ExusiAI.Plugin.Sample;
+using ExusiAI.Extension.TestPlugin;
 using ExusiAI.Plugin.MishaShowcase;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -28,6 +28,68 @@ public sealed class RuntimeTests
         Assert.False(queue.TakeNext());
 
         Assert.True(queue.Request());
+    }
+
+    [Theory]
+    [InlineData(0, 100, 50)]
+    [InlineData(1, 450, 50)]
+    [InlineData(2, 800, 50)]
+    [InlineData(3, 100, 550)]
+    [InlineData(4, 450, 550)]
+    [InlineData(5, 800, 550)]
+    public void MishaDockingUsesAllSixClassIslandPositions(int docking, double expectedX, double expectedY)
+    {
+        var point = MishaMainWindow.CalculateDockPosition(
+            new System.Windows.Rect(100, 50, 800, 600),
+            new System.Windows.Size(100, 100),
+            docking,
+            0,
+            0,
+            0);
+
+        Assert.Equal(expectedX, point.X);
+        Assert.Equal(expectedY, point.Y);
+    }
+
+    [Fact]
+    public void MishaDockingAppliesOffsetsAndSafeAreaOnce()
+    {
+        var point = MishaMainWindow.CalculateDockPosition(
+            new System.Windows.Rect(0, 40, 1920, 1000),
+            new System.Windows.Size(480, 80),
+            docking: 1,
+            offsetX: 12,
+            offsetY: 30,
+            verticalSafeArea: 20);
+
+        Assert.Equal(732, point.X);
+        Assert.Equal(50, point.Y);
+    }
+
+    [Fact]
+    public void MishaIslandCornerRadiusIsCappedAtHalfItsHeight()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var border = new System.Windows.Controls.Border { Height = 40 };
+                MishaNativeMainWindowRenderer.ApplyHeightBoundCornerRadius(border, 80);
+                Assert.Equal(new System.Windows.CornerRadius(20), border.CornerRadius);
+
+                MishaNativeMainWindowRenderer.ApplyHeightBoundCornerRadius(border, 8);
+                Assert.Equal(new System.Windows.CornerRadius(8), border.CornerRadius);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "Misha corner-radius test timed out.");
+        Assert.Null(failure);
     }
 
     [Fact]
@@ -341,8 +403,8 @@ public sealed class RuntimeTests
     {
         using var root = new TemporaryDirectory();
         var package = Path.Combine(root.Path, "bad-type");
-        await WriteManifestAsync(package, ValidManifest with { EntryPoint = new() { Assembly = "ExusiAI.Plugin.Sample.dll", Type = "Missing.Plugin" } });
-        File.Copy(typeof(SamplePlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Plugin.Sample.dll"));
+        await WriteManifestAsync(package, ValidManifest with { EntryPoint = new() { Assembly = "ExusiAI.Extension.TestPlugin.dll", Type = "Missing.Plugin" } });
+        File.Copy(typeof(TestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
         await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
         await runtime.DiscoverAsync(root.Path);
         await runtime.StartAsync();
@@ -370,10 +432,10 @@ public sealed class RuntimeTests
     }
 
     [Fact]
-    public async Task SamplePluginLoadsInCollectibleContextAndStarts()
+    public async Task TestPluginLoadsInCollectibleContextAndStarts()
     {
         using var root = new TemporaryDirectory();
-        var loadContext = await LoadAndStopSamplePluginAsync(root.Path);
+        var loadContext = await LoadAndStopTestPluginAsync(root.Path);
         Assert.True(
             WaitForCollection(loadContext, TimeSpan.FromSeconds(2)),
             "Collectible plugin AssemblyLoadContext did not unload within the bounded GC wait.");
@@ -385,18 +447,18 @@ public sealed class RuntimeTests
         using var root = new TemporaryDirectory();
         var package = Path.Combine(root.Path, "sample");
         await WriteManifestAsync(package, ValidManifest);
-        File.Copy(typeof(SamplePlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Plugin.Sample.dll"));
+        File.Copy(typeof(TestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
         File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
         await using var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
         await runtime.DiscoverAsync(root.Path);
 
-        await runtime.StartAsync(["exusiai.sample"]);
+        await runtime.StartAsync(["exusiai.test"]);
         Assert.Equal(PackageState.Disabled, Assert.Single(runtime.Entries).State);
 
-        await runtime.SetEnabledAsync("exusiai.sample", true);
+        await runtime.SetEnabledAsync("exusiai.test", true);
         Assert.Equal(PackageState.Running, Assert.Single(runtime.Entries).State);
 
-        await runtime.SetEnabledAsync("exusiai.sample", false);
+        await runtime.SetEnabledAsync("exusiai.test", false);
         var disabled = Assert.Single(runtime.Entries);
         Assert.Equal(PackageState.Disabled, disabled.State);
         Assert.Null(disabled.Instance);
@@ -882,11 +944,11 @@ public sealed class RuntimeTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static async Task<WeakReference> LoadAndStopSamplePluginAsync(string rootPath)
+    private static async Task<WeakReference> LoadAndStopTestPluginAsync(string rootPath)
     {
         var package = Path.Combine(rootPath, "sample");
         await WriteManifestAsync(package, ValidManifest);
-        File.Copy(typeof(SamplePlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Plugin.Sample.dll"));
+        File.Copy(typeof(TestPlugin).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.TestPlugin.dll"));
         File.Copy(typeof(ExtensionPluginBase).Assembly.Location, Path.Combine(package, "ExusiAI.Extension.SDK.dll"));
         var runtime = new ExtensionRuntime(CreateDiscovery(), NullLogger<ExtensionRuntime>.Instance);
         await runtime.DiscoverAsync(rootPath);
@@ -898,7 +960,7 @@ public sealed class RuntimeTests
         Assert.NotNull(context);
         Assert.NotEqual(System.Runtime.Loader.AssemblyLoadContext.Default, context);
         var navigation = Assert.IsAssignableFrom<IWpfNavigationExtension>(entry.Instance);
-        Assert.Equal("sample.hello", Assert.Single(navigation.GetNavigationPages()).Route);
+        Assert.Equal("test.page", Assert.Single(navigation.GetNavigationPages()).Route);
         var weakReference = new WeakReference(context);
         await runtime.DisposeAsync();
         return weakReference;
@@ -914,8 +976,8 @@ public sealed class RuntimeTests
 
     private static PackageManifest ValidManifest => new()
     {
-        SchemaVersion = 1, Id = "exusiai.sample", Type = PackageType.Plugin, DisplayName = "Sample", Version = "0.1.0", ApiVersion = "1",
-        Publisher = "ExusiAI", MinimumHostVersion = "0.1.0", EntryPoint = new() { Assembly = "ExusiAI.Plugin.Sample.dll", Type = "ExusiAI.Plugin.Sample.SamplePlugin" }
+        SchemaVersion = 1, Id = "exusiai.test", Type = PackageType.Plugin, DisplayName = "Test", Version = "0.1.0", ApiVersion = "1",
+        Publisher = "ExusiAI", MinimumHostVersion = "0.1.0", EntryPoint = new() { Assembly = "ExusiAI.Extension.TestPlugin.dll", Type = "ExusiAI.Extension.TestPlugin.TestPlugin" }
     };
 
     private sealed class TemporaryDirectory : IDisposable

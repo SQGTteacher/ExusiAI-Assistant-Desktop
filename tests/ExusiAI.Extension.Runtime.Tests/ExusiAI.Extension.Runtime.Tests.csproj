@@ -15,7 +15,7 @@
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Runtime\ExusiAI.Extension.Runtime.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.SDK\ExusiAI.Extension.SDK.csproj" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.Sample\ExusiAI.Plugin.Sample.csproj" />
+    <ProjectReference Include="..\ExusiAI.Extension.TestPlugin\ExusiAI.Extension.TestPlugin.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" />
   </ItemGroup>

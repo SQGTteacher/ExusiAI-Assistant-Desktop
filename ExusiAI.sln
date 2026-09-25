@@ -20,8 +20,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Theme", "src\ExusiA
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Desktop", "src\ExusiAI.Desktop\ExusiAI.Desktop.csproj", "{99999999-9999-4999-8999-999999999999}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Plugin.Sample", "plugins\ExusiAI.Plugin.Sample\ExusiAI.Plugin.Sample.csproj", "{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Plugin.MishaShowcase", "plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj", "{EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Core.Tests", "tests\ExusiAI.Core.Tests\ExusiAI.Core.Tests.csproj", "{BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB}"
@@ -80,10 +78,6 @@ Global
 		{99999999-9999-4999-8999-999999999999}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{99999999-9999-4999-8999-999999999999}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{99999999-9999-4999-8999-999999999999}.Release|Any CPU.Build.0 = Release|Any CPU
-		{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA}.Release|Any CPU.Build.0 = Release|Any CPU
 		{EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE}.Release|Any CPU.ActiveCfg = Release|Any CPU

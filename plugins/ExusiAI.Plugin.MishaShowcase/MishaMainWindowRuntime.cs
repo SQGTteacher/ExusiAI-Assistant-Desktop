@@ -234,19 +234,61 @@ internal sealed class MishaMainWindow : Window
         var width = Math.Max(ActualWidth, 1);
         var height = Math.Max(ActualHeight, 1);
         var docking = Math.Clamp(workspace.GetInt("WindowDockingLocation", 1), 0, 5);
+        var offsetY = workspace.GetInt("WindowDockingOffsetY");
+        var safeArea = Math.Max(0, themeVerticalSafeAreaPx);
+        var position = CalculateDockPosition(
+            area,
+            new Size(width, height),
+            docking,
+            workspace.GetInt("WindowDockingOffsetX"),
+            offsetY,
+            safeArea);
+
+        // Applying Left/Top alone can be interpreted with the DPI of the window's old monitor.
+        // Move the HWND in physical pixels so all six native ClassIsland docking positions remain
+        // correct on Windows 10 and mixed-DPI multi-monitor classrooms.
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            const uint noSize = 0x0001;
+            const uint noZOrder = 0x0004;
+            const uint noActivate = 0x0010;
+            _ = SetWindowPos(
+                handle,
+                IntPtr.Zero,
+                (int)Math.Round(position.X * dpi.DpiScaleX),
+                (int)Math.Round(position.Y * dpi.DpiScaleY),
+                0,
+                0,
+                noSize | noZOrder | noActivate);
+        }
+        else
+        {
+            Left = position.X;
+            Top = position.Y;
+        }
+    }
+
+    internal static Point CalculateDockPosition(
+        Rect area,
+        Size window,
+        int docking,
+        double offsetX,
+        double offsetY,
+        double verticalSafeArea)
+    {
+        docking = Math.Clamp(docking, 0, 5);
         var x = docking % 3 switch
         {
             0 => area.Left,
-            1 => area.Left + (area.Width - width) / 2,
-            _ => area.Right - width
+            1 => area.Left + (area.Width - window.Width) / 2,
+            _ => area.Right - window.Width
         };
-        var offsetY = workspace.GetInt("WindowDockingOffsetY");
-        var safeArea = Math.Max(0, themeVerticalSafeAreaPx);
+        var safeArea = Math.Max(0, verticalSafeArea);
         var y = docking < 3
             ? area.Top + offsetY - safeArea
-            : area.Bottom - height + offsetY + safeArea;
-        Left = x + workspace.GetInt("WindowDockingOffsetX");
-        Top = y;
+            : area.Bottom - window.Height + offsetY + safeArea;
+        return new Point(x + offsetX, y);
     }
 
     private void ApplyExtendedStyle()
@@ -808,10 +850,25 @@ internal static class MishaNativeMainWindowRenderer
             variant,
             customBackgroundEnabled);
 
+        // ClassIsland's RadiusX/component override is authoritative. Recalculate after layout so
+        // the radius can never exceed half of the island's actual height; the maximum shape is a
+        // capsule with two exact semicircular ends rather than an overflowing theme radius.
+        ApplyHeightBoundCornerRadius(border, radius);
+        border.SizeChanged += (_, _) => ApplyHeightBoundCornerRadius(border, radius);
+
         if (border.Background is not null)
             border.Background.Opacity *= Math.Clamp(opacity, 0, 1);
 
         return border;
+    }
+
+    internal static void ApplyHeightBoundCornerRadius(Border border, double requestedRadius)
+    {
+        var height = border.ActualHeight > 0 ? border.ActualHeight : border.Height;
+        var maximumRadius = double.IsFinite(height) && height > 0
+            ? height / 2
+            : Math.Max(0, requestedRadius);
+        border.CornerRadius = new CornerRadius(Math.Min(Math.Max(0, requestedRadius), maximumRadius));
     }
 
     private static TextBlock BaseText(double fontSize, string text = "") =>

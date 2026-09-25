@@ -12,7 +12,7 @@ Example:
 ```json
 {
   "schemaVersion": 1,
-  "id": "exusiai.sample",
+  "id": "com.example.my-plugin",
   "type": "plugin",
   "name": "Sample Plugin",
   "version": "0.1.0",
@@ -21,8 +21,8 @@ Example:
   "description": "Official sample extension",
   "minimumHostVersion": "0.1.0",
   "entryPoint": {
-    "assembly": "ExusiAI.Plugin.Sample.dll",
-    "type": "ExusiAI.Plugin.Sample.SamplePlugin"
+    "assembly": "MyPlugin.dll",
+    "type": "MyPlugin.Plugin"
   },
   "permissions": []
 }
