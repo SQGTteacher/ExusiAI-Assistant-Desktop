@@ -8,6 +8,24 @@ public sealed class FileViewerTests : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), $"exusiai-viewer-{Guid.NewGuid():N}");
 
+    [Theory]
+    [InlineData("", 0, 0, 0)]
+    [InlineData("hello", 1, 1, 5)]
+    [InlineData("hello world\n第二行", 2, 3, 15)]
+    [InlineData("one\r\ntwo\n", 3, 2, 9)]
+    public void TextStatisticsCountLinesWordsAndCharacters(
+        string text,
+        int expectedLines,
+        int expectedWords,
+        int expectedCharacters)
+    {
+        var result = TextDocumentStatistics.Calculate(text);
+
+        Assert.Equal(expectedLines, result.Lines);
+        Assert.Equal(expectedWords, result.Words);
+        Assert.Equal(expectedCharacters, result.Characters);
+    }
+
     public FileViewerTests() => Directory.CreateDirectory(directory);
 
     [Fact]

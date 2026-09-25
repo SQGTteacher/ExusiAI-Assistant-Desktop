@@ -109,6 +109,16 @@ internal sealed class ViewerWindow : Window
             e.Handled = true;
             viewer.FocusSearch();
         }
+        else if (control && e.Key == Key.R)
+        {
+            e.Handled = true;
+            await viewer.ReloadCurrentAsync();
+        }
+        else if (e.Key == Key.F3)
+        {
+            e.Handled = true;
+            await viewer.NavigateSearchAsync(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        }
         else if (control && (e.Key == Key.Add || e.Key == Key.OemPlus))
         {
             e.Handled = true;
