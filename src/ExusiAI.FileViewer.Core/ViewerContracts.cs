@@ -108,7 +108,27 @@ public interface IWorkbookPreviewDocument : ITabularPreviewDocument
     void SelectWorksheet(int index);
 }
 
-public sealed record SlidePreview(int SlideNumber, string Text, bool IsFinal);
+public sealed record SlideElementPreview(
+    string Text,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string? FillColor,
+    string? TextColor,
+    double FontSize,
+    bool IsBold);
+
+public sealed record SlideVisualPreview(
+    double Width,
+    double Height,
+    ImmutableArray<SlideElementPreview> Elements);
+
+public sealed record SlidePreview(
+    int SlideNumber,
+    string Text,
+    bool IsFinal,
+    SlideVisualPreview? Visual = null);
 
 public interface ISlidePreviewDocument
 {

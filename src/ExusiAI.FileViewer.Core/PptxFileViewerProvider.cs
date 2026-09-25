@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Xml;
+using System.Xml.Linq;
 
 namespace ExusiAI.FileViewer.Core;
 
@@ -47,8 +48,8 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
             ViewerCapabilities.Search | ViewerCapabilities.IncrementalRead | ViewerCapabilities.Slides,
             true,
             ImmutableArray.Create(
-                "阶段 2C 当前按幻灯片顺序提取可见文本，保留幻灯片边界，但不承诺与 PowerPoint 相同的版式。",
-                "图片、图表、SmartArt、动画、转场、音视频、批注、宏、外部链接和嵌入对象不会渲染或执行。")))
+                "当前会按幻灯片坐标呈现基础文本框、字号、粗体和纯色填充；复杂主题效果仍可能降级。",
+                "图片、图表、SmartArt、动画、转场、音视频、批注、宏、外部链接和嵌入对象不会执行。")))
     {
         this.file = file;
         this.options = options;
@@ -75,8 +76,10 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
 
         cancellationToken.ThrowIfCancellationRequested();
         using var package = OpenXmlPackageGuard.Open(file, options);
-        var text = await PptxPackageReader.ReadSlideTextAsync(package, slides[slideNumber - 1].PartName, options, cancellationToken).ConfigureAwait(false);
-        var preview = new SlidePreview(slideNumber, text, slideNumber == slides.Length);
+        var definition = slides[slideNumber - 1];
+        var content = await PptxPackageReader.ReadSlideContentAsync(
+            package, definition.PartName, definition.Width, definition.Height, options, cancellationToken).ConfigureAwait(false);
+        var preview = new SlidePreview(slideNumber, content.Text, slideNumber == slides.Length, content.Visual);
 
         lock (cacheGate)
         {
@@ -122,7 +125,7 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
     }
 }
 
-internal sealed record PptxSlide(string PartName);
+internal sealed record PptxSlide(string PartName, double Width, double Height);
 
 internal static class PptxPackageReader
 {
@@ -136,18 +139,27 @@ internal static class PptxPackageReader
     {
         var relationships = ReadPresentationRelationships(package);
         using var reader = package.OpenRequiredXml("ppt/presentation.xml");
-        var slides = ImmutableArray.CreateBuilder<PptxSlide>();
+        var parts = new List<string>();
+        double slideWidth = 12_192_000;
+        double slideHeight = 6_858_000;
 
         while (reader.Read())
         {
-            if (reader.NodeType != XmlNodeType.Element ||
-                reader.LocalName != "sldId" ||
-                reader.NamespaceURI != PresentationNamespace)
+            if (reader.NodeType != XmlNodeType.Element || reader.NamespaceURI != PresentationNamespace)
             {
                 continue;
             }
 
-            if (slides.Count >= options.MaximumPresentationSlides)
+            if (reader.LocalName == "sldSz")
+            {
+                if (double.TryParse(reader.GetAttribute("cx"), out var width) && width > 0) slideWidth = width;
+                if (double.TryParse(reader.GetAttribute("cy"), out var height) && height > 0) slideHeight = height;
+                continue;
+            }
+
+            if (reader.LocalName != "sldId") continue;
+
+            if (parts.Count >= options.MaximumPresentationSlides)
                 throw new FileRejectedException($"PPTX contains more than {options.MaximumPresentationSlides:N0} slides.");
 
             var relationshipId = reader.GetAttribute("id", OfficeRelationshipNamespace);
@@ -156,13 +168,13 @@ internal static class PptxPackageReader
 
             var partName = ResolvePresentationTarget(target);
             using (package.OpenRequiredXml(partName)) { }
-            slides.Add(new(partName));
+            parts.Add(partName);
         }
 
-        if (slides.Count == 0)
+        if (parts.Count == 0)
             throw new FileRejectedException("PPTX presentation does not contain a readable slide.");
 
-        return slides.ToImmutable();
+        return parts.Select(part => new PptxSlide(part, slideWidth, slideHeight)).ToImmutableArray();
     }
 
     private static Dictionary<string, string> ReadPresentationRelationships(OpenXmlPackageGuard package)
@@ -211,42 +223,69 @@ internal static class PptxPackageReader
         return normalized.StartsWith("ppt/", StringComparison.Ordinal) ? normalized : $"ppt/{normalized}";
     }
 
-    public static async Task<string> ReadSlideTextAsync(
+    public static async Task<(string Text, SlideVisualPreview? Visual)> ReadSlideContentAsync(
         OpenXmlPackageGuard package,
         string partName,
+        double slideWidth,
+        double slideHeight,
         ViewerOpenOptions options,
         CancellationToken cancellationToken)
     {
+        await Task.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
         using var reader = package.OpenRequiredXml(partName);
-        var text = new StringBuilder();
-        var paragraphHasText = false;
+        var document = XDocument.Load(reader, LoadOptions.None);
+        XNamespace p = PresentationNamespace;
+        XNamespace a = DrawingNamespace;
+        var elements = ImmutableArray.CreateBuilder<SlideElementPreview>();
+        var allText = new StringBuilder();
 
-        while (await reader.ReadAsync().ConfigureAwait(false))
+        foreach (var shape in document.Descendants(p + "sp"))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var paragraphs = shape.Descendants(a + "p")
+                .Select(paragraph => string.Concat(paragraph.Descendants(a + "t").Select(node => node.Value)))
+                .Where(value => value.Length > 0)
+                .ToArray();
+            if (paragraphs.Length == 0) continue;
+            var shapeText = string.Join(Environment.NewLine, paragraphs);
+            if ((long)allText.Length + shapeText.Length > options.MaximumPresentationTextCharactersPerSlide)
+                throw new FileRejectedException("PPTX slide text exceeds the configured per-slide safety limit.");
+            if (allText.Length > 0) allText.AppendLine();
+            allText.Append(shapeText);
 
-            if (reader.NodeType == XmlNodeType.Element &&
-                reader.NamespaceURI == DrawingNamespace &&
-                reader.LocalName == "t")
-            {
-                var run = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                if ((long)text.Length + run.Length > options.MaximumPresentationTextCharactersPerSlide)
-                    throw new FileRejectedException("PPTX slide text exceeds the configured per-slide safety limit.");
-                text.Append(run);
-                paragraphHasText = true;
+            var transform = shape.Descendants(a + "xfrm").FirstOrDefault();
+            var offset = transform?.Element(a + "off");
+            var extent = transform?.Element(a + "ext");
+            if (!TryNumber(offset, "x", out var x) || !TryNumber(offset, "y", out var y) ||
+                !TryNumber(extent, "cx", out var width) || !TryNumber(extent, "cy", out var height) ||
+                width <= 0 || height <= 0)
                 continue;
-            }
 
-            if (reader.NodeType == XmlNodeType.EndElement &&
-                reader.NamespaceURI == DrawingNamespace &&
-                reader.LocalName == "p" &&
-                paragraphHasText)
-            {
-                text.AppendLine();
-                paragraphHasText = false;
-            }
+            var runProperties = shape.Descendants(a + "rPr").FirstOrDefault();
+            var endProperties = shape.Descendants(a + "endParaRPr").FirstOrDefault();
+            var fontSize = ReadFontSize(runProperties) ?? ReadFontSize(endProperties) ?? 18;
+            var bold = string.Equals(runProperties?.Attribute("b")?.Value, "1", StringComparison.Ordinal) ||
+                       string.Equals(runProperties?.Attribute("b")?.Value, "true", StringComparison.OrdinalIgnoreCase);
+            var fill = ReadColor(shape.Element(p + "spPr")?.Element(a + "solidFill"));
+            var textColor = ReadColor(runProperties?.Element(a + "solidFill"));
+            elements.Add(new(shapeText, x, y, width, height, fill, textColor, fontSize, bold));
         }
 
-        return text.ToString().TrimEnd();
+        var visual = elements.Count == 0 ? null : new SlideVisualPreview(slideWidth, slideHeight, elements.ToImmutable());
+        return (allText.ToString().TrimEnd(), visual);
+    }
+
+    private static bool TryNumber(XElement? element, string name, out double value) =>
+        double.TryParse(element?.Attribute(name)?.Value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out value);
+
+    private static double? ReadFontSize(XElement? properties) =>
+        int.TryParse(properties?.Attribute("sz")?.Value, out var size) ? size / 100d : null;
+
+    private static string? ReadColor(XElement? fill)
+    {
+        var rgb = fill?.Element(XName.Get("srgbClr", DrawingNamespace))?.Attribute("val")?.Value;
+        return rgb is { Length: 6 } && rgb.All(Uri.IsHexDigit) ? "#" + rgb : null;
     }
 }

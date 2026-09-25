@@ -124,6 +124,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         Visibility = Visibility.Collapsed
     };
 
+    private readonly Canvas slideVisualCanvas = new()
+    {
+        Width = 960,
+        Height = 540,
+        ClipToBounds = true,
+        Visibility = Visibility.Collapsed
+    };
+
     private readonly ScrollViewer slideScroll = new()
     {
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -433,6 +441,12 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideSurface.BorderThickness = new Thickness(1);
 
         var slideContent = new StackPanel();
+        slideContent.Children.Add(new Viewbox
+        {
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Child = slideVisualCanvas
+        });
         slideContent.Children.Add(slideTitle);
         slideContent.Children.Add(slideBody);
         slideContent.Children.Add(slideEmpty);
@@ -813,6 +827,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideTitle.Text = string.Empty;
         slideTitle.Visibility = Visibility.Collapsed;
         slideBody.Text = string.Empty;
+        slideVisualCanvas.Children.Clear();
+        slideVisualCanvas.Visibility = Visibility.Collapsed;
         slideEmpty.Visibility = Visibility.Collapsed;
         searchResults.Clear();
         slideThumbnails.Clear();
@@ -1078,7 +1094,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
             currentSlideNumber = slide.SlideNumber;
             slideNumberBox.Text = slide.SlideNumber.ToString(CultureInfo.CurrentCulture);
-            RenderSlideText(slide.Text);
+            RenderSlide(slide);
             var thumbnail = slideThumbnails.FirstOrDefault(item => item.SlideNumber == currentSlideNumber);
             if (thumbnail is not null)
             {
@@ -1118,6 +1134,54 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideTitle.LineHeight = slideTitle.FontSize * 1.3;
         slideBody.FontSize = Math.Max(16, zoom.Value + 5);
         slideBody.LineHeight = slideBody.FontSize * 1.55;
+    }
+
+    private void RenderSlide(SlidePreview slide)
+    {
+        slideVisualCanvas.Children.Clear();
+        if (slide.Visual is { Elements.Length: > 0 } visual && visual.Width > 0 && visual.Height > 0)
+        {
+            slideTitle.Visibility = Visibility.Collapsed;
+            slideBody.Text = string.Empty;
+            slideEmpty.Visibility = Visibility.Collapsed;
+            slideVisualCanvas.Visibility = Visibility.Visible;
+            var scaleX = slideVisualCanvas.Width / visual.Width;
+            var scaleY = slideVisualCanvas.Height / visual.Height;
+            foreach (var element in visual.Elements)
+            {
+                var box = new Border
+                {
+                    Width = Math.Max(1, element.Width * scaleX),
+                    Height = Math.Max(1, element.Height * scaleY),
+                    Padding = new Thickness(4),
+                    Background = ParseSlideBrush(element.FillColor, Brushes.Transparent),
+                    Child = new TextBlock
+                    {
+                        Text = element.Text,
+                        TextWrapping = TextWrapping.Wrap,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        Foreground = ParseSlideBrush(element.TextColor, Brushes.Black),
+                        FontSize = Math.Clamp(element.FontSize, 8, 72),
+                        FontWeight = element.IsBold ? FontWeights.Bold : FontWeights.Normal
+                    }
+                };
+                Canvas.SetLeft(box, Math.Max(0, element.X * scaleX));
+                Canvas.SetTop(box, Math.Max(0, element.Y * scaleY));
+                slideVisualCanvas.Children.Add(box);
+            }
+            return;
+        }
+
+        slideVisualCanvas.Visibility = Visibility.Collapsed;
+        RenderSlideText(slide.Text);
+    }
+
+    private static Brush ParseSlideBrush(string? value, Brush fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return fallback;
+        try { return (Brush)new BrushConverter().ConvertFromString(value)!; }
+        catch (FormatException) { return fallback; }
+        catch (NotSupportedException) { return fallback; }
     }
 
     private void RenderSlideText(string text)
