@@ -202,7 +202,7 @@ public sealed class RuntimeTests
 
         Assert.Equal(new[] { "classisland.fluent", "dev.test.glass" }, store.ThemeSnapshot.EnabledThemeIds);
         Assert.Equal(24, store.ThemeSnapshot.ActualVerticalSafeAreaPx);
-        var package = Assert.Single(store.ThemeSnapshot.Packages.Where(x => x.Manifest.Id == "dev.test.glass"));
+        var package = Assert.Single(store.ThemeSnapshot.Packages, x => x.Manifest.Id == "dev.test.glass");
         Assert.NotNull(package.Document);
         Assert.Contains(package.Diagnostics, x => x.Contains("忽略外部 StyleInclude", StringComparison.Ordinal));
 
