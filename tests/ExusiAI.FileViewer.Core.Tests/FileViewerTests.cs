@@ -314,6 +314,9 @@ public sealed class FileViewerTests : IDisposable
         var visual = Assert.IsType<SlideVisualPreview>(slides[0].Visual);
         Assert.Single(visual.Elements);
         Assert.Contains("课堂标题", visual.Elements[0].Text);
+        var image = Assert.Single(visual.Images);
+        Assert.Equal("image/png", image.ContentType);
+        Assert.NotEmpty(image.Data);
         Assert.Equal(2, slides[1].SlideNumber);
         Assert.Contains("第二页", slides[1].Text);
         Assert.True(slides[1].IsFinal);
@@ -410,7 +413,11 @@ public sealed class FileViewerTests : IDisposable
             (externalSlide ? "https://example.invalid/slide1.xml\" TargetMode=\"External" : "slides/slide1.xml") +
             "\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide2.xml\"/></Relationships>");
         WriteEntry(archive, "ppt/slides/slide1.xml",
-            "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x=\"914400\" y=\"685800\"/><a:ext cx=\"5486400\" cy=\"1828800\"/></a:xfrm><a:solidFill><a:srgbClr val=\"FFF2CC\"/></a:solidFill></p:spPr><p:txBody><a:p><a:r><a:rPr sz=\"2400\" b=\"1\"><a:solidFill><a:srgbClr val=\"1F1F1F\"/></a:solidFill></a:rPr><a:t>课堂标题</a:t></a:r></a:p><a:p><a:r><a:t>第一点</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>");
+            "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x=\"914400\" y=\"685800\"/><a:ext cx=\"5486400\" cy=\"1828800\"/></a:xfrm><a:solidFill><a:srgbClr val=\"FFF2CC\"/></a:solidFill></p:spPr><p:txBody><a:p><a:r><a:rPr sz=\"2400\" b=\"1\"><a:solidFill><a:srgbClr val=\"1F1F1F\"/></a:solidFill></a:rPr><a:t>课堂标题</a:t></a:r></a:p><a:p><a:r><a:t>第一点</a:t></a:r></a:p></p:txBody></p:sp><p:pic><p:blipFill><a:blip r:embed=\"rIdImage1\"/></p:blipFill><p:spPr><a:xfrm><a:off x=\"7315200\" y=\"914400\"/><a:ext cx=\"3657600\" cy=\"2743200\"/></a:xfrm></p:spPr></p:pic></p:spTree></p:cSld></p:sld>");
+        WriteEntry(archive, "ppt/slides/_rels/slide1.xml.rels",
+            "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdImage1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"../media/image1.png\"/></Relationships>");
+        WriteBinaryEntry(archive, "ppt/media/image1.png", Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
         WriteEntry(archive, "ppt/slides/slide2.xml",
             "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>第二页</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>");
     }
@@ -446,6 +453,13 @@ public sealed class FileViewerTests : IDisposable
         var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
         using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
         writer.Write(content);
+    }
+
+    private static void WriteBinaryEntry(ZipArchive archive, string name, byte[] content)
+    {
+        var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
+        using var stream = entry.Open();
+        stream.Write(content);
     }
 
     private static void CreateDocx(string path, params string[] paragraphs)

@@ -134,6 +134,7 @@ internal static class PptxPackageReader
     private const string OfficeRelationshipNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private const string PackageRelationshipNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
     private const string SlideRelationshipSuffix = "/slide";
+    private const string ImageRelationshipSuffix = "/image";
 
     public static ImmutableArray<PptxSlide> ReadSlides(OpenXmlPackageGuard package, ViewerOpenOptions options)
     {
@@ -238,6 +239,7 @@ internal static class PptxPackageReader
         XNamespace p = PresentationNamespace;
         XNamespace a = DrawingNamespace;
         var elements = ImmutableArray.CreateBuilder<SlideElementPreview>();
+        var images = ImmutableArray.CreateBuilder<SlideImagePreview>();
         var allText = new StringBuilder();
 
         foreach (var shape in document.Descendants(p + "sp"))
@@ -272,8 +274,89 @@ internal static class PptxPackageReader
             elements.Add(new(shapeText, x, y, width, height, fill, textColor, fontSize, bold));
         }
 
-        var visual = elements.Count == 0 ? null : new SlideVisualPreview(slideWidth, slideHeight, elements.ToImmutable());
+        var relationships = ReadSlideImageRelationships(package, partName);
+        foreach (var picture in document.Descendants(p + "pic"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relationshipId = picture.Descendants(a + "blip")
+                .Select(node => node.Attribute(XName.Get("embed", OfficeRelationshipNamespace))?.Value)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            if (relationshipId is null || !relationships.TryGetValue(relationshipId, out var imagePart)) continue;
+
+            var transform = picture.Descendants(a + "xfrm").FirstOrDefault();
+            var offset = transform?.Element(a + "off");
+            var extent = transform?.Element(a + "ext");
+            if (!TryNumber(offset, "x", out var x) || !TryNumber(offset, "y", out var y) ||
+                !TryNumber(extent, "cx", out var width) || !TryNumber(extent, "cy", out var height) ||
+                width <= 0 || height <= 0)
+                continue;
+
+            var data = package.ReadRequiredPart(imagePart, options.MaximumPresentationImageBytes);
+            var contentType = ResolveImageContentType(imagePart, data);
+            if (contentType is null) continue;
+            images.Add(new(data.ToImmutableArray(), contentType, x, y, width, height));
+        }
+
+        var visual = elements.Count == 0 && images.Count == 0
+            ? null
+            : new SlideVisualPreview(slideWidth, slideHeight, elements.ToImmutable(), images.ToImmutable());
         return (allText.ToString().TrimEnd(), visual);
+    }
+
+    private static Dictionary<string, string> ReadSlideImageRelationships(OpenXmlPackageGuard package, string slidePart)
+    {
+        var directory = slidePart[..slidePart.LastIndexOf('/')];
+        var fileName = slidePart[(slidePart.LastIndexOf('/') + 1)..];
+        var relationshipsPart = $"{directory}/_rels/{fileName}.rels";
+        using var reader = package.OpenOptionalXml(relationshipsPart);
+        if (reader is null) return [];
+
+        var relationships = new Dictionary<string, string>(StringComparer.Ordinal);
+        while (reader.Read())
+        {
+            if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "Relationship" ||
+                reader.NamespaceURI != PackageRelationshipNamespace) continue;
+            var id = reader.GetAttribute("Id");
+            var type = reader.GetAttribute("Type");
+            var target = reader.GetAttribute("Target");
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(target) ||
+                string.Equals(reader.GetAttribute("TargetMode"), "External", StringComparison.OrdinalIgnoreCase) ||
+                type is null || !type.EndsWith(ImageRelationshipSuffix, StringComparison.Ordinal)) continue;
+            relationships[id] = ResolvePartTarget(directory, target);
+        }
+        return relationships;
+    }
+
+    private static string ResolvePartTarget(string baseDirectory, string target)
+    {
+        var normalized = target.Replace('\\', '/');
+        if (normalized.Contains('\0') || normalized.Contains(':') || normalized.StartsWith('/'))
+            throw new FileRejectedException("PPTX image relationship contains an unsafe target.");
+        var segments = new List<string>(baseDirectory.Split('/', StringSplitOptions.RemoveEmptyEntries));
+        foreach (var segment in normalized.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == ".") continue;
+            if (segment == "..")
+            {
+                if (segments.Count <= 1) throw new FileRejectedException("PPTX image relationship escapes the package root.");
+                segments.RemoveAt(segments.Count - 1);
+            }
+            else segments.Add(segment);
+        }
+        return string.Join('/', segments);
+    }
+
+    private static string? ResolveImageContentType(string partName, byte[] data)
+    {
+        var extension = Path.GetExtension(partName).ToLowerInvariant();
+        return extension switch
+        {
+            ".png" when data.AsSpan().StartsWith(new byte[] { 0x89, 0x50, 0x4E, 0x47 }) => "image/png",
+            ".jpg" or ".jpeg" when data.AsSpan().StartsWith(new byte[] { 0xFF, 0xD8, 0xFF }) => "image/jpeg",
+            ".gif" when data.AsSpan().StartsWith("GIF8"u8) => "image/gif",
+            ".bmp" when data.AsSpan().StartsWith("BM"u8) => "image/bmp",
+            _ => null
+        };
     }
 
     private static bool TryNumber(XElement? element, string name, out double value) =>
