@@ -278,7 +278,7 @@ internal sealed class MishaMainWindow : Window
         double verticalSafeArea)
     {
         docking = Math.Clamp(docking, 0, 5);
-        var x = docking % 3 switch
+        var x = (docking % 3) switch
         {
             0 => area.Left,
             1 => area.Left + (area.Width - window.Width) / 2,
