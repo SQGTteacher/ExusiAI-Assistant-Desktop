@@ -209,12 +209,14 @@ public static class SafeMarkdownParser
 
     private static bool TryReadOrderedItem(string line, out int number, out string item)
     {
+        number = 0;
         var separator = line.IndexOf(". ", StringComparison.Ordinal);
-        if (separator is < 1 or > 9 || !int.TryParse(line[..separator], out number))
+        if (separator is < 1 or > 9 || !int.TryParse(line[..separator], out var parsedNumber))
         {
             item = string.Empty;
             return false;
         }
+        number = parsedNumber;
         item = line[(separator + 2)..];
         return true;
     }
