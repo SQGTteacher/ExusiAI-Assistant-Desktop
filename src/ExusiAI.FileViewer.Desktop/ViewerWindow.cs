@@ -114,6 +114,16 @@ internal sealed class ViewerWindow : Window
             e.Handled = true;
             await viewer.ReloadCurrentAsync();
         }
+        else if (control && e.Key == Key.P)
+        {
+            e.Handled = true;
+            viewer.PrintCurrent();
+        }
+        else if (control && e.Key == Key.G)
+        {
+            e.Handled = true;
+            viewer.FocusGoToLine();
+        }
         else if (e.Key == Key.F3)
         {
             e.Handled = true;

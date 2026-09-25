@@ -26,6 +26,16 @@ public sealed class FileViewerTests : IDisposable
         Assert.Equal(expectedCharacters, result.Characters);
     }
 
+    [Fact]
+    public void TextStatisticsLocateLogicalLineIndependentOfVisualWrapping()
+    {
+        const string text = "first line\nsecond line\nthird";
+
+        Assert.Equal(new TextDocumentPosition(2, 4), TextDocumentStatistics.Locate(text, 14));
+        Assert.Equal(23, TextDocumentStatistics.GetLineStart(text, 3));
+        Assert.Equal(text.Length, TextDocumentStatistics.GetLineStart(text, 99));
+    }
+
     public FileViewerTests() => Directory.CreateDirectory(directory);
 
     [Fact]
@@ -66,6 +76,41 @@ public sealed class FileViewerTests : IDisposable
         Assert.Equal((byte)0xBF, saved[2]);
         Assert.Equal("新内容\r\n第二行", Encoding.UTF8.GetString(saved, 3, saved.Length - 3));
         Assert.Empty(Directory.EnumerateFiles(directory, "*.tmp", SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public async Task Exporter_streams_csv_with_standard_escaping()
+    {
+        var source = Path.Combine(directory, "marks.csv");
+        var destination = Path.Combine(directory, "export.csv");
+        await File.WriteAllTextAsync(source, "name,note\r\nAlice,\"good, steady\"\r\nBob,\"said \"\"hi\"\"\"");
+
+        await using var document = await CreateRegistry().OpenAsync(source);
+        await ViewerDocumentExporter.ExportAsync(document, destination);
+
+        Assert.Equal(
+            "name,note" + Environment.NewLine +
+            "Alice,\"good, steady\"" + Environment.NewLine +
+            "Bob,\"said \"\"hi\"\"\"" + Environment.NewLine,
+            await File.ReadAllTextAsync(destination));
+    }
+
+    [Fact]
+    public async Task Exporter_writes_all_slides_as_text_without_modifying_source()
+    {
+        var source = Path.Combine(directory, "lesson.pptx");
+        var destination = Path.Combine(directory, "lesson.txt");
+        CreatePptx(source);
+        var sourceBytes = await File.ReadAllBytesAsync(source);
+
+        await using var document = await CreateRegistry().OpenAsync(source);
+        await ViewerDocumentExporter.ExportAsync(document, destination);
+
+        var exported = await File.ReadAllTextAsync(destination);
+        Assert.Contains("## 幻灯片 1", exported);
+        Assert.Contains("课堂标题", exported);
+        Assert.Contains("## 幻灯片 2", exported);
+        Assert.Equal(sourceBytes, await File.ReadAllBytesAsync(source));
     }
 
     [Fact]

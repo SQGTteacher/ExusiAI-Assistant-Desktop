@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml;
@@ -16,6 +17,8 @@ namespace ExusiAI.FileViewer.Desktop;
 internal sealed class FileViewerPage : UserControl, IDisposable
 {
     private const int MaximumTextPreviewCharacters = 8 * 1024 * 1024;
+    private const int MaximumPrintCharacters = 2 * 1024 * 1024;
+    private const int SlideThumbnailBatchSize = 16;
 
     private readonly FileViewerProviderRegistry providers = new(new IFileViewerProvider[]
     {
@@ -30,6 +33,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly ViewerSettings settings;
     private readonly ObservableCollection<string> tableRows = [];
     private readonly ObservableCollection<SearchResultOption> searchResults = [];
+    private readonly ObservableCollection<SlideThumbnailOption> slideThumbnails = [];
 
     private readonly TextBlock title = new()
     {
@@ -116,6 +120,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     private readonly ListBox tablePreview;
     private readonly ListBox searchResultList;
+    private readonly ListBox slideThumbnailList;
 
     private readonly Border searchPane = new()
     {
@@ -165,6 +170,19 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly Button previousSearchButton = CreateSecondaryButton("上一项");
     private readonly Button nextSearchButton = CreateSecondaryButton("下一项");
     private readonly Button wrapTextButton = CreateSecondaryButton("自动换行");
+    private readonly Button exportButton = CreateSecondaryButton("导出内容");
+    private readonly Button printButton = CreateSecondaryButton("打印 / PDF");
+    private readonly Button loadMoreSlidesButton = CreateSecondaryButton("更多幻灯片");
+    private readonly Button goToLineButton = CreateSecondaryButton("转到行");
+    private readonly TextBox goToLineBox = new() { Width = 76, ToolTip = "输入文本行号并按 Enter" };
+    private readonly Border slideNavigationPane = new()
+    {
+        Width = 210,
+        Margin = new Thickness(16, 16, 0, 16),
+        Padding = new Thickness(10),
+        CornerRadius = new CornerRadius(10),
+        Visibility = Visibility.Collapsed
+    };
     private readonly TextBox slideNumberBox = new() { Width = 56, ToolTip = "输入幻灯片页码并按 Enter" };
     private readonly TextBox searchBox = new() { Width = 230, ToolTip = "搜索当前文档全部可索引内容" };
     private readonly ComboBox recentFilesBox = new() { Width = 205, ToolTip = "最近打开" };
@@ -180,6 +198,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     };
 
     private CancellationTokenSource? loadCancellation;
+    private CancellationTokenSource? operationCancellation;
     private ViewerDocument? document;
     private IAsyncEnumerator<TabularPage>? tablePages;
     private int currentSlideNumber;
@@ -189,6 +208,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private bool textPreviewFullyLoaded;
     private bool isDirty;
     private bool externalChangePending;
+    private bool changingSlideThumbnailSelection;
     private FileSystemWatcher? fileWatcher;
     private DateTime lastKnownWriteTimeUtc;
     private readonly System.Windows.Threading.DispatcherTimer statisticsTimer = new()
@@ -238,6 +258,22 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             if (searchResultList.SelectedItem is SearchResultOption result)
                 await NavigateSearchResultAsync(result.Hit);
+        };
+
+        slideThumbnailList = new ListBox
+        {
+            ItemsSource = slideThumbnails,
+            DisplayMemberPath = nameof(SlideThumbnailOption.DisplayText),
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
+        VirtualizingPanel.SetIsVirtualizing(slideThumbnailList, true);
+        VirtualizingPanel.SetVirtualizationMode(slideThumbnailList, VirtualizationMode.Recycling);
+        slideThumbnailList.SelectionChanged += async (_, _) =>
+        {
+            if (changingSlideThumbnailSelection || slideThumbnailList.SelectedItem is not SlideThumbnailOption option) return;
+            await NavigateSlideAsync(option.SlideNumber);
         };
 
         welcomePanel = new Border
@@ -303,12 +339,25 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         previousSearchButton.Click += async (_, _) => await NavigateSearchSelectionAsync(-1);
         nextSearchButton.Click += async (_, _) => await NavigateSearchSelectionAsync(1);
         wrapTextButton.Click += (_, _) => ToggleTextWrapping();
+        exportButton.Click += async (_, _) => await ExportCurrentDocumentAsync();
+        printButton.Click += (_, _) => PrintCurrentView();
+        loadMoreSlidesButton.Click += async (_, _) => await LoadMoreSlideThumbnailsAsync();
+        goToLineButton.Click += (_, _) => GoToTextLine();
+        goToLineBox.KeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Enter) GoToTextLine();
+        };
         reloadButton.IsEnabled = false;
         documentInfoButton.IsEnabled = false;
         openFolderButton.IsEnabled = false;
         copyPathButton.IsEnabled = false;
         previousSearchButton.IsEnabled = false;
         nextSearchButton.IsEnabled = false;
+        exportButton.IsEnabled = false;
+        printButton.IsEnabled = false;
+        loadMoreSlidesButton.IsEnabled = false;
+        goToLineBox.Visibility = Visibility.Collapsed;
+        goToLineButton.Visibility = Visibility.Collapsed;
 
         statisticsTimer.Tick += (_, _) =>
         {
@@ -348,7 +397,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideScroll.Content = slideSurface;
 
         cancelButton.IsEnabled = false;
-        cancelButton.Click += (_, _) => loadCancellation?.Cancel();
+        cancelButton.Click += (_, _) =>
+        {
+            if (operationCancellation is not null) operationCancellation.Cancel();
+            else loadCancellation?.Cancel();
+        };
 
         loadMoreButton.Visibility = Visibility.Collapsed;
         loadMoreButton.IsEnabled = false;
@@ -450,6 +503,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         AddCommand(fileCommands, openFolderButton);
         AddCommand(fileCommands, copyPathButton);
         AddCommand(fileCommands, clearRecentButton);
+        AddCommand(fileCommands, exportButton);
+        AddCommand(fileCommands, printButton);
 
         var homeCommands = new WrapPanel { Orientation = Orientation.Horizontal };
         AddCommand(homeCommands, editButton);
@@ -473,6 +528,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         AddCommand(viewCommands, cancelButton);
         AddCommand(viewCommands, resetZoomButton);
         AddCommand(viewCommands, wrapTextButton);
+        AddCommand(viewCommands, goToLineBox);
+        AddCommand(viewCommands, goToLineButton);
 
         var commandHost = new Grid { MinHeight = 36 };
         commandHost.Children.Add(fileCommands);
@@ -556,13 +613,37 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         documentInfoPane.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         documentInfoPane.BorderThickness = new Thickness(1);
 
+        var slideNavigationGrid = new Grid();
+        slideNavigationGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        slideNavigationGrid.RowDefinitions.Add(new RowDefinition());
+        slideNavigationGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        slideNavigationGrid.Children.Add(new TextBlock
+        {
+            Text = "幻灯片",
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(5, 3, 5, 10)
+        });
+        Grid.SetRow(slideThumbnailList, 1);
+        slideNavigationGrid.Children.Add(slideThumbnailList);
+        loadMoreSlidesButton.Margin = new Thickness(0, 10, 0, 0);
+        Grid.SetRow(loadMoreSlidesButton, 2);
+        slideNavigationGrid.Children.Add(loadMoreSlidesButton);
+        slideNavigationPane.Child = slideNavigationGrid;
+        slideNavigationPane.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        slideNavigationPane.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        slideNavigationPane.BorderThickness = new Thickness(1);
+
         var workspace = new Grid();
+        workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         workspace.ColumnDefinitions.Add(new ColumnDefinition());
         workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        workspace.Children.Add(slideNavigationPane);
+        Grid.SetColumn(canvas, 1);
         workspace.Children.Add(canvas);
-        Grid.SetColumn(searchPane, 1);
+        Grid.SetColumn(searchPane, 2);
         workspace.Children.Add(searchPane);
-        Grid.SetColumn(documentInfoPane, 1);
+        Grid.SetColumn(documentInfoPane, 2);
         workspace.Children.Add(documentInfoPane);
 
         var bottom = new Border
@@ -628,6 +709,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     internal Task SaveAsCurrentAsync() => SaveAsCurrentDocumentAsync();
     internal Task ReloadCurrentAsync() => ReloadCurrentDocumentAsync();
     internal Task NavigateSearchAsync(bool previous) => NavigateSearchSelectionAsync(previous ? -1 : 1);
+    internal void PrintCurrent() => PrintCurrentView();
 
     internal void FocusSearch()
     {
@@ -642,6 +724,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     internal Task PreviousPageAsync() => NavigateSlideAsync(currentSlideNumber - 1);
     internal Task NextPageAsync() => NavigateSlideAsync(currentSlideNumber + 1);
 
+    internal void FocusGoToLine()
+    {
+        if (textPreview.Visibility != Visibility.Visible) return;
+        goToLineBox.Focus();
+        goToLineBox.SelectAll();
+    }
+
     internal void SetPresentationMode(bool enabled)
     {
         if (topBar is not null) topBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
@@ -654,10 +743,18 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
         searchPane.Visibility = Visibility.Collapsed;
         documentInfoPane.Visibility = Visibility.Collapsed;
+        slideNavigationPane.Visibility = enabled || document is not ISlidePreviewDocument
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private async Task OpenAsync(string filePath, bool skipPendingPrompt = false)
     {
+        if (operationCancellation is not null)
+        {
+            status.Text = "请先等待当前导出或导航加载完成，或点击取消。";
+            return;
+        }
         if (!skipPendingPrompt && !await ResolvePendingChangesAsync())
             return;
 
@@ -675,6 +772,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         slideBody.Text = string.Empty;
         slideEmpty.Visibility = Visibility.Collapsed;
         searchResults.Clear();
+        slideThumbnails.Clear();
 
         textPreview.Visibility = Visibility.Collapsed;
         tablePreview.Visibility = Visibility.Collapsed;
@@ -687,6 +785,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         nextSlideButton.Visibility = Visibility.Collapsed;
         slideNumberBox.Visibility = Visibility.Collapsed;
         worksheetBox.Visibility = Visibility.Collapsed;
+        slideNavigationPane.Visibility = Visibility.Collapsed;
 
         currentSlideNumber = 0;
         welcomePanel.Visibility = Visibility.Collapsed;
@@ -759,10 +858,12 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
                 case ISlidePreviewDocument:
                     slideScroll.Visibility = Visibility.Visible;
+                    slideNavigationPane.Visibility = Visibility.Visible;
                     previousSlideButton.Visibility = Visibility.Visible;
                     nextSlideButton.Visibility = Visibility.Visible;
                     slideNumberBox.Visibility = Visibility.Visible;
                     await NavigateSlideAsync(1);
+                    await LoadMoreSlideThumbnailsAsync();
                     break;
             }
         }
@@ -885,6 +986,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private async Task NavigateSlideAsync(int slideNumber)
     {
         if (document is not ISlidePreviewDocument slides || loadCancellation is null) return;
+        if (operationCancellation is not null)
+        {
+            status.Text = "请先等待当前导出或缩略导航加载完成，或点击取消。";
+            return;
+        }
 
         if (slideNumber < 1 || slideNumber > slides.SlideCount)
         {
@@ -909,6 +1015,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             currentSlideNumber = slide.SlideNumber;
             slideNumberBox.Text = slide.SlideNumber.ToString(CultureInfo.CurrentCulture);
             RenderSlideText(slide.Text);
+            var thumbnail = slideThumbnails.FirstOrDefault(item => item.SlideNumber == currentSlideNumber);
+            if (thumbnail is not null)
+            {
+                changingSlideThumbnailSelection = true;
+                slideThumbnailList.SelectedItem = thumbnail;
+                slideThumbnailList.ScrollIntoView(thumbnail);
+                changingSlideThumbnailSelection = false;
+            }
 
             documentMeta.Text = $"{document.Info.FormatName} · 幻灯片 {slide.SlideNumber:N0} / {slides.SlideCount:N0}";
             status.Text = $"切页 {timer.ElapsedMilliseconds:N0} ms · 相邻页后台预热 · 有界缓存";
@@ -969,6 +1083,199 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             slideBody.Text = string.Join(Environment.NewLine + Environment.NewLine, lines);
         }
+    }
+
+    private async Task LoadMoreSlideThumbnailsAsync()
+    {
+        if (document is not ISlidePreviewDocument slides || loadCancellation is null || operationCancellation is not null)
+            return;
+
+        var first = slideThumbnails.Count + 1;
+        if (first > slides.SlideCount)
+        {
+            loadMoreSlidesButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(loadCancellation.Token);
+        operationCancellation = operation;
+        UpdateDocumentCommandState();
+        loadMoreSlidesButton.IsEnabled = false;
+        cancelButton.IsEnabled = true;
+        try
+        {
+            var last = Math.Min(slides.SlideCount, first + SlideThumbnailBatchSize - 1);
+            for (var number = first; number <= last; number++)
+            {
+                var slide = await slides.ReadSlideAsync(number, operation.Token);
+                slideThumbnails.Add(new(number, CreateSlideThumbnailText(slide.Text)));
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+            }
+
+            var current = slideThumbnails.FirstOrDefault(item => item.SlideNumber == currentSlideNumber);
+            if (current is not null)
+            {
+                changingSlideThumbnailSelection = true;
+                slideThumbnailList.SelectedItem = current;
+                changingSlideThumbnailSelection = false;
+            }
+            status.Text = $"已载入 {slideThumbnails.Count:N0} / {slides.SlideCount:N0} 个幻灯片导航项";
+        }
+        catch (OperationCanceledException)
+        {
+            status.Text = "已取消加载幻灯片导航。";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            status.Text = $"幻灯片导航加载失败：{exception.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(operationCancellation, operation)) operationCancellation = null;
+            cancelButton.IsEnabled = false;
+            loadMoreSlidesButton.Visibility = slideThumbnails.Count < slides.SlideCount
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            loadMoreSlidesButton.IsEnabled = slideThumbnails.Count < slides.SlideCount;
+            UpdateDocumentCommandState();
+        }
+    }
+
+    private static string CreateSlideThumbnailText(string text)
+    {
+        var compact = string.Join(
+            " · ",
+            text.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Take(2));
+        if (compact.Length == 0) return "（无可提取文本）";
+        return compact.Length <= 90 ? compact : compact[..87] + "…";
+    }
+
+    private async Task ExportCurrentDocumentAsync()
+    {
+        if (document is null || loadCancellation is null || operationCancellation is not null) return;
+        if (isDirty)
+        {
+            var result = MessageBox.Show(
+                "导出会读取磁盘中的完整文档。请先保存当前更改，再继续导出。",
+                "保存后导出",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Information);
+            if (result != MessageBoxResult.OK || !await SaveCurrentDocumentAsync()) return;
+        }
+
+        var tabular = document is ITabularPreviewDocument;
+        var baseName = Path.GetFileNameWithoutExtension(document.Info.FilePath);
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出安全提取内容",
+            FileName = baseName + "-export" + (tabular ? ".csv" : ".txt"),
+            Filter = tabular ? "CSV 文件|*.csv" : "纯文本|*.txt",
+            AddExtension = true,
+            OverwritePrompt = true
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(loadCancellation.Token);
+        operationCancellation = operation;
+        UpdateDocumentCommandState();
+        cancelButton.IsEnabled = true;
+        status.Text = "正在流式导出安全提取内容…";
+        try
+        {
+            await using var exportDocument = await providers.OpenAsync(
+                document.Info.FilePath,
+                cancellationToken: operation.Token);
+            if (document is IWorkbookPreviewDocument currentWorkbook &&
+                exportDocument is IWorkbookPreviewDocument exportWorkbook)
+            {
+                exportWorkbook.SelectWorksheet(currentWorkbook.ActiveWorksheetIndex);
+            }
+
+            await ViewerDocumentExporter.ExportAsync(exportDocument, dialog.FileName, operation.Token);
+            status.Text = $"导出完成 · {dialog.FileName}";
+        }
+        catch (OperationCanceledException)
+        {
+            status.Text = "已取消导出，临时文件已清理。";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException)
+        {
+            status.Text = $"导出失败：{exception.Message}";
+            MessageBox.Show($"无法导出文档内容。\n\n{exception.Message}", "ExusiAI Viewer", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            if (ReferenceEquals(operationCancellation, operation)) operationCancellation = null;
+            cancelButton.IsEnabled = false;
+            UpdateDocumentCommandState();
+        }
+    }
+
+    private void PrintCurrentView()
+    {
+        if (document is null) return;
+
+        var content = textPreview.Visibility == Visibility.Visible
+            ? textPreview.Text
+            : tablePreview.Visibility == Visibility.Visible
+                ? string.Join(Environment.NewLine, tableRows)
+                : slideScroll.Visibility == Visibility.Visible
+                    ? string.Join(Environment.NewLine + Environment.NewLine, new[] { slideTitle.Text, slideBody.Text }.Where(value => !string.IsNullOrWhiteSpace(value)))
+                    : string.Empty;
+
+        if (string.IsNullOrEmpty(content))
+        {
+            status.Text = "当前视图没有可打印的安全提取内容。";
+            return;
+        }
+        if (content.Length > MaximumPrintCharacters)
+        {
+            status.Text = "当前视图超过 2 Mi 字符打印上限；请先缩小内容范围或使用流式导出。";
+            return;
+        }
+
+        var dialog = new PrintDialog();
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var flow = new FlowDocument(new Paragraph(new Run(content)))
+            {
+                FontFamily = textPreview.Visibility == Visibility.Visible
+                    ? new FontFamily("Cascadia Mono, Consolas")
+                    : new FontFamily("Segoe UI"),
+                FontSize = 12,
+                PagePadding = new Thickness(48),
+                ColumnWidth = double.PositiveInfinity,
+                PageWidth = dialog.PrintableAreaWidth,
+                PageHeight = dialog.PrintableAreaHeight
+            };
+            dialog.PrintDocument(((IDocumentPaginatorSource)flow).DocumentPaginator, document.Info.DisplayName);
+            status.Text = "打印任务已提交；可在系统打印对话框中选择 Microsoft Print to PDF。";
+        }
+        catch (Exception exception) when (exception is System.Printing.PrintSystemException or InvalidOperationException)
+        {
+            status.Text = $"打印失败：{exception.Message}";
+        }
+    }
+
+    private void GoToTextLine()
+    {
+        if (textPreview.Visibility != Visibility.Visible || !int.TryParse(goToLineBox.Text, out var requested)) return;
+
+        var lineCount = TextDocumentStatistics.Calculate(textPreview.Text).Lines;
+        if (lineCount <= 0) return;
+        var target = Math.Clamp(requested, 1, lineCount);
+        var index = TextDocumentStatistics.GetLineStart(textPreview.Text, target);
+        textPreview.Select(index, 0);
+        textPreview.ScrollToLine(textPreview.GetLineIndexFromCharacterIndex(index));
+        textPreview.Focus();
+        status.Text = requested == target
+            ? $"已转到第 {target:N0} 行。"
+            : $"输入超出范围，已转到最后一行（共 {lineCount:N0} 行）。";
     }
 
     private async Task SearchCurrentDocumentAsync()
@@ -1076,10 +1383,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         var statistics = TextDocumentStatistics.Calculate(textPreview.Text);
         var caret = Math.Clamp(textPreview.CaretIndex, 0, textPreview.Text.Length);
-        var line = textPreview.GetLineIndexFromCharacterIndex(caret);
-        var lineStart = line >= 0 ? textPreview.GetCharacterIndexFromLineIndex(line) : 0;
-        var column = Math.Max(0, caret - lineStart);
-        textStatistics.Text = $"{statistics.Lines:N0} 行 · {statistics.Words:N0} 词 · {statistics.Characters:N0} 字符 · 第 {line + 1:N0} 行，第 {column + 1:N0} 列";
+        var position = TextDocumentStatistics.Locate(textPreview.Text, caret);
+        textStatistics.Text = $"{statistics.Lines:N0} 行 · {statistics.Words:N0} 词 · {statistics.Characters:N0} 字符 · 第 {position.Line:N0} 行，第 {position.Column:N0} 列";
         textStatistics.Visibility = Visibility.Visible;
     }
 
@@ -1214,13 +1519,22 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private void UpdateDocumentCommandState()
     {
         var hasDocument = document is not null;
-        reloadButton.IsEnabled = hasDocument;
+        reloadButton.IsEnabled = hasDocument && operationCancellation is null;
         documentInfoButton.IsEnabled = hasDocument;
         openFolderButton.IsEnabled = hasDocument;
         copyPathButton.IsEnabled = hasDocument;
         wrapTextButton.IsEnabled = document is ITextPreviewDocument;
         previousSearchButton.IsEnabled = searchResults.Count > 0;
         nextSearchButton.IsEnabled = searchResults.Count > 0;
+        exportButton.IsEnabled = hasDocument && operationCancellation is null;
+        printButton.IsEnabled = hasDocument && operationCancellation is null;
+        goToLineBox.IsEnabled = document is ITextPreviewDocument;
+        goToLineBox.Visibility = document is ITextPreviewDocument ? Visibility.Visible : Visibility.Collapsed;
+        goToLineButton.IsEnabled = document is ITextPreviewDocument;
+        goToLineButton.Visibility = document is ITextPreviewDocument ? Visibility.Visible : Visibility.Collapsed;
+        loadMoreSlidesButton.IsEnabled = operationCancellation is null &&
+                                         document is ISlidePreviewDocument slides &&
+                                         slideThumbnails.Count < slides.SlideCount;
     }
 
     private void StartWatchingCurrentFile()
@@ -1634,6 +1948,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         isDirty = false;
         externalChangePending = false;
         documentInfoPane.Visibility = Visibility.Collapsed;
+        slideNavigationPane.Visibility = Visibility.Collapsed;
+        slideThumbnails.Clear();
         reloadButton.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
         UpdateEditingUi();
         UpdateDocumentCommandState();
@@ -1719,6 +2035,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         loadCancellation?.Cancel();
         loadCancellation?.Dispose();
         loadCancellation = null;
+        operationCancellation?.Cancel();
         statisticsTimer.Stop();
         fileWatcher?.Dispose();
         fileWatcher = null;
@@ -1733,5 +2050,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             ViewerSearchLocationKind.Row => $"第 {Hit.PrimaryIndex:N0} 行 / 第 {Hit.SecondaryIndex:N0} 列  ·  {Hit.Snippet}",
             _ => $"字符 {Hit.PrimaryIndex + 1:N0}  ·  {Hit.Snippet}"
         };
+    }
+
+    private sealed record SlideThumbnailOption(int SlideNumber, string Summary)
+    {
+        public string DisplayText => $"{SlideNumber:N0}  {Summary}";
     }
 }
