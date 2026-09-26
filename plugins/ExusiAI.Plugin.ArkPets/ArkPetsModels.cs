@@ -196,10 +196,11 @@ public static class ArkModelsDataset
 
 public sealed record ArkPetsSettings
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
     public string RuntimePath { get; init; } = "";
     public string ModelRoot { get; init; } = "";
     public string SelectedModelKey { get; init; } = "";
+    public string[] FavoriteModelKeys { get; init; } = Array.Empty<string>();
 
     public int BehaviorAiActivation { get; init; } = 4;
     public bool BehaviorAllowInteract { get; init; } = true;
@@ -221,21 +222,28 @@ public sealed record ArkPetsSettings
     public int DisplayMarginBottom { get; init; }
     public bool DisplayMultiMonitors { get; init; } = true;
     public double DisplayScale { get; init; } = 1;
+    public double InitialPositionX { get; init; } = 0.2;
+    public double InitialPositionY { get; init; } = 0.2;
     public double OpacityDim { get; init; } = 0.75;
     public double OpacityNormal { get; init; } = 1;
+    public string CanvasColor { get; init; } = "#00000000";
     public double CanvasCoverage { get; init; } = 0.8;
     public int CanvasSamplingInterval { get; init; } = 4;
 
     public double RenderAnimationMixture { get; init; } = 0.3;
     public bool RenderEnableMipmap { get; init; } = true;
     public int RenderOutline { get; init; } = 1;
+    public int RenderOutlineEmphasis { get; init; } = 3;
     public double RenderOutlineWidth { get; init; } = 2;
     public bool RenderShaderHighQuality { get; init; } = true;
     public string RenderOutlineColor { get; init; } = "#FFFF00FF";
     public string RenderOutlineEmphasisColor { get; init; } = "#FFBB00FF";
     public string RenderShadowColor { get; init; } = "#000000BB";
+    public double TransitionDuration { get; init; } = 0.3;
+    public string TransitionType { get; init; } = "EASE_OUT_CUBIC";
 
     public bool EcoMode { get; init; }
+    public bool LauncherSolidExit { get; init; } = true;
     public string LoggingLevel { get; init; } = "INFO";
     public bool WindowStyleToolwindow { get; init; } = true;
     public bool WindowStyleTopmost { get; init; } = true;

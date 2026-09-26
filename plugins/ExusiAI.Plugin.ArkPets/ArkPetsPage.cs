@@ -26,9 +26,16 @@ internal sealed class ArkPetsPage : UserControl
     private TextBlock? modelName;
     private TextBlock? modelDetails;
     private TextBlock? integrationStatus;
+    private Button? favoriteFilterButton;
+    private Button? selectedFavoriteButton;
+    private ListBox? runningList;
     private bool loaded;
     private bool isModelsView;
     private bool suppressModelSelection;
+    private bool favoriteOnly;
+    private readonly HashSet<string> selectedTagFilters = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed record ChoiceOption<T>(string Label, T Value);
 
     public ArkPetsPage(ArkPetsController controller)
     {
@@ -46,9 +53,10 @@ internal sealed class ArkPetsPage : UserControl
         behaviorButton.Click += (_, _) => ShowBehavior();
         optionsButton.Click += (_, _) => ShowOptions();
         launchButton.Click += async (_, _) => await LaunchAsync();
-        controller.Changed += Controller_OnChanged;
         Loaded += async (_, _) =>
         {
+            controller.Changed -= Controller_OnChanged;
+            controller.Changed += Controller_OnChanged;
             if (loaded) return;
             loaded = true;
             if (!string.IsNullOrWhiteSpace(controller.Settings.ModelRoot) && controller.Catalog.Models.Count == 0)
@@ -148,6 +156,7 @@ internal sealed class ArkPetsPage : UserControl
         var leftTools = new StackPanel { Orientation = Orientation.Horizontal };
         var reload = SecondaryButton("↻  重载");
         var random = SecondaryButton("⤨  随机");
+        favoriteFilterButton = SecondaryButton("☆  收藏");
         var reset = SecondaryButton("重置");
         reload.Click += async (_, _) => await ReloadModelsAsync();
         random.Click += async (_, _) =>
@@ -155,15 +164,24 @@ internal sealed class ArkPetsPage : UserControl
             var selected = await controller.SelectRandomModelAsync(FilterModels());
             if (selected is not null) RefreshModelList(selected.Key);
         };
+        favoriteFilterButton.Click += (_, _) =>
+        {
+            favoriteOnly = !favoriteOnly;
+            UpdateFavoriteFilterButton();
+            RefreshModelList();
+        };
         reset.Click += (_, _) =>
         {
+            selectedTagFilters.Clear();
             if (searchBox is not null) searchBox.Text = "";
             if (typeFilter is not null) typeFilter.SelectedIndex = 0;
-            RefreshModelList();
+            ShowModels();
         };
         leftTools.Children.Add(reload);
         leftTools.Children.Add(random);
+        leftTools.Children.Add(favoriteFilterButton);
         leftTools.Children.Add(reset);
+        UpdateFavoriteFilterButton();
         DockPanel.SetDock(leftTools, Dock.Left);
         tools.Children.Add(leftTools);
 
@@ -187,6 +205,7 @@ internal sealed class ArkPetsPage : UserControl
 
         var left = new Grid();
         left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         left.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         var filterRow = new DockPanel { Margin = new Thickness(0, 0, 8, 8) };
         filterRow.Children.Add(new TextBlock
@@ -203,6 +222,10 @@ internal sealed class ArkPetsPage : UserControl
         Grid.SetRow(filterRow, 0);
         left.Children.Add(filterRow);
 
+        var tagFilter = BuildTagFilterPanel();
+        Grid.SetRow(tagFilter, 1);
+        left.Children.Add(tagFilter);
+
         modelList = new ListView
         {
             Margin = new Thickness(0, 0, 8, 0),
@@ -217,7 +240,7 @@ internal sealed class ArkPetsPage : UserControl
                 await controller.SelectModelAsync(model.Key);
             RefreshModelDetails(model);
         };
-        Grid.SetRow(modelList, 1);
+        Grid.SetRow(modelList, 2);
         left.Children.Add(modelList);
         Grid.SetColumn(left, 0);
         body.Children.Add(left);
@@ -247,6 +270,18 @@ internal sealed class ArkPetsPage : UserControl
         };
         infoStack.Children.Add(modelName);
         infoStack.Children.Add(modelDetails);
+
+        selectedFavoriteButton = SecondaryButton("☆  收藏");
+        selectedFavoriteButton.HorizontalAlignment = HorizontalAlignment.Left;
+        selectedFavoriteButton.Click += async (_, _) =>
+        {
+            if (modelList?.SelectedItem is not ArkPetModel model) return;
+            await controller.ToggleFavoriteAsync(model.Key);
+            RefreshModelDetails(model);
+            RefreshModelList(model.Key);
+        };
+        infoStack.Children.Add(selectedFavoriteButton);
+
         infoStack.Children.Add(GroupTitle("模型库管理"));
 
         var modelRoot = new TextBlock
@@ -256,11 +291,44 @@ internal sealed class ArkPetsPage : UserControl
             Foreground = Brushes.DimGray,
             Margin = new Thickness(4, 8, 4, 8)
         };
+        var manageButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
         var chooseLibrary = SecondaryButton("选择模型库");
-        chooseLibrary.HorizontalAlignment = HorizontalAlignment.Left;
+        var verifyLibrary = SecondaryButton("校验");
+        var importLibrary = SecondaryButton("导入 ZIP");
+        var exportLibrary = SecondaryButton("导出 ZIP");
         chooseLibrary.Click += async (_, _) => await ChooseModelRootAsync();
+        verifyLibrary.Click += async (_, _) => await VerifyModelLibraryAsync();
+        importLibrary.Click += async (_, _) => await ImportModelLibraryAsync();
+        exportLibrary.Click += async (_, _) => await ExportModelLibraryAsync();
+        manageButtons.Children.Add(chooseLibrary);
+        manageButtons.Children.Add(verifyLibrary);
+        manageButtons.Children.Add(importLibrary);
+        manageButtons.Children.Add(exportLibrary);
         infoStack.Children.Add(modelRoot);
-        infoStack.Children.Add(chooseLibrary);
+        infoStack.Children.Add(manageButtons);
+
+        infoStack.Children.Add(GroupTitle("角色管理"));
+        runningList = new ListBox
+        {
+            MinHeight = 58,
+            MaxHeight = 110,
+            Margin = new Thickness(4, 6, 4, 6),
+            DisplayMemberPath = nameof(ArkPetProcessSnapshot.DisplayText)
+        };
+        var runningButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        var stopSelected = SecondaryButton("停止所选");
+        var stopAll = SecondaryButton("全部停止");
+        stopSelected.Click += async (_, _) => await StopSelectedInstanceAsync();
+        stopAll.Click += async (_, _) =>
+        {
+            await controller.StopAllAsync();
+            RefreshRunningInstances();
+        };
+        runningButtons.Children.Add(stopSelected);
+        runningButtons.Children.Add(stopAll);
+        infoStack.Children.Add(runningList);
+        infoStack.Children.Add(runningButtons);
+        RefreshRunningInstances();
 
         infoStack.Children.Add(GroupTitle("兼容信息"));
         var compatibility = new TextBlock
@@ -296,22 +364,75 @@ internal sealed class ArkPetsPage : UserControl
         contentHost.Children.Clear();
 
         var stack = new StackPanel();
+
         stack.Children.Add(GroupTitle("行为设置"));
-        stack.Children.Add(Toggle("允许鼠标交互", controller.Settings.BehaviorAllowInteract, value => s => s with { BehaviorAllowInteract = value }));
         stack.Children.Add(Toggle("允许行走", controller.Settings.BehaviorAllowWalk, value => s => s with { BehaviorAllowWalk = value }));
         stack.Children.Add(Toggle("允许坐下", controller.Settings.BehaviorAllowSit, value => s => s with { BehaviorAllowSit = value }));
         stack.Children.Add(Toggle("允许睡觉", controller.Settings.BehaviorAllowSleep, value => s => s with { BehaviorAllowSleep = value }));
         stack.Children.Add(Toggle("允许特殊基建动作", controller.Settings.BehaviorAllowSpecial, value => s => s with { BehaviorAllowSpecial = value }));
+        stack.Children.Add(NumberSlider("活跃级别", controller.Settings.BehaviorAiActivation, 0, 16, " 级", value => s => s with { BehaviorAiActivation = (int)Math.Round(value) }));
+        stack.Children.Add(NumberSlider("行走速度", controller.Settings.BehaviorWalkSpeed, 0, 200, " px/s", value => s => s with { BehaviorWalkSpeed = value }));
+        stack.Children.Add(Toggle("允许鼠标交互", controller.Settings.BehaviorAllowInteract, value => s => s with { BehaviorAllowInteract = value }));
         stack.Children.Add(Toggle("桌宠之间相互避让", controller.Settings.BehaviorDoPeerRepulsion, value => s => s with { BehaviorDoPeerRepulsion = value }));
-        stack.Children.Add(NumberSlider("行走速度", controller.Settings.BehaviorWalkSpeed, 5, 120, " px/s", value => s => s with { BehaviorWalkSpeed = value }));
-        stack.Children.Add(NumberSlider("AI 活跃程度", controller.Settings.BehaviorAiActivation, 1, 10, "", value => s => s with { BehaviorAiActivation = (int)Math.Round(value) }));
+        stack.Children.Add(ChoiceRow(
+            "方向切换",
+            controller.Settings.BehaviorDirectionSwitching,
+            new ChoiceOption<int>[]
+            {
+                new("禁用", 0),
+                new("松开拖拽时", 1),
+                new("拖拽时", 2),
+                new("光标掠过时", 3)
+            },
+            value => s => s with { BehaviorDirectionSwitching = value }));
+
+        stack.Children.Add(GroupTitle("位置设置"));
+        stack.Children.Add(Toggle("允许跨多显示器移动", controller.Settings.DisplayMultiMonitors, value => s => s with { DisplayMultiMonitors = value }));
+        stack.Children.Add(NumberSlider("下边界距离", controller.Settings.DisplayMarginBottom, 0, 120, " px", value => s => s with { DisplayMarginBottom = (int)Math.Round(value) }));
+        stack.Children.Add(NumberSlider("初始位置 X", controller.Settings.InitialPositionX, 0, 1, "", value => s => s with { InitialPositionX = Math.Round(value, 3) }));
+        stack.Children.Add(NumberSlider("初始位置 Y", controller.Settings.InitialPositionY, 0, 1, "", value => s => s with { InitialPositionY = Math.Round(value, 3) }));
+
+        stack.Children.Add(GroupTitle("过渡设置"));
+        stack.Children.Add(ChoiceRow(
+            "动画间切换",
+            controller.Settings.RenderAnimationMixture,
+            new ChoiceOption<double>[]
+            {
+                new("禁用", 0),
+                new("快速", 0.1),
+                new("标准", 0.3),
+                new("慢速", 0.6)
+            },
+            value => s => s with { RenderAnimationMixture = value }));
+        stack.Children.Add(ChoiceRow(
+            "位置与透明度过渡",
+            controller.Settings.TransitionDuration,
+            new ChoiceOption<double>[]
+            {
+                new("禁用", 0),
+                new("快速", 0.1),
+                new("标准", 0.3),
+                new("慢速", 0.6)
+            },
+            value => s => s with { TransitionDuration = value }));
+        stack.Children.Add(ChoiceRow(
+            "缓动函数",
+            controller.Settings.TransitionType,
+            new ChoiceOption<string>[]
+            {
+                new("线性（Linear）", "LINEAR"),
+                new("正弦缓出（EaseOutSine）", "EASE_OUT_SINE"),
+                new("三次方缓出（EaseOutCubic）", "EASE_OUT_CUBIC"),
+                new("五次方缓出（EaseOutQuint）", "EASE_OUT_QUINT")
+            },
+            value => s => s with { TransitionType = value }));
 
         stack.Children.Add(GroupTitle("物理设置"));
-        stack.Children.Add(NumberSlider("重力加速度", controller.Settings.PhysicGravityAcc, 0, 1600, "", value => s => s with { PhysicGravityAcc = value }));
-        stack.Children.Add(NumberSlider("空气阻力", controller.Settings.PhysicAirFrictionAcc, 0, 500, "", value => s => s with { PhysicAirFrictionAcc = value }));
-        stack.Children.Add(NumberSlider("静摩擦", controller.Settings.PhysicStaticFrictionAcc, 0, 1200, "", value => s => s with { PhysicStaticFrictionAcc = value }));
-        stack.Children.Add(NumberSlider("水平速度上限", controller.Settings.PhysicSpeedLimitX, 100, 2000, "", value => s => s with { PhysicSpeedLimitX = value }));
-        stack.Children.Add(NumberSlider("垂直速度上限", controller.Settings.PhysicSpeedLimitY, 100, 2000, "", value => s => s with { PhysicSpeedLimitY = value }));
+        stack.Children.Add(NumberSlider("重力加速度", controller.Settings.PhysicGravityAcc, 0, 2000, " px/s²", value => s => s with { PhysicGravityAcc = value }));
+        stack.Children.Add(NumberSlider("空气阻力", controller.Settings.PhysicAirFrictionAcc, 0, 2000, " px/s²", value => s => s with { PhysicAirFrictionAcc = value }));
+        stack.Children.Add(NumberSlider("静摩擦", controller.Settings.PhysicStaticFrictionAcc, 0, 2000, " px/s²", value => s => s with { PhysicStaticFrictionAcc = value }));
+        stack.Children.Add(NumberSlider("水平速度上限", controller.Settings.PhysicSpeedLimitX, 0, 2000, " px/s", value => s => s with { PhysicSpeedLimitX = value }));
+        stack.Children.Add(NumberSlider("垂直速度上限", controller.Settings.PhysicSpeedLimitY, 0, 2000, " px/s", value => s => s with { PhysicSpeedLimitY = value }));
 
         contentHost.Children.Add(new ScrollViewer
         {
@@ -329,6 +450,7 @@ internal sealed class ArkPetsPage : UserControl
         contentHost.Children.Clear();
 
         var stack = new StackPanel();
+
         stack.Children.Add(GroupTitle("ArkPets 运行时"));
         stack.Children.Add(PathRow(
             "程序",
@@ -342,23 +464,119 @@ internal sealed class ArkPetsPage : UserControl
             async () => await ChooseModelRootAsync()));
 
         stack.Children.Add(GroupTitle("显示设置"));
-        stack.Children.Add(NumberSlider("最大帧率", controller.Settings.DisplayFps, 15, 144, " FPS", value => s => s with { DisplayFps = (int)Math.Round(value) }));
-        stack.Children.Add(NumberSlider("显示缩放", controller.Settings.DisplayScale, 0.35, 2.5, "×", value => s => s with { DisplayScale = Math.Round(value, 2) }));
-        stack.Children.Add(NumberSlider("下边界距离", controller.Settings.DisplayMarginBottom, 0, 300, " px", value => s => s with { DisplayMarginBottom = (int)Math.Round(value) }));
-        stack.Children.Add(Toggle("允许跨多显示器移动", controller.Settings.DisplayMultiMonitors, value => s => s with { DisplayMultiMonitors = value }));
-        stack.Children.Add(NumberSlider("正常透明度", controller.Settings.OpacityNormal, 0.2, 1, "", value => s => s with { OpacityNormal = Math.Round(value, 2) }));
-        stack.Children.Add(NumberSlider("淡化透明度", controller.Settings.OpacityDim, 0.1, 1, "", value => s => s with { OpacityDim = Math.Round(value, 2) }));
+        stack.Children.Add(ChoiceRow(
+            "显示缩放",
+            controller.Settings.DisplayScale,
+            new ChoiceOption<double>[]
+            {
+                new("x0.5", 0.5), new("x0.75", 0.75), new("x1.0", 1),
+                new("x1.25", 1.25), new("x1.5", 1.5), new("x2.0", 2),
+                new("x2.5", 2.5), new("x3.0", 3)
+            },
+            value => s => s with { DisplayScale = value }));
+        stack.Children.Add(ChoiceRow(
+            "最大帧率",
+            controller.Settings.DisplayFps,
+            new ChoiceOption<int>[]
+            {
+                new("25", 25), new("30", 30), new("45", 45), new("60", 60), new("120", 120)
+            },
+            value => s => s with { DisplayFps = value }));
 
         stack.Children.Add(GroupTitle("渲染设置"));
-        stack.Children.Add(Toggle("启用 Mipmap", controller.Settings.RenderEnableMipmap, value => s => s with { RenderEnableMipmap = value }));
+        stack.Children.Add(ChoiceRow(
+            "画布颜色",
+            controller.Settings.CanvasColor,
+            new ChoiceOption<string>[]
+            {
+                new("透明", "#00000000"),
+                new("绿色", "#00FF00FF"),
+                new("蓝色", "#0000FFFF"),
+                new("品红色", "#FF00FFFF")
+            },
+            value => s => s with { CanvasColor = value }));
+        stack.Children.Add(ChoiceRow(
+            "画布覆盖率",
+            controller.Settings.CanvasCoverage,
+            new ChoiceOption<double>[]
+            {
+                new("最宽", 0.45), new("较宽", 0.65), new("标准", 0.8), new("较窄", 0.9), new("最窄", 0.95)
+            },
+            value => s => s with { CanvasCoverage = value }));
+        stack.Children.Add(ChoiceRow(
+            "画布采样精度",
+            controller.Settings.CanvasSamplingInterval,
+            new ChoiceOption<int>[]
+            {
+                new("极精确", 1), new("精确", 4), new("粗略", 16), new("极粗略", 64)
+            },
+            value => s => s with { CanvasSamplingInterval = value }));
+        stack.Children.Add(ChoiceRow(
+            "描边显示",
+            controller.Settings.RenderOutline,
+            OutlineChoices(),
+            value => s => s with { RenderOutline = value }));
+        stack.Children.Add(ChoiceRow(
+            "强调描边",
+            controller.Settings.RenderOutlineEmphasis,
+            OutlineChoices(),
+            value => s => s with { RenderOutlineEmphasis = value }));
+        stack.Children.Add(ChoiceRow(
+            "描边颜色",
+            controller.Settings.RenderOutlineColor,
+            OutlineColorChoices(),
+            value => s => s with { RenderOutlineColor = value }));
+        stack.Children.Add(ChoiceRow(
+            "强调描边颜色",
+            controller.Settings.RenderOutlineEmphasisColor,
+            OutlineColorChoices(),
+            value => s => s with { RenderOutlineEmphasisColor = value }));
+        stack.Children.Add(ChoiceRow(
+            "描边宽度",
+            controller.Settings.RenderOutlineWidth,
+            new ChoiceOption<double>[]
+            {
+                new("极细", 1), new("较细", 1.5), new("标准", 2), new("较粗", 3), new("极粗", 5)
+            },
+            value => s => s with { RenderOutlineWidth = value }));
+        stack.Children.Add(NumberSlider("正常透明度", controller.Settings.OpacityNormal, 0.1, 1, "", value => s => s with { OpacityNormal = Math.Round(value, 2) }));
+        stack.Children.Add(NumberSlider("淡化透明度", controller.Settings.OpacityDim, 0.1, 1, "", value => s => s with { OpacityDim = Math.Min(Math.Round(value, 2), s.OpacityNormal) }));
+        stack.Children.Add(ChoiceRow(
+            "阴影",
+            controller.Settings.RenderShadowColor,
+            new ChoiceOption<string>[]
+            {
+                new("禁用", "#00000000"),
+                new("轻微", "#00000077"),
+                new("标准", "#000000BB"),
+                new("重墨", "#000000FF")
+            },
+            value => s => s with { RenderShadowColor = value }));
         stack.Children.Add(Toggle("高质量着色器", controller.Settings.RenderShaderHighQuality, value => s => s with { RenderShaderHighQuality = value }));
-        stack.Children.Add(NumberSlider("动画混合", controller.Settings.RenderAnimationMixture, 0, 1, "", value => s => s with { RenderAnimationMixture = Math.Round(value, 2) }));
-        stack.Children.Add(NumberSlider("描边宽度", controller.Settings.RenderOutlineWidth, 0, 8, " px", value => s => s with { RenderOutlineWidth = Math.Round(value, 1) }));
+        stack.Children.Add(Toggle("启用 Mipmap", controller.Settings.RenderEnableMipmap, value => s => s with { RenderEnableMipmap = value }));
 
-        stack.Children.Add(GroupTitle("窗口与程序"));
+        stack.Children.Add(GroupTitle("高级设置"));
+        stack.Children.Add(ChoiceRow(
+            "日志级别",
+            controller.Settings.LoggingLevel,
+            new ChoiceOption<string>[]
+            {
+                new("DEBUG", "DEBUG"), new("INFO", "INFO"), new("WARN", "WARN"), new("ERROR", "ERROR")
+            },
+            value => s => s with { LoggingLevel = value }));
+        stack.Children.Add(Toggle("关闭启动器时一并退出桌宠", controller.Settings.LauncherSolidExit, value => s => s with { LauncherSolidExit = value }));
         stack.Children.Add(Toggle("桌宠窗口置顶", controller.Settings.WindowStyleTopmost, value => s => s with { WindowStyleTopmost = value }));
-        stack.Children.Add(Toggle("桌宠作为后台程序启动", controller.Settings.WindowStyleToolwindow, value => s => s with { WindowStyleToolwindow = value }));
+        stack.Children.Add(Toggle("桌宠作为后台工具窗口", controller.Settings.WindowStyleToolwindow, value => s => s with { WindowStyleToolwindow = value }));
         stack.Children.Add(Toggle("长时间未交互时降低帧率", controller.Settings.EcoMode, value => s => s with { EcoMode = value }));
+
+        var privacyNote = new TextBlock
+        {
+            Text = "兼容运行时遥测由 ExusiAI 配置固定关闭；其余 ArkPets 配置字段保持上游语义。",
+            Foreground = Brushes.DimGray,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(8, 6, 8, 6)
+        };
+        stack.Children.Add(privacyNote);
 
         stack.Children.Add(GroupTitle("ClassIsland 可选联动"));
         stack.Children.Add(Toggle(
@@ -383,14 +601,13 @@ internal sealed class ArkPetsPage : UserControl
         stack.Children.Add(integrationStatus);
 
         stack.Children.Add(GroupTitle("关于"));
-        var about = new TextBlock
+        stack.Children.Add(new TextBlock
         {
             Text = "Ark-Pets © 2022-2026 Harry Huang · GPL-3.0\nArk-Models 模型资源版权归上海鹰角网络有限公司所有；本插件不将模型素材重新许可为 GPL。",
             TextWrapping = TextWrapping.Wrap,
             Foreground = Brushes.DimGray,
             Margin = new Thickness(4, 8, 4, 16)
-        };
-        stack.Children.Add(about);
+        });
 
         contentHost.Children.Add(new ScrollViewer
         {
@@ -446,6 +663,80 @@ internal sealed class ArkPetsPage : UserControl
         }
     }
 
+    private Task VerifyModelLibraryAsync()
+    {
+        var result = controller.VerifyModelLibrary();
+        if (result.TotalModels == 0)
+        {
+            SetStatus("模型库中没有可校验的模型。");
+            return Task.CompletedTask;
+        }
+
+        SetStatus(result.IsHealthy
+            ? $"模型库校验完成：{result.AvailableModels} / {result.TotalModels} 个模型资源完整。"
+            : $"模型库校验完成：缺少 {result.MissingModels} 个模型资源；示例：{string.Join("、", result.MissingModelKeys.Take(5))}");
+        return Task.CompletedTask;
+    }
+
+    private async Task ImportModelLibraryAsync()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "导入 Ark-Models ZIP",
+            Filter = "ZIP 压缩包 (*.zip)|*.zip|所有文件 (*.*)|*.*"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            SetStatus("正在导入模型库…");
+            await controller.ImportModelLibraryAsync(dialog.FileName);
+            ShowModels();
+            SetStatus($"模型库已导入：{controller.Catalog.Models.Count} 个模型。");
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"模型库导入失败：{exception.Message}");
+        }
+    }
+
+    private async Task ExportModelLibraryAsync()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出 Ark-Models ZIP",
+            Filter = "ZIP 压缩包 (*.zip)|*.zip",
+            FileName = "ArkModels.zip",
+            DefaultExt = ".zip",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            SetStatus("正在导出模型库…");
+            await controller.ExportModelLibraryAsync(dialog.FileName);
+            SetStatus($"模型库已导出到 {dialog.FileName}");
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"模型库导出失败：{exception.Message}");
+        }
+    }
+
+    private async Task StopSelectedInstanceAsync()
+    {
+        if (runningList?.SelectedItem is not ArkPetProcessSnapshot selected)
+        {
+            SetStatus("请先选择要停止的桌宠实例。");
+            return;
+        }
+
+        var stopped = await controller.StopInstanceAsync(selected.Id);
+        SetStatus(stopped ? $"已停止 {selected.ModelName}。" : "未找到对应的桌宠实例。");
+        RefreshRunningInstances();
+    }
+
     private async Task LaunchAsync()
     {
         try
@@ -462,6 +753,11 @@ internal sealed class ArkPetsPage : UserControl
     private IEnumerable<ArkPetModel> FilterModels()
     {
         IEnumerable<ArkPetModel> items = controller.Catalog.Models;
+        if (favoriteOnly)
+            items = items.Where(model => controller.IsFavorite(model.Key));
+        if (selectedTagFilters.Count > 0)
+            items = items.Where(model => selectedTagFilters.All(tag =>
+                model.SortTags.Contains(tag, StringComparer.OrdinalIgnoreCase)));
         if (typeFilter?.SelectedItem is string type && type != "全部")
             items = items.Where(x => string.Equals(x.Type, type, StringComparison.OrdinalIgnoreCase));
 
@@ -500,7 +796,8 @@ internal sealed class ArkPetsPage : UserControl
         if (modelStatus is not null)
             modelStatus.Text = controller.Catalog.Models.Count == 0
                 ? "请选择 Ark-Models 模型库；插件直接兼容其 models_data.json。"
-                : $"已载入 {controller.Catalog.Models.Count} 个模型 · 当前筛选 {items.Length} 个 · 可用 {items.Count(x => x.IsAvailable)} 个";
+                : $"已载入 {controller.Catalog.Models.Count} 个模型 · 当前筛选 {items.Length} 个 · 可用 {items.Count(x => x.IsAvailable)} 个" +
+                  (selectedTagFilters.Count > 0 ? $" · 标签 {selectedTagFilters.Count}" : "");
     }
 
     private void RefreshModelDetails(ArkPetModel? model)
@@ -510,10 +807,21 @@ internal sealed class ArkPetsPage : UserControl
         {
             modelName.Text = "请选择模型";
             modelDetails.Text = "";
+            if (selectedFavoriteButton is not null)
+            {
+                selectedFavoriteButton.Content = "☆  收藏";
+                selectedFavoriteButton.IsEnabled = false;
+            }
             return;
         }
 
         modelName.Text = model.DisplayName;
+        if (selectedFavoriteButton is not null)
+        {
+            var favorite = controller.IsFavorite(model.Key);
+            selectedFavoriteButton.Content = favorite ? "★  已收藏" : "☆  收藏";
+            selectedFavoriteButton.IsEnabled = true;
+        }
         var tags = model.SortTags.Count == 0 ? "—" : string.Join(" / ", model.SortTags);
         modelDetails.Text =
             $"{model.Subtitle}\n\n资源键：{model.Key}\n时装系列：{(string.IsNullOrWhiteSpace(model.SkinGroupName) ? "—" : model.SkinGroupName)}\n标签：{tags}\n状态：{(model.IsAvailable ? "资源完整" : "缺少资源文件")}";
@@ -528,6 +836,136 @@ internal sealed class ArkPetsPage : UserControl
             .ToArray();
         typeFilter.ItemsSource = values;
         typeFilter.SelectedItem = values.Contains(selected, StringComparer.OrdinalIgnoreCase) ? selected : "全部";
+    }
+
+    private FrameworkElement BuildTagFilterPanel()
+    {
+        var tags = controller.Catalog.Models
+            .SelectMany(model => model.SortTags)
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => controller.Catalog.SortTags.TryGetValue(tag, out var label) ? label : tag, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        if (tags.Length == 0)
+            return new Border { Height = 1, Margin = new Thickness(0, 0, 8, 4) };
+
+        var flow = new WrapPanel { Margin = new Thickness(0, 0, 8, 6) };
+        foreach (var tag in tags)
+        {
+            var label = controller.Catalog.SortTags.TryGetValue(tag, out var translated) && !string.IsNullOrWhiteSpace(translated)
+                ? translated
+                : tag;
+            var button = SecondaryButton(label);
+            button.Padding = new Thickness(8, 3, 8, 3);
+            button.Margin = new Thickness(2);
+            ApplyTagFilterStyle(button, selectedTagFilters.Contains(tag));
+            button.Click += (_, _) =>
+            {
+                if (!selectedTagFilters.Add(tag))
+                    selectedTagFilters.Remove(tag);
+                ApplyTagFilterStyle(button, selectedTagFilters.Contains(tag));
+                RefreshModelList();
+            };
+            flow.Children.Add(button);
+        }
+
+        return new ScrollViewer
+        {
+            Content = flow,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            MaxHeight = 78,
+            Margin = new Thickness(0, 0, 0, 2)
+        };
+    }
+
+    private static void ApplyTagFilterStyle(Button button, bool active)
+    {
+        button.Background = active ? Theme : Paper;
+        button.Foreground = active ? Brushes.White : Theme;
+    }
+
+    private void UpdateFavoriteFilterButton()
+    {
+        if (favoriteFilterButton is null) return;
+        favoriteFilterButton.Content = favoriteOnly ? "★  收藏" : "☆  收藏";
+        favoriteFilterButton.Background = favoriteOnly ? Theme : Paper;
+        favoriteFilterButton.Foreground = favoriteOnly ? Brushes.White : Theme;
+    }
+
+    private void RefreshRunningInstances()
+    {
+        if (runningList is null) return;
+        var selectedId = runningList.SelectedItem is ArkPetProcessSnapshot selected ? selected.Id : (Guid?)null;
+        var items = controller.RunningInstances;
+        runningList.ItemsSource = items;
+        if (selectedId is not null)
+            runningList.SelectedItem = items.FirstOrDefault(item => item.Id == selectedId.Value);
+    }
+
+    private static IReadOnlyList<ChoiceOption<int>> OutlineChoices() =>
+    [
+        new("始终开启", 5),
+        new("处于前台时", 3),
+        new("点击时", 2),
+        new("拖拽时", 1),
+        new("关闭", 0)
+    ];
+
+    private static IReadOnlyList<ChoiceOption<string>> OutlineColorChoices() =>
+    [
+        new("黄色", "#FFFF00FF"),
+        new("橙色", "#FFBB00FF"),
+        new("白色", "#FFFFFFFF"),
+        new("青色", "#00FFFFFF")
+    ];
+
+    private FrameworkElement ChoiceRow<T>(
+        string label,
+        T initial,
+        IReadOnlyList<ChoiceOption<T>> options,
+        Func<T, Func<ArkPetsSettings, ArkPetsSettings>> update)
+        where T : notnull
+    {
+        var values = options.ToList();
+        var selected = values.FirstOrDefault(option => EqualityComparer<T>.Default.Equals(option.Value, initial));
+        if (selected is null)
+        {
+            selected = new ChoiceOption<T>($"自定义（{initial}）", initial);
+            values.Insert(0, selected);
+        }
+
+        var row = new Grid { Margin = new Thickness(4, 6, 4, 6) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var text = new TextBlock
+        {
+            Text = label,
+            Foreground = Ink,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var combo = new ComboBox
+        {
+            ItemsSource = values,
+            DisplayMemberPath = nameof(ChoiceOption<T>.Label),
+            SelectedItem = selected,
+            MinWidth = 180,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+        combo.SelectionChanged += async (_, _) =>
+        {
+            if (combo.SelectedItem is ChoiceOption<T> choice)
+                await controller.UpdateSettingsAsync(update(choice.Value));
+        };
+
+        Grid.SetColumn(text, 0);
+        Grid.SetColumn(combo, 1);
+        row.Children.Add(text);
+        row.Children.Add(combo);
+        return row;
     }
 
     private FrameworkElement Toggle(
@@ -629,7 +1067,10 @@ internal sealed class ArkPetsPage : UserControl
             return;
         }
         if (isModelsView && modelList is not null && contentHost.Children.Count > 0)
+        {
             RefreshModelList(controller.Settings.SelectedModelKey);
+            RefreshRunningInstances();
+        }
     }
 
     private void SetActive(Button active)

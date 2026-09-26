@@ -6,11 +6,28 @@ using ExusiAI.Extension.Abstractions;
 
 namespace ExusiAI.Plugin.ArkPets;
 
+public sealed record ArkPetProcessSnapshot(
+    Guid Id,
+    int ProcessId,
+    string ModelKey,
+    string ModelName,
+    DateTimeOffset StartedAt)
+{
+    public string DisplayText => $"{ModelName} · PID {ProcessId}";
+}
+
+internal sealed record ArkPetProcessHandle(
+    Guid Id,
+    Process Process,
+    string ModelKey,
+    string ModelName,
+    DateTimeOffset StartedAt);
+
 public sealed class ArkPetsController : IAsyncDisposable
 {
     private readonly IExtensionLogger logger;
     private readonly ArkPetsSettingsStore store = new();
-    private readonly List<Process> processes = [];
+    private readonly List<ArkPetProcessHandle> processes = [];
     private readonly SemaphoreSlim gate = new(1, 1);
     private ClassIslandIntegrationBridge? classIslandBridge;
 
@@ -21,6 +38,26 @@ public sealed class ArkPetsController : IAsyncDisposable
 
     public ArkPetsSettings Settings { get; private set; } = new();
     public ArkModelsCatalog Catalog { get; private set; } = ArkModelsCatalog.Empty();
+    public IReadOnlyList<ArkPetProcessSnapshot> RunningInstances
+    {
+        get
+        {
+            lock (processes)
+            {
+                return processes
+                    .Where(handle => !handle.Process.HasExited)
+                    .Select(handle => new ArkPetProcessSnapshot(
+                        handle.Id,
+                        handle.Process.Id,
+                        handle.ModelKey,
+                        handle.ModelName,
+                        handle.StartedAt))
+                    .OrderBy(handle => handle.StartedAt)
+                    .ToArray();
+            }
+        }
+    }
+
     public bool ClassIslandAvailable =>
         File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "packages", "exusiai.misha-showcase", "package.json")) ||
         File.Exists(ClassIslandStateFile.DefaultPath);
@@ -97,6 +134,42 @@ public sealed class ArkPetsController : IAsyncDisposable
     public ArkPetModel? SelectedModel =>
         Catalog.Models.FirstOrDefault(x => string.Equals(x.Key, Settings.SelectedModelKey, StringComparison.OrdinalIgnoreCase));
 
+    public bool IsFavorite(string modelKey) =>
+        Settings.FavoriteModelKeys.Any(key => string.Equals(key, modelKey, StringComparison.OrdinalIgnoreCase));
+
+    public async Task ToggleFavoriteAsync(string modelKey, CancellationToken cancellationToken = default)
+    {
+        if (Catalog.Models.All(model => !string.Equals(model.Key, modelKey, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var favorites = Settings.FavoriteModelKeys
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!favorites.Add(modelKey))
+            favorites.Remove(modelKey);
+
+        await UpdateSettingsAsync(
+            settings => settings with { FavoriteModelKeys = favorites.OrderBy(key => key, StringComparer.OrdinalIgnoreCase).ToArray() },
+            cancellationToken: cancellationToken);
+    }
+
+    public ArkModelsVerificationResult VerifyModelLibrary() => ArkModelsLibraryManager.Verify(Catalog);
+
+    public Task ExportModelLibraryAsync(string destination, CancellationToken cancellationToken = default) =>
+        ArkModelsLibraryManager.ExportAsync(Catalog, destination, cancellationToken);
+
+    public async Task ImportModelLibraryAsync(string archivePath, CancellationToken cancellationToken = default)
+    {
+        var destinationRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ExusiAI", "arkpets", "libraries");
+        var root = await ArkModelsLibraryManager.ImportAsync(archivePath, destinationRoot, cancellationToken);
+        await UpdateSettingsAsync(
+            settings => settings with { ModelRoot = root, SelectedModelKey = "" },
+            reloadModels: true,
+            cancellationToken);
+    }
+
     public async Task<Process> LaunchSelectedAsync(CancellationToken cancellationToken = default)
     {
         var model = SelectedModel ?? throw new InvalidOperationException("请先选择一个桌宠模型。");
@@ -110,46 +183,84 @@ public sealed class ArkPetsController : IAsyncDisposable
         var configPath = await ArkPetsConfigWriter.WriteAsync(Settings, Catalog, model, cancellationToken);
         var info = BuildProcessStartInfo(Settings.RuntimePath, Settings.ModelRoot, configPath);
         var process = Process.Start(info) ?? throw new InvalidOperationException("ArkPets 运行时未能启动。");
+        var handle = new ArkPetProcessHandle(
+            Guid.NewGuid(),
+            process,
+            model.Key,
+            model.DisplayName,
+            DateTimeOffset.Now);
         process.EnableRaisingEvents = true;
         process.Exited += (_, _) =>
         {
             lock (processes)
             {
-                processes.Remove(process);
+                processes.RemoveAll(item => item.Id == handle.Id);
             }
             process.Dispose();
+            Changed?.Invoke(this, EventArgs.Empty);
         };
         lock (processes)
         {
-            processes.Add(process);
+            processes.Add(handle);
         }
         logger.Information($"Started ArkPets model '{model.Key}'.");
+        Changed?.Invoke(this, EventArgs.Empty);
         return process;
     }
 
-    public void StopAll()
+    public async Task<bool> StopInstanceAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        Process[] snapshot;
+        ArkPetProcessHandle? handle;
         lock (processes)
-            snapshot = processes.ToArray();
+            handle = processes.FirstOrDefault(item => item.Id == id);
+        if (handle is null) return false;
 
-        foreach (var process in snapshot)
+        try
         {
-            try
+            if (handle.Process.HasExited) return true;
+            var requestedClose = handle.Process.CloseMainWindow();
+            if (requestedClose)
             {
-                if (!process.HasExited)
-                    process.CloseMainWindow();
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(2));
+                try
+                {
+                    await handle.Process.WaitForExitAsync(timeout.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // Fall back to terminating only the process tree launched by this plugin.
+                }
             }
-            catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException)
-            {
-                logger.Warning($"Could not request ArkPets process shutdown: {exception.Message}");
-            }
+
+            if (!handle.Process.HasExited)
+                handle.Process.Kill(entireProcessTree: true);
+            return true;
         }
+        catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException)
+        {
+            logger.Warning($"Could not stop ArkPets process: {exception.Message}");
+            return false;
+        }
+        finally
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public async Task StopAllAsync(CancellationToken cancellationToken = default)
+    {
+        Guid[] ids;
+        lock (processes)
+            ids = processes.Select(handle => handle.Id).ToArray();
+        foreach (var id in ids)
+            await StopInstanceAsync(id, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
     {
-        StopAll();
+        if (Settings.LauncherSolidExit)
+            await StopAllAsync();
         if (classIslandBridge is not null)
         {
             await classIslandBridge.DisposeAsync();
@@ -270,6 +381,10 @@ public static class ArkPetsConfigWriter
                 : new JsonArray(pair.Value.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
         }
 
+        var favorites = new JsonObject();
+        foreach (var key in settings.FavoriteModelKeys.Where(key => !string.IsNullOrWhiteSpace(key)).Distinct(StringComparer.OrdinalIgnoreCase))
+            favorites[key] = new JsonObject();
+
         var root = new JsonObject
         {
             ["behavior_ai_activation"] = settings.BehaviorAiActivation,
@@ -281,11 +396,11 @@ public static class ArkPetsConfigWriter
             ["behavior_direction_switching"] = settings.BehaviorDirectionSwitching,
             ["behavior_do_peer_repulsion"] = settings.BehaviorDoPeerRepulsion,
             ["behavior_walk_speed"] = settings.BehaviorWalkSpeed,
-            ["canvas_color"] = "#00000000",
+            ["canvas_color"] = settings.CanvasColor,
             ["canvas_coverage"] = settings.CanvasCoverage,
             ["canvas_sampling_interval"] = settings.CanvasSamplingInterval,
             ["character_asset"] = relativeAsset,
-            ["character_favorites"] = new JsonObject(),
+            ["character_favorites"] = favorites,
             ["character_files"] = files,
             ["character_label"] = model.Name,
             ["display_fps"] = settings.DisplayFps,
@@ -295,9 +410,9 @@ public static class ArkPetsConfigWriter
             ["download_mc_cdk"] = "",
             ["eco_mode"] = settings.EcoMode,
             ["enable_telemetry"] = false,
-            ["initial_position_x"] = 0.2,
-            ["initial_position_y"] = 0.2,
-            ["launcher_solid_exit"] = true,
+            ["initial_position_x"] = settings.InitialPositionX,
+            ["initial_position_y"] = settings.InitialPositionY,
+            ["launcher_solid_exit"] = settings.LauncherSolidExit,
             ["logging_level"] = settings.LoggingLevel,
             ["opacity_dim"] = settings.OpacityDim,
             ["opacity_normal"] = settings.OpacityNormal,
@@ -310,13 +425,13 @@ public static class ArkPetsConfigWriter
             ["render_enable_mipmap"] = settings.RenderEnableMipmap,
             ["render_outline"] = settings.RenderOutline,
             ["render_outline_color"] = settings.RenderOutlineColor,
-            ["render_outline_emphasis"] = 3,
+            ["render_outline_emphasis"] = settings.RenderOutlineEmphasis,
             ["render_outline_emphasis_color"] = settings.RenderOutlineEmphasisColor,
             ["render_outline_width"] = settings.RenderOutlineWidth,
             ["render_shader_high_quality"] = settings.RenderShaderHighQuality,
             ["render_shadow_color"] = settings.RenderShadowColor,
-            ["transition_duration"] = 0.3,
-            ["transition_type"] = "EASE_OUT_CUBIC",
+            ["transition_duration"] = settings.TransitionDuration,
+            ["transition_type"] = settings.TransitionType,
             ["user_announcement_read"] = new JsonObject(),
             ["window_style_toolwindow"] = settings.WindowStyleToolwindow,
             ["window_style_topmost"] = settings.WindowStyleTopmost

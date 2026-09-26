@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.IO;
 using System.Text.Json.Nodes;
 using ExusiAI.Plugin.ArkPets;
@@ -86,13 +87,103 @@ public sealed class ArkPetsTests
             });
         var catalog = new ArkModelsCatalog(root.Path, "test", "zh_CN", "2.2.0", new Dictionary<string, string>(), [model]);
 
-        var path = await ArkPetsConfigWriter.WriteAsync(new ArkPetsSettings { ModelRoot = root.Path }, catalog, model);
+        var settings = new ArkPetsSettings
+        {
+            ModelRoot = root.Path,
+            FavoriteModelKeys = ["103_angel"],
+            CanvasColor = "#00FF00FF",
+            InitialPositionX = 0.4,
+            InitialPositionY = 0.6,
+            LauncherSolidExit = false,
+            RenderOutlineEmphasis = 5,
+            TransitionDuration = 0.6,
+            TransitionType = "LINEAR"
+        };
+        var path = await ArkPetsConfigWriter.WriteAsync(settings, catalog, model);
         var json = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
 
         Assert.Equal("models/103_angel", json["character_asset"]!.GetValue<string>().Replace('\\', '/'));
         Assert.Equal("能天使", json["character_label"]!.GetValue<string>());
         Assert.False(json["enable_telemetry"]!.GetValue<bool>());
         Assert.Equal("angel.skel", json["character_files"]![".skel"]!.GetValue<string>());
+        Assert.NotNull(json["character_favorites"]!["103_angel"]);
+        Assert.Equal("#00FF00FF", json["canvas_color"]!.GetValue<string>());
+        Assert.Equal(0.4, json["initial_position_x"]!.GetValue<double>(), 3);
+        Assert.Equal(0.6, json["initial_position_y"]!.GetValue<double>(), 3);
+        Assert.False(json["launcher_solid_exit"]!.GetValue<bool>());
+        Assert.Equal(5, json["render_outline_emphasis"]!.GetValue<int>());
+        Assert.Equal(0.6, json["transition_duration"]!.GetValue<double>(), 3);
+        Assert.Equal("LINEAR", json["transition_type"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ModelLibraryVerificationAndZipRoundTripWork()
+    {
+        using var root = new TestDirectory();
+        var source = Path.Combine(root.Path, "source");
+        var asset = Path.Combine(source, "models", "103_angel");
+        Directory.CreateDirectory(asset);
+        await File.WriteAllTextAsync(Path.Combine(asset, "angel.atlas"), "");
+        await File.WriteAllTextAsync(Path.Combine(asset, "angel.skel"), "");
+        await File.WriteAllTextAsync(Path.Combine(asset, "angel.png"), "");
+        await File.WriteAllTextAsync(Path.Combine(source, "models_data.json"), """
+        {
+          "storageDirectory": { "Operator": "models" },
+          "sortTags": { "Operator": "干员" },
+          "arkPetsCompatibility": [3, 5, 0],
+          "data": {
+            "103_angel": {
+              "type": "Operator",
+              "name": "能天使",
+              "appellation": "Exusiai",
+              "assetList": {
+                ".atlas": "angel.atlas",
+                ".skel": "angel.skel",
+                ".png": ["angel.png"]
+              }
+            }
+          }
+        }
+        """);
+
+        var catalog = await ArkModelsDataset.LoadAsync(source);
+        var verification = ArkModelsLibraryManager.Verify(catalog);
+        Assert.True(verification.IsHealthy);
+        Assert.Equal(1, verification.AvailableModels);
+
+        var zip = Path.Combine(root.Path, "ArkPetsModels.zip");
+        await ArkModelsLibraryManager.ExportAsync(catalog, zip);
+        Assert.True(File.Exists(zip));
+        using (var exported = ZipFile.OpenRead(zip))
+            Assert.Contains(exported.Entries, entry => entry.FullName.Equals("ArkModels/models_data.json", StringComparison.Ordinal));
+
+        var importedRoot = await ArkModelsLibraryManager.ImportAsync(zip, Path.Combine(root.Path, "imports"));
+        var imported = await ArkModelsDataset.LoadAsync(importedRoot);
+        var importedModel = Assert.Single(imported.Models);
+        Assert.Equal("103_angel", importedModel.Key);
+        Assert.True(importedModel.IsAvailable);
+
+        File.Delete(Path.Combine(importedModel.AssetDirectory, "angel.png"));
+        var missing = ArkModelsLibraryManager.Verify(imported);
+        Assert.False(missing.IsHealthy);
+        Assert.Equal("103_angel", Assert.Single(missing.MissingModelKeys));
+    }
+
+    [Fact]
+    public async Task ModelLibraryImportRejectsPathTraversal()
+    {
+        using var root = new TestDirectory();
+        var zip = Path.Combine(root.Path, "malicious.zip");
+        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("../escape.txt");
+            await using var writer = new StreamWriter(entry.Open());
+            await writer.WriteAsync("escape");
+        }
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            ArkModelsLibraryManager.ImportAsync(zip, Path.Combine(root.Path, "imports")));
+        Assert.False(File.Exists(Path.Combine(root.Path, "escape.txt")));
     }
 
     [Fact]
