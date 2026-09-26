@@ -282,22 +282,36 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
 {
     private readonly WpfNavigationRegistry registry;
     private readonly ICrashReporter crashReporter;
+    private readonly ISettingsService settings;
     private readonly Dictionary<string, FrameworkElement> pageCache = new(StringComparer.OrdinalIgnoreCase);
 
     [ObservableProperty] private PluginPageOption? selectedPage;
     [ObservableProperty] private FrameworkElement? currentPage;
     [ObservableProperty] private bool hasPages;
 
-    public PluginWorkspaceViewModel(WpfNavigationRegistry registry, ICrashReporter crashReporter)
+    public PluginWorkspaceViewModel(WpfNavigationRegistry registry, ICrashReporter crashReporter, ISettingsService settings)
     {
         this.registry = registry;
         this.crashReporter = crashReporter;
+        this.settings = settings;
         Pages = [];
         Rebuild();
         registry.Changed += Registry_OnChanged;
     }
 
     public ObservableCollection<PluginPageOption> Pages { get; }
+
+    [RelayCommand]
+    private async Task MovePageAsync(PluginPageMoveRequest? request)
+    {
+        if (request is null) return;
+        var index = Pages.IndexOf(request.Page);
+        var target = index + request.Offset;
+        if (index < 0 || target < 0 || target >= Pages.Count) return;
+        Pages.Move(index, target);
+        SelectedPage = request.Page;
+        await settings.SaveAsync(settings.Current with { PluginPageOrder = Pages.Select(x => x.Route).ToArray() });
+    }
 
     partial void OnSelectedPageChanged(PluginPageOption? value)
     {
@@ -330,7 +344,10 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
         var activeRoutes = registry.Pages.Select(x => x.Page.Route).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var staleRoute in pageCache.Keys.Where(x => !activeRoutes.Contains(x)).ToArray()) pageCache.Remove(staleRoute);
         Pages.Clear();
-        foreach (var item in registry.Pages)
+        var order = (settings.Current.PluginPageOrder ?? [])
+            .Select((route, index) => (route, index))
+            .ToDictionary(x => x.route, x => x.index, StringComparer.OrdinalIgnoreCase);
+        foreach (var item in registry.Pages.OrderBy(x => order.GetValueOrDefault(x.Page.Route, int.MaxValue)))
             Pages.Add(new(item.PackageId, item.Page.Route, item.Page.Title, item.Page.IconGlyph, item.Page.CreateView));
         HasPages = Pages.Count > 0;
         SelectedPage = Pages.FirstOrDefault(x => string.Equals(x.Route, selectedRoute, StringComparison.OrdinalIgnoreCase)) ?? Pages.FirstOrDefault();
@@ -338,6 +355,7 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
 }
 
 public sealed record PluginPageOption(string PackageId, string Route, string Title, string IconGlyph, Func<FrameworkElement> CreateView);
+public sealed record PluginPageMoveRequest(PluginPageOption Page, int Offset);
 
 public sealed partial class ThemeViewModel : ObservableObject
 {

@@ -17,7 +17,7 @@ public sealed class PageFactory(ExtensionRuntime runtime, WpfNavigationRegistry 
             return route switch
             {
                 "home" => new HomePage { DataContext = new HomeViewModel(runtime) },
-                "workspace" => new PluginWorkspacePage { DataContext = new PluginWorkspaceViewModel(registry, crashReporter) },
+                "workspace" => new PluginWorkspacePage { DataContext = new PluginWorkspaceViewModel(registry, crashReporter, settings) },
                 "marketplace" => new MarketplacePage { DataContext = new MarketplaceViewModel(catalog) },
                 "extensions" => new PluginManagerPage { DataContext = new PluginManagerViewModel(runtime, settings, packageManager) },
                 "theme" => new ThemePage { DataContext = new ThemeViewModel(theme, backdrop, settings, loggerFactory.CreateLogger<ThemeViewModel>()) },

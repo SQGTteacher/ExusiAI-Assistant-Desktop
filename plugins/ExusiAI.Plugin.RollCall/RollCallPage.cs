@@ -30,7 +30,7 @@ internal sealed class RollCallPage : UserControl
 
     private FrameworkElement BuildLayout()
     {
-        var root = new Grid { MaxWidth = 1080 };
+        var root = new Grid { MaxWidth = 1080, Margin = new Thickness(26, 30, 26, 28) };
         root.ColumnDefinitions.Add(new() { Width = new GridLength(3, GridUnitType.Star) });
         root.ColumnDefinitions.Add(new() { Width = new GridLength(2, GridUnitType.Star) });
 

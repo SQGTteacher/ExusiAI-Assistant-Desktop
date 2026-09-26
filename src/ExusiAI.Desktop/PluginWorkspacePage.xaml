@@ -73,13 +73,20 @@
                                        Foreground="{DynamicResource AccentBrush}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding Title}"
-                                   FontSize="14"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding Title}" />
+                        <Grid Grid.Column="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="6,0,0,0">
+                                <Button Content="↑" ToolTip="向前移动" Style="{StaticResource GhostButton}" Padding="5,3"
+                                        Click="MoveEarlier_OnClick" />
+                                <Button Content="↓" ToolTip="向后移动" Style="{StaticResource GhostButton}" Padding="5,3"
+                                        Click="MoveLater_OnClick" />
+                            </StackPanel>
+                        </Grid>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
@@ -87,7 +94,7 @@
 
         <Border Grid.Row="2" Style="{StaticResource LaunchCard}" Padding="0" ClipToBounds="True">
             <Grid>
-                <ContentControl Content="{Binding CurrentPage}" />
+                <ContentControl x:Name="ContentFrame" Content="{Binding CurrentPage}" />
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">

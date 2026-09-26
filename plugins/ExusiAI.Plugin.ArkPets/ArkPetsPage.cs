@@ -9,10 +9,14 @@ namespace ExusiAI.Plugin.ArkPets;
 
 internal sealed class ArkPetsPage : UserControl
 {
-    private static readonly Brush Theme = Brush("#2A528C");
-    private static readonly Brush ThemeLight = Brush("#86ABDE");
-    private static readonly Brush Ink = Brush("#242424");
-    private static readonly Brush Paper = Brushes.White;
+    private static Brush Theme => Resource("AccentBrush", "#D84B57");
+    private static Brush ThemeLight => Resource("AccentSoftBrush", "#402126");
+    private static Brush Ink => Resource("TextPrimaryBrush", "#F5F2EF");
+    private static Brush SecondaryInk => Resource("TextSecondaryBrush", "#B2A9AD");
+    private static Brush AccentInk => Resource("AccentForegroundBrush", "#FFFFFF");
+    private static Brush Paper => Resource("SurfaceBrush", "#17191F");
+    private static Brush PaperAlt => Resource("SurfaceAltBrush", "#22252C");
+    private static Brush Hairline => Resource("BorderBrush", "#3B3E46");
 
     private readonly ArkPetsController controller;
     private readonly Grid contentHost = new();
@@ -47,19 +51,7 @@ internal sealed class ArkPetsPage : UserControl
         this.controller = controller;
         MinWidth = 720;
 
-        // ArkPets 在宿主内仍保持上游的浅色蓝白工作台。
-        // 在插件作用域内覆盖宿主的深色动态资源，避免 TextBox、ComboBox、
-        // ListBox、Slider、CheckBox 与 ScrollBar 在白色页面上继续套用深色配色。
-        Resources["TextPrimaryBrush"] = Ink;
-        Resources["TextSecondaryBrush"] = Brush("#5E6B7A");
-        Resources["SurfaceBrush"] = Paper;
-        Resources["SurfaceAltBrush"] = Brush("#F2F6FC");
-        Resources["BorderBrush"] = Brush("#B9C8DC");
-        Resources["AccentBrush"] = Theme;
-        Resources["AccentForegroundBrush"] = Brushes.White;
-        Resources["AccentSoftBrush"] = Brush("#DCE8F8");
-        Background = Paper;
-        Foreground = Ink;
+        Background = Brushes.Transparent;
 
         modelsButton = MenuButton("模型");
         behaviorButton = MenuButton("行为");
@@ -96,7 +88,7 @@ internal sealed class ArkPetsPage : UserControl
             Margin = new Thickness(16),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
-            BorderBrush = Brush("#D7DEEA"),
+            BorderBrush = Hairline,
             Background = Paper,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
@@ -131,7 +123,7 @@ internal sealed class ArkPetsPage : UserControl
         Grid.SetRow(title, 0);
         sidebarGrid.Children.Add(title);
 
-        var rule = new Border { Height = 1, Background = Brush("#60718A"), Opacity = 0.45, Margin = new Thickness(2, 0, 2, 14) };
+        var rule = new Border { Height = 1, Background = Hairline, Opacity = 0.7, Margin = new Thickness(2, 0, 2, 14) };
         Grid.SetRow(rule, 1);
         sidebarGrid.Children.Add(rule);
 
@@ -211,7 +203,7 @@ internal sealed class ArkPetsPage : UserControl
             Height = 34,
             Foreground = Ink,
             Background = Paper,
-            BorderBrush = Brush("#B9C8DC"),
+            BorderBrush = Hairline,
             Margin = new Thickness(12, 0, 0, 0),
             VerticalContentAlignment = VerticalAlignment.Center,
             ToolTip = "搜索名称 / 代号 / 资源键 / 时装"
@@ -244,7 +236,7 @@ internal sealed class ArkPetsPage : UserControl
             Height = 34,
             Foreground = Ink,
             Background = Paper,
-            BorderBrush = Brush("#B9C8DC"),
+            BorderBrush = Hairline,
             HorizontalAlignment = HorizontalAlignment.Right
         };
         typeFilter.SelectionChanged += (_, _) => RefreshModelList();
@@ -262,7 +254,7 @@ internal sealed class ArkPetsPage : UserControl
             Margin = new Thickness(0, 0, 8, 0),
             Background = Paper,
             Foreground = Ink,
-            BorderBrush = Brush("#B9C8DC"),
+            BorderBrush = Hairline,
             BorderThickness = new Thickness(1),
             DisplayMemberPath = nameof(ArkPetModel.DisplayName)
         };
@@ -280,7 +272,7 @@ internal sealed class ArkPetsPage : UserControl
 
         var info = new Border
         {
-            BorderBrush = Brush("#C8D2E2"),
+            BorderBrush = Hairline,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
             Background = Paper,
@@ -297,7 +289,7 @@ internal sealed class ArkPetsPage : UserControl
         };
         modelDetails = new TextBlock
         {
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             Margin = new Thickness(0, 8, 0, 14),
             TextWrapping = TextWrapping.Wrap
         };
@@ -308,8 +300,8 @@ internal sealed class ArkPetsPage : UserControl
         {
             Height = 220,
             Margin = new Thickness(0, 0, 0, 10),
-            Background = Brush("#F2F6FC"),
-            BorderBrush = Brush("#C8D2E2"),
+            Background = PaperAlt,
+            BorderBrush = Hairline,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4)
         };
@@ -323,7 +315,7 @@ internal sealed class ArkPetsPage : UserControl
         modelPreviewPlaceholder = new TextBlock
         {
             Text = "选择模型后显示纹理图集\n完整角色由 ArkPets 运行时渲染",
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             TextAlignment = TextAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -361,7 +353,7 @@ internal sealed class ArkPetsPage : UserControl
         {
             Text = string.IsNullOrWhiteSpace(controller.Settings.ModelRoot) ? "未选择 Ark-Models 模型库" : controller.Settings.ModelRoot,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             Margin = new Thickness(4, 8, 4, 8)
         };
         var manageButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
@@ -449,7 +441,7 @@ internal sealed class ArkPetsPage : UserControl
             Text = controller.Catalog.Models.Count == 0
                 ? "加载 Ark-Models 后显示数据版本和兼容版本。"
                 : $"ArkPets 兼容：{controller.Catalog.Compatibility}\n游戏数据：{controller.Catalog.GameDataVersionDescription}\n区域：{controller.Catalog.GameDataServerRegion}",
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(4, 8, 4, 0)
         };
@@ -588,7 +580,7 @@ internal sealed class ArkPetsPage : UserControl
         runtimeStatus = new TextBlock
         {
             Text = BuildRuntimeStatus(),
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(8, 2, 8, 8)
         };
@@ -703,7 +695,7 @@ internal sealed class ArkPetsPage : UserControl
         stack.Children.Add(new TextBlock
         {
             Text = "插件模式固定绑定 ExusiAI：Windows 自启动项只启动 ExusiAI；ExusiAI 退出、插件禁用或卸载时，其启动的 ArkPets 子进程会一并结束。",
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(8, 6, 8, 6)
         });
@@ -711,7 +703,7 @@ internal sealed class ArkPetsPage : UserControl
         var privacyNote = new TextBlock
         {
             Text = "兼容运行时遥测由 ExusiAI 配置固定关闭；其余 ArkPets 配置字段保持上游语义。",
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(8, 6, 8, 6)
         };
@@ -733,7 +725,7 @@ internal sealed class ArkPetsPage : UserControl
             Text = controller.ClassIslandAvailable
                 ? "已检测到独立的 ClassIsland 2.2 Misha 插件。联动通过独立状态桥接文件读取课程阶段；整理功能只移动本节课开始后新增/修改的常见文档、课件和图片，不处理程序、快捷方式或文件夹。"
                 : "未检测到 ClassIsland 2.2 Misha。联动选项已禁用，桌宠本体和 ArkPets 功能不受影响。",
-            Foreground = controller.ClassIslandAvailable ? Theme : Brushes.DimGray,
+            Foreground = controller.ClassIslandAvailable ? Theme : SecondaryInk,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(4, 8, 4, 10)
         };
@@ -744,7 +736,7 @@ internal sealed class ArkPetsPage : UserControl
         {
             Text = "Ark-Pets © 2022-2026 Harry Huang · GPL-3.0\nArk-Models 模型资源版权归上海鹰角网络有限公司所有；本插件不将模型素材重新许可为 GPL。",
             TextWrapping = TextWrapping.Wrap,
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             Margin = new Thickness(4, 8, 4, 16)
         });
 
@@ -1159,7 +1151,7 @@ internal sealed class ArkPetsPage : UserControl
     private static void ApplyTagFilterStyle(Button button, bool active)
     {
         button.Background = active ? Theme : Paper;
-        button.Foreground = active ? Brushes.White : Theme;
+        button.Foreground = active ? AccentInk : Theme;
     }
 
     private void UpdateFavoriteFilterButton()
@@ -1167,7 +1159,7 @@ internal sealed class ArkPetsPage : UserControl
         if (favoriteFilterButton is null) return;
         favoriteFilterButton.Content = favoriteOnly ? "★  收藏" : "☆  收藏";
         favoriteFilterButton.Background = favoriteOnly ? Theme : Paper;
-        favoriteFilterButton.Foreground = favoriteOnly ? Brushes.White : Theme;
+        favoriteFilterButton.Foreground = favoriteOnly ? AccentInk : Theme;
     }
 
     private void RefreshRunningInstances()
@@ -1343,7 +1335,7 @@ internal sealed class ArkPetsPage : UserControl
         var valueText = new TextBlock
         {
             Text = $"{initial:0.##}{suffix}",
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             TextAlignment = TextAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -1373,7 +1365,7 @@ internal sealed class ArkPetsPage : UserControl
         var path = new TextBlock
         {
             Text = value,
-            Foreground = Brushes.DimGray,
+            Foreground = SecondaryInk,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(4, 0, 8, 0)
@@ -1409,7 +1401,7 @@ internal sealed class ArkPetsPage : UserControl
         foreach (var button in new[] { modelsButton, behaviorButton, optionsButton })
         {
             button.Background = ReferenceEquals(button, active) ? Theme : Paper;
-            button.Foreground = ReferenceEquals(button, active) ? Brushes.White : Theme;
+            button.Foreground = ReferenceEquals(button, active) ? AccentInk : Theme;
         }
     }
 
@@ -1458,7 +1450,7 @@ internal sealed class ArkPetsPage : UserControl
         {
             Content = text,
             Background = Theme,
-            Foreground = Brushes.White,
+            Foreground = AccentInk,
             BorderBrush = Theme,
             BorderThickness = new Thickness(1),
             Padding = new Thickness(12, 6, 12, 6),
@@ -1481,4 +1473,7 @@ internal sealed class ArkPetsPage : UserControl
 
     private static SolidColorBrush Brush(string hex) =>
         new((Color)ColorConverter.ConvertFromString(hex));
+
+    private static Brush Resource(string key, string fallback) =>
+        Application.Current?.TryFindResource(key) as Brush ?? Brush(fallback);
 }

@@ -36,7 +36,7 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
                     <Border Width="3" Height="18" CornerRadius="1.5" Background="{DynamicResource AccentWarmBrush}" Margin="0,0,10,0" />
-                    <TextBlock Text="{Binding SelectedItem.Title}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock x:Name="SectionTitle" Text="{Binding SelectedItem.Title}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
@@ -88,7 +88,7 @@
                 </Grid>
             </Border>
 
-            <ContentControl Grid.Column="1" Content="{Binding CurrentPage}" Margin="26,22,26,24" />
+            <ContentControl x:Name="PageHost" Grid.Column="1" Content="{Binding CurrentPage}" Margin="26,22,26,24" />
         </Grid>
     </Grid>
 </Window>

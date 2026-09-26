@@ -121,7 +121,17 @@ internal sealed class MishaSettingsHostPage : UserControl
         root.Children.Add(pane);
         Grid.SetColumn(right, 1);
         root.Children.Add(right);
-        Content = root;
+        var roundedFrame = new Border
+        {
+            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(1),
+            Child = root,
+            SnapsToDevicePixels = true
+        };
+        roundedFrame.SetResourceReference(Border.BackgroundProperty, "AppBackgroundBrush");
+        roundedFrame.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        roundedFrame.SizeChanged += (_, _) => ApplyRoundedClip(roundedFrame, 12);
+        Content = roundedFrame;
 
         navigation.SelectionChanged += (_, _) =>
         {
@@ -136,6 +146,15 @@ internal sealed class MishaSettingsHostPage : UserControl
         };
 
         navigation.SelectedIndex = 0;
+    }
+
+    private static void ApplyRoundedClip(FrameworkElement element, double radius)
+    {
+        var width = Math.Max(0, element.ActualWidth);
+        var height = Math.Max(0, element.ActualHeight);
+        if (width <= 0 || height <= 0) return;
+        var safeRadius = Math.Min(radius, Math.Min(width, height) / 2);
+        element.Clip = new RectangleGeometry(new Rect(0, 0, width, height), safeRadius, safeRadius);
     }
 
     private static DataTemplate BuildNavigationTemplate()
