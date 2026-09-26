@@ -3,7 +3,7 @@
   "id": "exusiai.roll-call",
   "type": "plugin",
   "name": "课堂点名器",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "apiVersion": "1",
   "publisher": "ExusiAI",
   "description": "导入班级名单并进行公平、不重复的课堂随机点名。",

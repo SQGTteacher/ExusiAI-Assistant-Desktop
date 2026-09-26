@@ -301,15 +301,16 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
 
     public ObservableCollection<PluginPageOption> Pages { get; }
 
-    [RelayCommand]
-    private async Task MovePageAsync(PluginPageMoveRequest? request)
+    public async Task MovePageAsync(PluginPageOption page, int insertionIndex)
     {
-        if (request is null) return;
-        var index = Pages.IndexOf(request.Page);
-        var target = index + request.Offset;
-        if (index < 0 || target < 0 || target >= Pages.Count) return;
-        Pages.Move(index, target);
-        SelectedPage = request.Page;
+        var index = Pages.IndexOf(page);
+        if (index < 0 || insertionIndex < 0 || insertionIndex > Pages.Count) return;
+
+        var targetIndex = insertionIndex > index ? insertionIndex - 1 : insertionIndex;
+        if (targetIndex == index || targetIndex < 0 || targetIndex >= Pages.Count) return;
+
+        Pages.Move(index, targetIndex);
+        SelectedPage = page;
         await settings.SaveAsync(settings.Current with { PluginPageOrder = Pages.Select(x => x.Route).ToArray() });
     }
 
@@ -355,7 +356,6 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
 }
 
 public sealed record PluginPageOption(string PackageId, string Route, string Title, string IconGlyph, Func<FrameworkElement> CreateView);
-public sealed record PluginPageMoveRequest(PluginPageOption Page, int Offset);
 
 public sealed partial class ThemeViewModel : ObservableObject
 {
