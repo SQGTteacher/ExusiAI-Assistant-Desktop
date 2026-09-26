@@ -214,6 +214,67 @@ public sealed class ArkPetsTests
     }
 
     [Fact]
+    public async Task StandaloneModelZipMatchesDatasetAndInstallsAssets()
+    {
+        using var root = new TestDirectory();
+        var library = Path.Combine(root.Path, "ArkModels");
+        Directory.CreateDirectory(library);
+        await File.WriteAllTextAsync(Path.Combine(library, "models_data.json"), """
+        {
+          "storageDirectory": { "Operator": "models" },
+          "data": {
+            "002_amiya": {
+              "type": "Operator",
+              "name": "阿米娅",
+              "assetList": {
+                ".atlas": "build_char_002_amiya.atlas",
+                ".png": "build_char_002_amiya.png",
+                ".skel": "build_char_002_amiya.skel"
+              }
+            }
+          }
+        }
+        """);
+        var catalog = await ArkModelsDataset.LoadAsync(library);
+        var archivePath = Path.Combine(root.Path, "002_amiya.zip");
+        using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+        {
+            foreach (var name in new[] { "build_char_002_amiya.atlas", "build_char_002_amiya.png", "build_char_002_amiya.skel" })
+            {
+                var entry = archive.CreateEntry(name);
+                await using var writer = new StreamWriter(entry.Open());
+                await writer.WriteAsync(name);
+            }
+        }
+
+        var imported = await ArkModelsLibraryManager.ImportSingleModelAsync(catalog, archivePath);
+
+        Assert.Equal("002_amiya", imported.Key);
+        Assert.True(imported.IsAvailable);
+        Assert.Equal(3, Directory.GetFiles(imported.AssetDirectory).Length);
+    }
+
+    [Fact]
+    public async Task StandaloneModelZipRejectsUnknownAssets()
+    {
+        using var root = new TestDirectory();
+        var library = Path.Combine(root.Path, "ArkModels");
+        Directory.CreateDirectory(library);
+        await File.WriteAllTextAsync(Path.Combine(library, "models_data.json"), """
+        { "storageDirectory": { "Operator": "models" }, "data": {
+          "002_amiya": { "type": "Operator", "assetList": { ".skel": "expected.skel" } }
+        } }
+        """);
+        var catalog = await ArkModelsDataset.LoadAsync(library);
+        var archivePath = Path.Combine(root.Path, "unknown.zip");
+        using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+            archive.CreateEntry("other.skel");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            ArkModelsLibraryManager.ImportSingleModelAsync(catalog, archivePath));
+    }
+
+    [Fact]
     public void UpstreamReleaseParserSelectsPortableZipAndDigest()
     {
         const string json = """

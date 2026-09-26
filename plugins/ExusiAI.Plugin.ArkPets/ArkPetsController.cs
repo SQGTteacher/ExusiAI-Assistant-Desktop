@@ -244,8 +244,20 @@ internal sealed class ArkPetsController : IAsyncDisposable
     public Task ExportModelLibraryAsync(string destination, CancellationToken cancellationToken = default) =>
         ArkModelsLibraryManager.ExportAsync(Catalog, destination, cancellationToken);
 
-    public async Task ImportModelLibraryAsync(string archivePath, CancellationToken cancellationToken = default)
+    public async Task<string> ImportModelLibraryAsync(string archivePath, CancellationToken cancellationToken = default)
     {
+        using (var archive = System.IO.Compression.ZipFile.OpenRead(archivePath))
+        {
+            if (!archive.Entries.Any(entry =>
+                    string.Equals(entry.Name, "models_data.json", StringComparison.OrdinalIgnoreCase)))
+            {
+                var model = await ArkModelsLibraryManager.ImportSingleModelAsync(Catalog, archivePath, cancellationToken);
+                await ReloadModelsAsync(cancellationToken);
+                await SelectModelAsync(model.Key, cancellationToken);
+                return $"已导入单模型：{model.DisplayName}";
+            }
+        }
+
         var destinationRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ExusiAI", "arkpets", "libraries");
@@ -254,6 +266,7 @@ internal sealed class ArkPetsController : IAsyncDisposable
             settings => settings with { ModelRoot = root, SelectedModelKey = "" },
             reloadModels: true,
             cancellationToken);
+        return $"已导入完整模型库：{Catalog.Models.Count} 个模型";
     }
 
     public async Task<Process> LaunchSelectedAsync(CancellationToken cancellationToken = default)

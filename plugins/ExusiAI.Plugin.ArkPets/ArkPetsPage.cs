@@ -322,7 +322,7 @@ internal sealed class ArkPetsPage : UserControl
         };
         modelPreviewPlaceholder = new TextBlock
         {
-            Text = "选择模型后显示贴图预览",
+            Text = "选择模型后显示纹理图集\n完整角色由 ArkPets 运行时渲染",
             Foreground = Brushes.DimGray,
             TextAlignment = TextAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -368,7 +368,7 @@ internal sealed class ArkPetsPage : UserControl
         var chooseLibrary = SecondaryButton("选择模型库");
         var updateLibrary = SecondaryButton("联网更新");
         var verifyLibrary = SecondaryButton("校验");
-        var importLibrary = SecondaryButton("导入 ZIP");
+        var importLibrary = SecondaryButton("导入模型 / 模型库 ZIP");
         var exportLibrary = SecondaryButton("导出 ZIP");
         chooseLibrary.Click += async (_, _) => await ChooseModelRootAsync();
         updateLibrary.Click += async (_, _) => await InstallLatestModelsAsync();
@@ -848,7 +848,7 @@ internal sealed class ArkPetsPage : UserControl
     {
         var dialog = new OpenFileDialog
         {
-            Title = "导入 Ark-Models ZIP",
+            Title = "导入单模型或 Ark-Models 模型库 ZIP",
             Filter = "ZIP 压缩包 (*.zip)|*.zip|所有文件 (*.*)|*.*"
         };
         if (dialog.ShowDialog() != true) return;
@@ -856,9 +856,9 @@ internal sealed class ArkPetsPage : UserControl
         try
         {
             SetStatus("正在导入模型库…");
-            await controller.ImportModelLibraryAsync(dialog.FileName);
+            var result = await controller.ImportModelLibraryAsync(dialog.FileName);
             ShowModels();
-            SetStatus($"模型库已导入：{controller.Catalog.Models.Count} 个模型。");
+            SetStatus(result);
         }
         catch (Exception exception)
         {
@@ -1076,7 +1076,7 @@ internal sealed class ArkPetsPage : UserControl
         if (string.IsNullOrWhiteSpace(path))
         {
             modelPreviewPlaceholder.Text = model is null
-                ? "选择模型后显示贴图预览"
+                ? "选择模型后显示纹理图集\n完整角色由 ArkPets 运行时渲染"
                 : "该模型尚未下载完整贴图";
             modelPreviewPlaceholder.Visibility = Visibility.Visible;
             return;
