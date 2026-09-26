@@ -15,6 +15,101 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class RuntimeTests
 {
     [Fact]
+    public void MishaRuntimeStateTracksClassAndBreakTransitions()
+    {
+        var lessons = new[]
+        {
+            new ClassIslandLessonSnapshot("plan", "课表", 1, "语文", "教师", TimeSpan.FromHours(8), TimeSpan.FromMinutes(8 * 60 + 40)),
+            new ClassIslandLessonSnapshot("plan", "课表", 2, "数学", "教师", TimeSpan.FromMinutes(8 * 60 + 50), TimeSpan.FromMinutes(9 * 60 + 30))
+        };
+        var date = new DateTime(2026, 9, 26);
+
+        Assert.Equal(ClassIslandSchedulePhase.BeforeClass,
+            ClassIslandRuntimeStateResolver.Resolve(lessons, date.AddHours(7)).Phase);
+
+        var onClass = ClassIslandRuntimeStateResolver.Resolve(lessons, date.AddHours(8).AddMinutes(10));
+        Assert.Equal(ClassIslandSchedulePhase.OnClass, onClass.Phase);
+        Assert.Equal("语文", onClass.Current!.Subject);
+        Assert.Equal("数学", onClass.Next!.Subject);
+
+        var breaking = ClassIslandRuntimeStateResolver.Resolve(lessons, date.AddHours(8).AddMinutes(45));
+        Assert.Equal(ClassIslandSchedulePhase.Breaking, breaking.Phase);
+        Assert.Equal("语文", breaking.Previous!.Subject);
+        Assert.Equal("数学", breaking.Next!.Subject);
+
+        Assert.Equal(ClassIslandSchedulePhase.AfterSchool,
+            ClassIslandRuntimeStateResolver.Resolve(lessons, date.AddHours(10)).Phase);
+    }
+
+    [Fact]
+    public void MishaScheduleNotificationsAreTransitionDrivenAndDeduplicated()
+    {
+        var lesson = new ClassIslandLessonSnapshot(
+            "plan", "课表", 1, "语文", "教师", TimeSpan.FromHours(8), TimeSpan.FromMinutes(8 * 60 + 40));
+        var date = new DateTime(2026, 9, 26);
+        var tracker = new ClassIslandScheduleNotificationTracker();
+
+        var initial = ClassIslandRuntimeStateResolver.Resolve([lesson], date.AddHours(7).AddMinutes(58));
+        Assert.Null(tracker.Evaluate(initial, true, true, true, 60));
+
+        var prepare = ClassIslandRuntimeStateResolver.Resolve([lesson], date.AddHours(7).AddMinutes(59).AddSeconds(30));
+        Assert.Equal(ClassIslandScheduleNotificationKind.Prepare,
+            tracker.Evaluate(prepare, true, true, true, 60)!.Kind);
+        Assert.Null(tracker.Evaluate(prepare, true, true, true, 60));
+
+        var begin = ClassIslandRuntimeStateResolver.Resolve([lesson], date.AddHours(8));
+        Assert.Equal(ClassIslandScheduleNotificationKind.ClassBegin,
+            tracker.Evaluate(begin, true, true, true, 60)!.Kind);
+
+        var finished = ClassIslandRuntimeStateResolver.Resolve([lesson], date.AddHours(8).AddMinutes(40));
+        Assert.Equal(ClassIslandScheduleNotificationKind.AfterSchool,
+            tracker.Evaluate(finished, true, true, true, 60)!.Kind);
+    }
+
+    [Theory]
+    [InlineData("classisland.lessons.onClass", (int)ClassIslandSchedulePhase.OnClass, true)]
+    [InlineData("classisland.lessons.onClass", (int)ClassIslandSchedulePhase.Breaking, false)]
+    [InlineData("classisland.lessons.onBreakingTime", (int)ClassIslandSchedulePhase.Breaking, true)]
+    [InlineData("classisland.lessons.onAfterSchool", (int)ClassIslandSchedulePhase.AfterSchool, true)]
+    [InlineData("classisland.lessons.currentTimeStateChanged", (int)ClassIslandSchedulePhase.BeforeClass, true)]
+    [InlineData("classisland.os.run", (int)ClassIslandSchedulePhase.OnClass, false)]
+    public void MishaAutomationOnlyMatchesSafeScheduleTriggers(
+        string triggerId,
+        int phase,
+        bool expected)
+    {
+        Assert.Equal(expected, MishaAutomationRuntime.Matches(triggerId, (ClassIslandSchedulePhase)phase));
+    }
+
+    [Fact]
+    public void MishaWeatherCacheReadsNativeCamelCaseAndMarksStaleData()
+    {
+        var updated = new DateTimeOffset(2026, 9, 26, 8, 0, 0, TimeSpan.Zero);
+        var node = JsonNode.Parse($$"""
+        {
+          "current": {
+            "weather": "1",
+            "temperature": { "value": "26", "unit": "℃" },
+            "feelsLike": { "value": "28", "unit": "℃" },
+            "humidity": { "value": "70", "unit": "%" }
+          },
+          "alerts": [{ "title": "高温预警" }],
+          "updateTime": {{updated.ToUnixTimeMilliseconds()}}
+        }
+        """);
+
+        var snapshot = ClassIslandWeatherCache.Parse(node, updated.AddHours(4), TimeSpan.FromHours(3));
+        Assert.Equal("多云", snapshot.Condition);
+        Assert.Equal("26℃", snapshot.Temperature);
+        Assert.Equal("28℃", snapshot.FeelsLike);
+        Assert.Equal("70%", snapshot.Humidity);
+        Assert.Equal(1, snapshot.AlertCount);
+        Assert.True(snapshot.IsStale);
+        Assert.Equal("多云 26℃", ClassIslandWeatherCache.MainText(snapshot, 0));
+        Assert.Equal("体感 28℃", ClassIslandWeatherCache.MainText(snapshot, 5));
+    }
+
+    [Fact]
     public void MishaRefreshQueueCoalescesChangesWithoutDroppingLatestRequest()
     {
         var queue = new CoalescingRefreshQueue();

@@ -23,6 +23,9 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     private readonly List<Action<DateTime>> tickers = [];
     private readonly HashSet<string> warnedComponents = new(StringComparer.OrdinalIgnoreCase);
     private readonly CoalescingRefreshQueue refreshQueue = new();
+    private readonly ClassIslandScheduleNotificationTracker notificationTracker = new();
+    private readonly MishaScheduleNotificationPresenter notificationPresenter = new();
+    private readonly MishaAutomationRuntime automationRuntime;
     private MishaMainWindow? window;
     private bool started;
 
@@ -35,6 +38,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
             Interval = TimeSpan.FromSeconds(1)
         };
         timer.Tick += (_, _) => Tick();
+        automationRuntime = new MishaAutomationRuntime(logger);
     }
 
     public void Start()
@@ -56,6 +60,9 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         window = null;
         tickers.Clear();
         refreshQueue.Reset();
+        notificationTracker.Reset();
+        notificationPresenter.Dispose();
+        automationRuntime.Dispose();
     }
 
     private void Store_OnChanged(object? sender, EventArgs e)
@@ -134,12 +141,26 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         var workspace = store.Workspace;
         if (workspace is null) return;
         var now = GetClassIslandNow(workspace);
+        var scheduleState = ClassIslandRuntimeStateResolver.Resolve(store, now);
 
         foreach (var ticker in tickers.ToArray())
         {
             try { ticker(now); }
             catch (Exception exception) { logger.Error("A ClassIsland main-window component update failed.", exception); }
         }
+
+        if (workspace.GetBool("IsNotificationEnabled", true))
+        {
+            var notification = notificationTracker.Evaluate(
+                scheduleState,
+                workspace.GetBool("IsClassChangingNotificationEnabled", true),
+                workspace.GetBool("IsClassPrepareNotificationEnabled", true),
+                workspace.GetBool("IsClassOffNotificationEnabled", true),
+                workspace.GetInt("ClassPrepareNotifySeconds", 60));
+            if (notification is not null)
+                notificationPresenter.Show(notification, workspace);
+        }
+        _ = automationRuntime.ProcessAsync(scheduleState, workspace, notificationPresenter);
 
         if (window is null) return;
         var shouldShow = workspace.GetBool("IsMainWindowVisible", true)
@@ -154,6 +175,74 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     {
         var offset = workspace.GetDouble("TimeOffsetSeconds") + workspace.GetDouble("DebugTimeOffsetSeconds");
         return DateTime.Now.AddSeconds(offset);
+    }
+}
+
+internal sealed class MishaScheduleNotificationPresenter : IDisposable
+{
+    private readonly DispatcherTimer closeTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    private Window? window;
+
+    public MishaScheduleNotificationPresenter()
+    {
+        closeTimer.Tick += (_, _) =>
+        {
+            closeTimer.Stop();
+            window?.Hide();
+        };
+    }
+
+    public void Show(ClassIslandScheduleNotification notification, ClassIslandWorkspace workspace)
+    {
+        window ??= CreateWindow();
+        if (window.Content is not Border { Child: StackPanel panel }) return;
+
+        ((TextBlock)panel.Children[0]).Text = notification.Title;
+        ((TextBlock)panel.Children[1]).Text = notification.Body;
+        window.Topmost = workspace.GetBool("IsNotificationTopmostEnabled", true);
+        window.Left = SystemParameters.WorkArea.Right - window.Width - 20;
+        window.Top = SystemParameters.WorkArea.Top + 20;
+        if (!window.IsVisible) window.Show();
+        closeTimer.Stop();
+        closeTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        closeTimer.Stop();
+        window?.Close();
+        window = null;
+    }
+
+    private static Window CreateWindow()
+    {
+        var title = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold };
+        var body = new TextBlock { FontSize = 13, Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap };
+        var panel = new StackPanel { Margin = new Thickness(18, 14, 18, 14) };
+        panel.Children.Add(title);
+        panel.Children.Add(body);
+        var border = new Border
+        {
+            Child = panel,
+            CornerRadius = new CornerRadius(10),
+            Background = new SolidColorBrush(Color.FromArgb(242, 32, 32, 36)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(96, 255, 255, 255)),
+            BorderThickness = new Thickness(1)
+        };
+        TextElement.SetForeground(panel, Brushes.White);
+        return new Window
+        {
+            Width = 340,
+            Height = 92,
+            Content = border,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Focusable = false
+        };
     }
 }
 
@@ -472,10 +561,7 @@ internal static class MishaNativeMainWindowRenderer
     public static bool ShouldShow(MishaPlatformStore store, ClassIslandWorkspace workspace, DateTime now)
     {
         if (!workspace.GetBool("HideOnClass")) return true;
-        var profile = store.Profile;
-        if (profile is null) return true;
-        var lessons = profile.GetLessonsForDate(now.Date, store.ResolveRotationWeek(now.Date));
-        return !lessons.Any(x => now.TimeOfDay >= x.Start && now.TimeOfDay < x.End);
+        return ClassIslandRuntimeStateResolver.Resolve(store, now).Phase != ClassIslandSchedulePhase.OnClass;
     }
 
     private static FrameworkElement? CreateComponent(
@@ -495,7 +581,7 @@ internal static class MishaNativeMainWindowRenderer
             TextId => CreateText(settings, workspace),
             CountdownId => CreateCountdown(store, settings, workspace, tickers),
             SeparatorId => CreateSeparator(workspace),
-            WeatherId => CreateWeather(workspace),
+            WeatherId => CreateWeather(settings, workspace),
             GroupId => CreateContainer(store, settings, workspace, tickers, warnUnsupported, false),
             StackId => CreateContainer(store, settings, workspace, tickers, warnUnsupported, true),
             SlideId => CreateSlide(store, settings, workspace, tickers, warnUnsupported),
@@ -547,8 +633,9 @@ internal static class MishaNativeMainWindowRenderer
         void Update(DateTime now)
         {
             panel.Children.Clear();
-            var lessons = store.Profile.GetLessonsForDate(now.Date, store.ResolveRotationWeek(now.Date));
-            var current = lessons.FirstOrDefault(x => now.TimeOfDay >= x.Start && now.TimeOfDay < x.End);
+            var state = ClassIslandRuntimeStateResolver.Resolve(store, now);
+            var lessons = state.Lessons;
+            var current = state.Current;
             var hideFinished = ReadBool(settings, "HideFinishedClass");
             var currentOnly = ReadBool(settings, "ShowCurrentLessonOnlyOnClass");
             IEnumerable<ClassIslandLessonSnapshot> visible = lessons;
@@ -668,7 +755,7 @@ internal static class MishaNativeMainWindowRenderer
         }
         if (source == 2)
         {
-            var lessons = store.Profile?.GetLessonsForDate(now.Date, store.ResolveRotationWeek(now.Date)) ?? [];
+            var lessons = ClassIslandRuntimeStateResolver.Resolve(store, now).Lessons;
             if (lessons.Count > 0) return (now.Date + lessons.First().Start, now.Date + lessons.Last().End);
             return (now.Date, now.Date.AddDays(1));
         }
@@ -690,14 +777,34 @@ internal static class MishaNativeMainWindowRenderer
             Margin = new Thickness(6, 0, 6, 0)
         };
 
-    private static FrameworkElement? CreateWeather(ClassIslandWorkspace workspace)
+    private static FrameworkElement? CreateWeather(JsonObject? settings, ClassIslandWorkspace workspace)
     {
-        var current = workspace.Settings["LastWeatherInfo"]?["Current"];
-        var temperature = current?["Temperature"];
-        var value = NodeString(temperature?["Value"]);
-        var unit = NodeString(temperature?["Unit"]);
-        if (string.IsNullOrWhiteSpace(value) && string.IsNullOrWhiteSpace(unit)) return null;
-        return BaseText(workspace.GetDouble("MainWindowBodyFontSize", 16), value + unit);
+        var snapshot = ClassIslandWeatherCache.Parse(
+            workspace.Settings["LastWeatherInfo"],
+            DateTimeOffset.Now,
+            TimeSpan.FromHours(3));
+        if (!snapshot.HasData) return null;
+
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var main = BaseText(
+            workspace.GetDouble("MainWindowBodyFontSize", 16),
+            ClassIslandWeatherCache.MainText(snapshot, ReadInt(settings, "MainWeatherInfoKind")));
+        panel.Children.Add(main);
+
+        if (ReadBool(settings, "ShowAlerts", true) && snapshot.AlertCount > 0)
+        {
+            var alert = BaseText(workspace.GetDouble("MainWindowSecondaryFontSize", 14), $"  ⚠ {snapshot.AlertCount}");
+            alert.Foreground = Brushes.OrangeRed;
+            panel.Children.Add(alert);
+        }
+
+        if (snapshot.IsStale)
+        {
+            var stale = BaseText(workspace.GetDouble("MainWindowSecondaryFontSize", 14), "  缓存");
+            stale.Opacity = 0.62;
+            panel.Children.Add(stale);
+        }
+        return panel;
     }
 
     private static FrameworkElement CreateContainer(
