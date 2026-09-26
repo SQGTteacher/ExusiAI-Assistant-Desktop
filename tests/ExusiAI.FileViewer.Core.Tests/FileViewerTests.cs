@@ -8,6 +8,34 @@ public sealed class FileViewerTests : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), $"exusiai-viewer-{Guid.NewGuid():N}");
 
+    [Fact]
+    public void Document_page_window_loads_first_twenty_pages()
+    {
+        var window = DocumentPageWindowPlanner.Initial(10_000);
+
+        Assert.Equal(1, window.StartPage);
+        Assert.Equal(20, window.EndPage);
+        Assert.Equal(20, window.Count);
+    }
+
+    [Theory]
+    [InlineData(10_000, 5_000, 4_990, 5_010)]
+    [InlineData(10_000, 1, 1, 21)]
+    [InlineData(10_000, 10_000, 9_980, 10_000)]
+    public void Document_page_window_keeps_target_and_ten_neighbors(
+        int totalPages,
+        int targetPage,
+        int expectedStart,
+        int expectedEnd)
+    {
+        var window = DocumentPageWindowPlanner.Around(totalPages, targetPage);
+
+        Assert.Equal(expectedStart, window.StartPage);
+        Assert.Equal(expectedEnd, window.EndPage);
+        Assert.Equal(21, window.Count);
+        Assert.Equal(targetPage, window.TargetPage);
+    }
+
     [Theory]
     [InlineData("", 0, 0, 0)]
     [InlineData("hello", 1, 1, 5)]

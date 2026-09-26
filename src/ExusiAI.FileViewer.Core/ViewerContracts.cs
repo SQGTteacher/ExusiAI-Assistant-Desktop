@@ -20,6 +20,9 @@ public sealed record ViewerOpenOptions
 
     public long MaximumFileBytes { get; init; } = 512L * 1024 * 1024;
     public int TextChunkCharacters { get; init; } = 64 * 1024;
+    public int InitialDocumentPages { get; init; } = 20;
+    public int PagePrefetchRadius { get; init; } = 10;
+    public int ApproximateTextCharactersPerPage { get; init; } = 3_000;
     public int CsvRowsPerPage { get; init; } = 256;
     public int MaximumCsvFieldsPerRow { get; init; } = 16_384;
     public int MaximumCsvFieldCharacters { get; init; } = 1 * 1024 * 1024;
@@ -28,9 +31,9 @@ public sealed record ViewerOpenOptions
     public int MaximumSpreadsheetSharedStrings { get; init; } = 1_000_000;
     public int MaximumPresentationSlides { get; init; } = 2_000;
     public int MaximumPresentationTextCharactersPerSlide { get; init; } = 2 * 1024 * 1024;
-    public int MaximumPresentationImageBytes { get; init; } = 16 * 1024 * 1024;
-    public int MaximumRichTextBytes { get; init; } = 16 * 1024 * 1024;
-    public int MaximumCachedSlides { get; init; } = 12;
+    public int MaximumPresentationImageBytes { get; init; } = 8 * 1024 * 1024;
+    public int MaximumRichTextBytes { get; init; } = 8 * 1024 * 1024;
+    public int MaximumCachedSlides { get; init; } = 4;
     public int MaximumArchiveEntries { get; init; } = 4096;
     public long MaximumArchiveEntryBytes { get; init; } = 256L * 1024 * 1024;
     public long MaximumArchiveExpandedBytes { get; init; } = 1024L * 1024 * 1024;
@@ -41,6 +44,9 @@ public sealed record ViewerOpenOptions
     {
         if (MaximumFileBytes <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumFileBytes));
         if (TextChunkCharacters is < 1024 or > 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(TextChunkCharacters));
+        if (InitialDocumentPages is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(InitialDocumentPages));
+        if (PagePrefetchRadius is < 0 or > 50) throw new ArgumentOutOfRangeException(nameof(PagePrefetchRadius));
+        if (ApproximateTextCharactersPerPage is < 500 or > 20_000) throw new ArgumentOutOfRangeException(nameof(ApproximateTextCharactersPerPage));
         if (CsvRowsPerPage is < 1 or > 10_000) throw new ArgumentOutOfRangeException(nameof(CsvRowsPerPage));
         if (MaximumCsvFieldsPerRow is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumCsvFieldsPerRow));
         if (MaximumCsvFieldCharacters is < 1 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumCsvFieldCharacters));
