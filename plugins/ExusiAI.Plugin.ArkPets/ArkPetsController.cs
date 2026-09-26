@@ -23,17 +23,22 @@ internal sealed record ArkPetProcessHandle(
     string ModelName,
     DateTimeOffset StartedAt);
 
-public sealed class ArkPetsController : IAsyncDisposable
+internal sealed class ArkPetsController : IAsyncDisposable
 {
     private readonly IExtensionLogger logger;
     private readonly ArkPetsSettingsStore store = new();
     private readonly List<ArkPetProcessHandle> processes = [];
     private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly ArkPetsIpcServer ipcServer = new();
+    private readonly ArkPetsUpstreamManager upstreamManager;
+    private ArkPetsProcessJob? processJob;
     private ClassIslandIntegrationBridge? classIslandBridge;
 
     public ArkPetsController(IExtensionLogger logger)
     {
         this.logger = logger;
+        upstreamManager = new ArkPetsUpstreamManager(() => Settings.NetworkProxy);
+        ipcServer.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public ArkPetsSettings Settings { get; private set; } = new();
@@ -58,6 +63,10 @@ public sealed class ArkPetsController : IAsyncDisposable
         }
     }
 
+    public IReadOnlyList<ArkPetsIpcClientSnapshot> ControlledInstances => ipcServer.Clients;
+    public int? ControlPort => ipcServer.IsRunning ? ipcServer.Port : null;
+    public bool WindowsStartupEnabled => ExusiAIStartupBinding.IsEnabled();
+
     public bool ClassIslandAvailable =>
         File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "packages", "exusiai.misha-showcase", "package.json")) ||
         File.Exists(ClassIslandStateFile.DefaultPath);
@@ -67,7 +76,11 @@ public sealed class ArkPetsController : IAsyncDisposable
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         Settings = await store.LoadAsync(cancellationToken);
-        Settings = ApplyAutoDetection(Settings);
+        Settings = ApplyAutoDetection(Settings) with
+        {
+            StartExusiAIWithWindows = ExusiAIStartupBinding.IsEnabled(),
+            LauncherSolidExit = true
+        };
         if (!string.IsNullOrWhiteSpace(Settings.ModelRoot) && File.Exists(Path.Combine(Settings.ModelRoot, "models_data.json")))
             await ReloadModelsAsync(cancellationToken);
         else
@@ -75,10 +88,35 @@ public sealed class ArkPetsController : IAsyncDisposable
         await store.SaveAsync(Settings, cancellationToken);
     }
 
-    public void StartClassIslandBridge()
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
+        try
+        {
+            await ipcServer.StartAsync(cancellationToken);
+            logger.Information($"ArkPets IPC host started on localhost:{ipcServer.Port}.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            logger.Warning($"ArkPets IPC host unavailable: {exception.Message}");
+        }
+
         classIslandBridge ??= new ClassIslandIntegrationBridge(this, logger);
         classIslandBridge.Start();
+
+        if (Settings.AutoStartPetWithExusiAI &&
+            SelectedModel is { IsAvailable: true } &&
+            !string.IsNullOrWhiteSpace(Settings.RuntimePath) &&
+            File.Exists(Settings.RuntimePath))
+        {
+            try
+            {
+                await LaunchSelectedAsync(cancellationToken);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                logger.Warning($"ArkPets auto-start skipped: {exception.Message}");
+            }
+        }
     }
 
     public async Task UpdateSettingsAsync(
@@ -89,7 +127,7 @@ public sealed class ArkPetsController : IAsyncDisposable
         await gate.WaitAsync(cancellationToken);
         try
         {
-            Settings = update(Settings);
+            Settings = update(Settings) with { LauncherSolidExit = true };
             await store.SaveAsync(Settings, cancellationToken);
             if (reloadModels)
                 await ReloadModelsCoreAsync(cancellationToken);
@@ -114,6 +152,54 @@ public sealed class ArkPetsController : IAsyncDisposable
         }
         Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    public async Task<bool> SetWindowsStartupEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!ExusiAIStartupBinding.SetEnabled(enabled))
+            return false;
+
+        await UpdateSettingsAsync(
+            settings => settings with { StartExusiAIWithWindows = enabled },
+            cancellationToken: cancellationToken);
+        return true;
+    }
+
+    public async Task<string> InstallLatestRuntimeAsync(
+        IProgress<ArkPetsDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var installed = await upstreamManager.InstallLatestRuntimeAsync(progress, cancellationToken);
+        await UpdateSettingsAsync(
+            settings => settings with
+            {
+                RuntimePath = installed.RuntimePath,
+                RuntimeVersion = installed.Version
+            },
+            cancellationToken: cancellationToken);
+        return installed.Version;
+    }
+
+    public async Task<int> InstallLatestModelsAsync(
+        IProgress<ArkPetsDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var root = await upstreamManager.InstallLatestModelsAsync(progress, cancellationToken);
+        await UpdateSettingsAsync(
+            settings => settings with { ModelRoot = root, SelectedModelKey = "" },
+            reloadModels: true,
+            cancellationToken);
+        return Catalog.Models.Count;
+    }
+
+    public Task<ArkPetsRuntimeRelease> QueryLatestRuntimeAsync(CancellationToken cancellationToken = default) =>
+        upstreamManager.QueryLatestRuntimeAsync(cancellationToken);
+
+    public Task<bool> SendControlAsync(
+        Guid remoteId,
+        ArkPetsIpcOperation operation,
+        CancellationToken cancellationToken = default) =>
+        ipcServer.SendAsync(remoteId, operation, cancellationToken);
 
     public async Task SelectModelAsync(string? key, CancellationToken cancellationToken = default)
     {
@@ -180,9 +266,31 @@ public sealed class ArkPetsController : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(Settings.ModelRoot) || !Directory.Exists(Settings.ModelRoot))
             throw new DirectoryNotFoundException("Ark-Models 模型库目录不可用。");
 
+        if (!ipcServer.IsRunning)
+            await ipcServer.StartAsync(cancellationToken);
+
         var configPath = await ArkPetsConfigWriter.WriteAsync(Settings, Catalog, model, cancellationToken);
-        var info = BuildProcessStartInfo(Settings.RuntimePath, Settings.ModelRoot, configPath);
+        var info = BuildProcessStartInfo(Settings.RuntimePath, configPath);
         var process = Process.Start(info) ?? throw new InvalidOperationException("ArkPets 运行时未能启动。");
+        try
+        {
+            processJob ??= new ArkPetsProcessJob();
+            processJob.Assign(process);
+        }
+        catch
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+            }
+            process.Dispose();
+            throw;
+        }
+
         var handle = new ArkPetProcessHandle(
             Guid.NewGuid(),
             process,
@@ -259,13 +367,17 @@ public sealed class ArkPetsController : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (Settings.LauncherSolidExit)
-            await StopAllAsync();
+        // Plugin mode is intentionally bound to ExusiAI: pets must not outlive the host.
+        await StopAllAsync();
+        processJob?.Dispose();
+        processJob = null;
+        await ipcServer.DisposeAsync();
         if (classIslandBridge is not null)
         {
             await classIslandBridge.DisposeAsync();
             classIslandBridge = null;
         }
+        upstreamManager.Dispose();
         gate.Dispose();
     }
 
@@ -290,13 +402,15 @@ public sealed class ArkPetsController : IAsyncDisposable
         await store.SaveAsync(Settings, cancellationToken);
     }
 
-    private static ProcessStartInfo BuildProcessStartInfo(string runtimePath, string modelRoot, string configPath)
+    private static ProcessStartInfo BuildProcessStartInfo(string runtimePath, string configPath)
     {
         var isJar = string.Equals(Path.GetExtension(runtimePath), ".jar", StringComparison.OrdinalIgnoreCase);
+        var runtimeDirectory = Path.GetDirectoryName(Path.GetFullPath(runtimePath))
+            ?? throw new InvalidOperationException("ArkPets 运行时目录无效。");
         var info = new ProcessStartInfo
         {
             FileName = isJar ? "java" : runtimePath,
-            WorkingDirectory = modelRoot,
+            WorkingDirectory = runtimeDirectory,
             UseShellExecute = false
         };
         if (isJar)
@@ -340,7 +454,16 @@ internal static class ArkPetsRuntimeLocator
             Path.Combine(local, "ArkPets", "ArkPets.exe"),
             Path.Combine(programFiles, "ArkPets", "ArkPets.exe")
         };
-        return candidates.FirstOrDefault(File.Exists);
+        var direct = candidates.FirstOrDefault(File.Exists);
+        if (direct is not null)
+            return direct;
+
+        var managedRoot = Path.Combine(local, "ExusiAI", "arkpets", "runtime");
+        return Directory.Exists(managedRoot)
+            ? Directory.EnumerateFiles(managedRoot, "ArkPets.exe", SearchOption.AllDirectories)
+                .OrderByDescending(path => File.GetLastWriteTimeUtc(path))
+                .FirstOrDefault()
+            : null;
     }
 
     public static string? FindModelRoot(string? nearRuntime)
@@ -353,8 +476,18 @@ internal static class ArkPetsRuntimeLocator
             Path.Combine(local, "Programs", "ArkPets"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "ArkPets")
         };
-        return candidates.Where(x => !string.IsNullOrWhiteSpace(x))
+        var direct = candidates.Where(x => !string.IsNullOrWhiteSpace(x))
             .FirstOrDefault(x => File.Exists(Path.Combine(x!, "models_data.json")));
+        if (direct is not null)
+            return direct;
+
+        var managedLibraries = Path.Combine(local, "ExusiAI", "arkpets", "libraries");
+        return Directory.Exists(managedLibraries)
+            ? Directory.EnumerateFiles(managedLibraries, "models_data.json", SearchOption.AllDirectories)
+                .OrderByDescending(path => File.GetLastWriteTimeUtc(path))
+                .Select(Path.GetDirectoryName)
+                .FirstOrDefault(path => !string.IsNullOrWhiteSpace(path))
+            : null;
     }
 }
 
@@ -371,7 +504,7 @@ public static class ArkPetsConfigWriter
             "ExusiAI", "arkpets", "configs");
         Directory.CreateDirectory(configDirectory);
         var configPath = Path.Combine(configDirectory, $"pet-{Sanitize(model.Key)}.json");
-        var relativeAsset = Path.GetRelativePath(catalog.RootDirectory, model.AssetDirectory).Replace('\\', '/');
+        var assetPath = Path.GetFullPath(model.AssetDirectory).Replace('\\', '/');
 
         var files = new JsonObject();
         foreach (var pair in model.AssetFiles)
@@ -399,7 +532,7 @@ public static class ArkPetsConfigWriter
             ["canvas_color"] = settings.CanvasColor,
             ["canvas_coverage"] = settings.CanvasCoverage,
             ["canvas_sampling_interval"] = settings.CanvasSamplingInterval,
-            ["character_asset"] = relativeAsset,
+            ["character_asset"] = assetPath,
             ["character_favorites"] = favorites,
             ["character_files"] = files,
             ["character_label"] = model.Name,
@@ -412,7 +545,7 @@ public static class ArkPetsConfigWriter
             ["enable_telemetry"] = false,
             ["initial_position_x"] = settings.InitialPositionX,
             ["initial_position_y"] = settings.InitialPositionY,
-            ["launcher_solid_exit"] = settings.LauncherSolidExit,
+            ["launcher_solid_exit"] = true,
             ["logging_level"] = settings.LoggingLevel,
             ["opacity_dim"] = settings.OpacityDim,
             ["opacity_normal"] = settings.OpacityNormal,

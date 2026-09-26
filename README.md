@@ -23,7 +23,7 @@ ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市
 - 可搜索的本地资源库、统一插件目录和扩展管理页面；
 - 支持 ZIP 插件安全导入、导出、卸载，也可直接将插件文件夹放入本地目录；
 - 内置 ClassIsland 2.2 Misha 功能移植插件，覆盖课表/时间表、组件、提醒与自动化、内置扩展、原生 Profile JSON 迁移及完整开源署名；
-- ArkPets 桌宠：保持 ArkPets 的模型 / 行为 / 选项界面结构，兼容 Ark-Models 全角色模型库和 ArkPets direct-start 配置；与 ClassIsland Misha 保持独立并预留可选课堂联动；
+- ArkPets 桌宠：保持 ArkPets 的模型 / 行为 / 选项结构，兼容 Ark-Models 全角色模型库与 direct-start 配置；ExusiAI 可自动管理上游便携运行核心、模型下载、localhost IPC 实时控制和随宿主启动，桌宠不会作为独立开机程序常驻；与 ClassIsland Misha 保持独立并提供可选课堂联动；
 - 文件查看器：TXT/Markdown 异步增量预览、CSV 分页解析、DOCX 安全结构化文本预览、XLSX 首工作表分页预览、PPTX 逐页结构化文本预览，默认只读并设资源安全上限；
 - Windows GitHub Actions 构建及单元测试。
 

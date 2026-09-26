@@ -16,11 +16,10 @@ public sealed class ArkPetsPlugin : ExtensionPluginBase, IWpfNavigationExtension
         context.Logger.Information("ArkPets desktop-pet integration initialized.");
     }
 
-    public override Task StartAsync(CancellationToken cancellationToken)
+    public override async Task StartAsync(CancellationToken cancellationToken)
     {
-        controller.StartClassIslandBridge();
+        await controller.StartAsync(cancellationToken);
         Context.Logger.Information("ArkPets desktop-pet integration started.");
-        return Task.CompletedTask;
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

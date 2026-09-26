@@ -29,6 +29,8 @@ internal sealed class ArkPetsPage : UserControl
     private Button? favoriteFilterButton;
     private Button? selectedFavoriteButton;
     private ListBox? runningList;
+    private ListBox? controlledList;
+    private TextBlock? runtimeStatus;
     private bool loaded;
     private bool isModelsView;
     private bool suppressModelSelection;
@@ -282,6 +284,15 @@ internal sealed class ArkPetsPage : UserControl
         };
         infoStack.Children.Add(selectedFavoriteButton);
 
+        var modelLinks = new WrapPanel { Margin = new Thickness(0, 5, 0, 2) };
+        var wikiButton = SecondaryButton("PRTS Wiki");
+        var helpButton = SecondaryButton("ArkPets 帮助");
+        wikiButton.Click += (_, _) => OpenSelectedModelWiki();
+        helpButton.Click += (_, _) => OpenExternal("https://arkpets.harryh.cn/help?from=client");
+        modelLinks.Children.Add(wikiButton);
+        modelLinks.Children.Add(helpButton);
+        infoStack.Children.Add(modelLinks);
+
         infoStack.Children.Add(GroupTitle("模型库管理"));
 
         var modelRoot = new TextBlock
@@ -293,14 +304,17 @@ internal sealed class ArkPetsPage : UserControl
         };
         var manageButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
         var chooseLibrary = SecondaryButton("选择模型库");
+        var updateLibrary = SecondaryButton("联网更新");
         var verifyLibrary = SecondaryButton("校验");
         var importLibrary = SecondaryButton("导入 ZIP");
         var exportLibrary = SecondaryButton("导出 ZIP");
         chooseLibrary.Click += async (_, _) => await ChooseModelRootAsync();
+        updateLibrary.Click += async (_, _) => await InstallLatestModelsAsync();
         verifyLibrary.Click += async (_, _) => await VerifyModelLibraryAsync();
         importLibrary.Click += async (_, _) => await ImportModelLibraryAsync();
         exportLibrary.Click += async (_, _) => await ExportModelLibraryAsync();
         manageButtons.Children.Add(chooseLibrary);
+        manageButtons.Children.Add(updateLibrary);
         manageButtons.Children.Add(verifyLibrary);
         manageButtons.Children.Add(importLibrary);
         manageButtons.Children.Add(exportLibrary);
@@ -311,7 +325,7 @@ internal sealed class ArkPetsPage : UserControl
         runningList = new ListBox
         {
             MinHeight = 58,
-            MaxHeight = 110,
+            MaxHeight = 100,
             Margin = new Thickness(4, 6, 4, 6),
             DisplayMemberPath = nameof(ArkPetProcessSnapshot.DisplayText)
         };
@@ -328,6 +342,43 @@ internal sealed class ArkPetsPage : UserControl
         runningButtons.Children.Add(stopAll);
         infoStack.Children.Add(runningList);
         infoStack.Children.Add(runningButtons);
+
+        controlledList = new ListBox
+        {
+            MinHeight = 58,
+            MaxHeight = 100,
+            Margin = new Thickness(4, 8, 4, 6),
+            DisplayMemberPath = nameof(ArkPetsIpcClientSnapshot.DisplayText)
+        };
+        infoStack.Children.Add(new TextBlock
+        {
+            Text = "实时控制",
+            Foreground = Theme,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(4, 8, 4, 2)
+        });
+        infoStack.Children.Add(controlledList);
+
+        var controlButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        var manualOn = SecondaryButton("手动模式");
+        var manualOff = SecondaryButton("退出手动");
+        var transparentOn = SecondaryButton("透明模式");
+        var transparentOff = SecondaryButton("取消透明");
+        var changeStage = SecondaryButton("切换形态");
+        var remoteExit = SecondaryButton("退出角色");
+        manualOn.Click += async (_, _) => await SendSelectedControlAsync(ArkPetsIpcOperation.KeepAction);
+        manualOff.Click += async (_, _) => await SendSelectedControlAsync(ArkPetsIpcOperation.NoKeepAction);
+        transparentOn.Click += async (_, _) => await SendSelectedControlAsync(ArkPetsIpcOperation.TransparentMode);
+        transparentOff.Click += async (_, _) => await SendSelectedControlAsync(ArkPetsIpcOperation.NoTransparentMode);
+        changeStage.Click += async (_, _) => await SendSelectedControlAsync(ArkPetsIpcOperation.ChangeStage);
+        remoteExit.Click += async (_, _) => await SendSelectedControlAsync(ArkPetsIpcOperation.Logout);
+        controlButtons.Children.Add(manualOn);
+        controlButtons.Children.Add(manualOff);
+        controlButtons.Children.Add(transparentOn);
+        controlButtons.Children.Add(transparentOff);
+        controlButtons.Children.Add(changeStage);
+        controlButtons.Children.Add(remoteExit);
+        infoStack.Children.Add(controlButtons);
         RefreshRunningInstances();
 
         infoStack.Children.Add(GroupTitle("兼容信息"));
@@ -454,14 +505,32 @@ internal sealed class ArkPetsPage : UserControl
         stack.Children.Add(GroupTitle("ArkPets 运行时"));
         stack.Children.Add(PathRow(
             "程序",
-            string.IsNullOrWhiteSpace(controller.Settings.RuntimePath) ? "未选择 ArkPets.exe / ArkPets.jar" : controller.Settings.RuntimePath,
+            string.IsNullOrWhiteSpace(controller.Settings.RuntimePath) ? "未准备运行核心" : controller.Settings.RuntimePath,
             "选择",
             async () => await ChooseRuntimeAsync()));
         stack.Children.Add(PathRow(
             "模型库",
-            string.IsNullOrWhiteSpace(controller.Settings.ModelRoot) ? "未选择 Ark-Models" : controller.Settings.ModelRoot,
+            string.IsNullOrWhiteSpace(controller.Settings.ModelRoot) ? "未准备 Ark-Models" : controller.Settings.ModelRoot,
             "选择",
             async () => await ChooseModelRootAsync()));
+
+        var upstreamButtons = new WrapPanel { Margin = new Thickness(4, 4, 4, 8) };
+        var installRuntime = SecondaryButton("安装 / 更新运行核心");
+        var installModels = SecondaryButton("安装 / 更新模型库");
+        installRuntime.Click += async (_, _) => await InstallLatestRuntimeAsync();
+        installModels.Click += async (_, _) => await InstallLatestModelsAsync();
+        upstreamButtons.Children.Add(installRuntime);
+        upstreamButtons.Children.Add(installModels);
+        stack.Children.Add(upstreamButtons);
+
+        runtimeStatus = new TextBlock
+        {
+            Text = BuildRuntimeStatus(),
+            Foreground = Brushes.DimGray,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(8, 2, 8, 8)
+        };
+        stack.Children.Add(runtimeStatus);
 
         stack.Children.Add(GroupTitle("显示设置"));
         stack.Children.Add(ChoiceRow(
@@ -564,10 +633,18 @@ internal sealed class ArkPetsPage : UserControl
                 new("DEBUG", "DEBUG"), new("INFO", "INFO"), new("WARN", "WARN"), new("ERROR", "ERROR")
             },
             value => s => s with { LoggingLevel = value }));
-        stack.Children.Add(Toggle("关闭启动器时一并退出桌宠", controller.Settings.LauncherSolidExit, value => s => s with { LauncherSolidExit = value }));
+        stack.Children.Add(Toggle("随 ExusiAI 启动所选桌宠", controller.Settings.AutoStartPetWithExusiAI, value => s => s with { AutoStartPetWithExusiAI = value }));
+        stack.Children.Add(WindowsStartupToggle());
         stack.Children.Add(Toggle("桌宠窗口置顶", controller.Settings.WindowStyleTopmost, value => s => s with { WindowStyleTopmost = value }));
         stack.Children.Add(Toggle("桌宠作为后台工具窗口", controller.Settings.WindowStyleToolwindow, value => s => s with { WindowStyleToolwindow = value }));
         stack.Children.Add(Toggle("长时间未交互时降低帧率", controller.Settings.EcoMode, value => s => s with { EcoMode = value }));
+        stack.Children.Add(new TextBlock
+        {
+            Text = "插件模式固定绑定 ExusiAI：Windows 自启动项只启动 ExusiAI；ExusiAI 退出、插件禁用或卸载时，其启动的 ArkPets 子进程会一并结束。",
+            Foreground = Brushes.DimGray,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(8, 6, 8, 6)
+        });
 
         var privacyNote = new TextBlock
         {
@@ -615,6 +692,33 @@ internal sealed class ArkPetsPage : UserControl
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         });
+    }
+
+    private void OpenSelectedModelWiki()
+    {
+        if (modelList?.SelectedItem is not ArkPetModel model)
+        {
+            SetStatus("请先选择一个模型。");
+            return;
+        }
+
+        OpenExternal("https://prts.wiki/w/" + Uri.EscapeDataString(model.Name));
+    }
+
+    private void OpenExternal(string uri)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = uri,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            SetStatus($"无法打开链接：{exception.Message}");
+        }
     }
 
     private async Task ReloadModelsAsync()
@@ -722,6 +826,79 @@ internal sealed class ArkPetsPage : UserControl
         {
             SetStatus($"模型库导出失败：{exception.Message}");
         }
+    }
+
+    private string BuildRuntimeStatus()
+    {
+        var runtime = string.IsNullOrWhiteSpace(controller.Settings.RuntimePath)
+            ? "运行核心：未准备"
+            : $"运行核心：{(string.IsNullOrWhiteSpace(controller.Settings.RuntimeVersion) ? "已就绪" : "v" + controller.Settings.RuntimeVersion)}";
+        var models = controller.Catalog.Models.Count == 0
+            ? "模型库：未加载"
+            : $"模型库：{controller.Catalog.Models.Count} 个模型";
+        var ipc = controller.ControlPort is int port
+            ? $"控制服务：localhost:{port}"
+            : "控制服务：未连接";
+        return $"{runtime}\n{models}\n{ipc}";
+    }
+
+    private async Task InstallLatestRuntimeAsync()
+    {
+        try
+        {
+            SetRuntimeStatus("正在检查并下载 ArkPets 官方便携运行核心…");
+            var progress = new Progress<ArkPetsDownloadProgress>(item =>
+            {
+                if (item.Ratio is double ratio)
+                    SetRuntimeStatus($"正在下载运行核心… {ratio:P0}");
+            });
+            var version = await controller.InstallLatestRuntimeAsync(progress);
+            SetRuntimeStatus($"ArkPets 运行核心 v{version} 已由 ExusiAI 管理。");
+            ShowOptions();
+        }
+        catch (Exception exception)
+        {
+            SetRuntimeStatus($"运行核心安装失败：{exception.Message}");
+        }
+    }
+
+    private async Task InstallLatestModelsAsync()
+    {
+        try
+        {
+            SetRuntimeStatus("正在下载 Ark-Models 官方模型库…");
+            var progress = new Progress<ArkPetsDownloadProgress>(item =>
+            {
+                if (item.Ratio is double ratio)
+                    SetRuntimeStatus($"正在下载模型库… {ratio:P0}");
+            });
+            var count = await controller.InstallLatestModelsAsync(progress);
+            SetRuntimeStatus($"Ark-Models 已更新，载入 {count} 个模型。");
+            ShowModels();
+        }
+        catch (Exception exception)
+        {
+            SetRuntimeStatus($"模型库安装失败：{exception.Message}");
+        }
+    }
+
+    private async Task SendSelectedControlAsync(ArkPetsIpcOperation operation)
+    {
+        if (controlledList?.SelectedItem is not ArkPetsIpcClientSnapshot selected)
+        {
+            SetStatus("请先选择一个已连接到 ExusiAI 的桌宠。");
+            return;
+        }
+
+        if (operation == ArkPetsIpcOperation.ChangeStage && !selected.CanChangeStage)
+        {
+            SetStatus("这个模型没有可切换的形态。");
+            return;
+        }
+
+        var sent = await controller.SendControlAsync(selected.RemoteId, operation);
+        SetStatus(sent ? "控制命令已发送。" : "桌宠控制连接已经断开。");
+        RefreshRunningInstances();
     }
 
     private async Task StopSelectedInstanceAsync()
@@ -896,12 +1073,28 @@ internal sealed class ArkPetsPage : UserControl
 
     private void RefreshRunningInstances()
     {
-        if (runningList is null) return;
-        var selectedId = runningList.SelectedItem is ArkPetProcessSnapshot selected ? selected.Id : (Guid?)null;
-        var items = controller.RunningInstances;
-        runningList.ItemsSource = items;
-        if (selectedId is not null)
-            runningList.SelectedItem = items.FirstOrDefault(item => item.Id == selectedId.Value);
+        if (runningList is not null)
+        {
+            var selectedId = runningList.SelectedItem is ArkPetProcessSnapshot selected ? selected.Id : (Guid?)null;
+            var items = controller.RunningInstances;
+            runningList.ItemsSource = items;
+            if (selectedId is not null)
+                runningList.SelectedItem = items.FirstOrDefault(item => item.Id == selectedId.Value);
+        }
+
+        if (controlledList is not null)
+        {
+            var remoteId = controlledList.SelectedItem is ArkPetsIpcClientSnapshot selectedClient
+                ? selectedClient.RemoteId
+                : (Guid?)null;
+            var clients = controller.ControlledInstances;
+            controlledList.ItemsSource = clients;
+            if (remoteId is not null)
+                controlledList.SelectedItem = clients.FirstOrDefault(item => item.RemoteId == remoteId.Value);
+        }
+
+        if (runtimeStatus is not null)
+            runtimeStatus.Text = BuildRuntimeStatus();
     }
 
     private static IReadOnlyList<ChoiceOption<int>> OutlineChoices() =>
@@ -966,6 +1159,45 @@ internal sealed class ArkPetsPage : UserControl
         row.Children.Add(text);
         row.Children.Add(combo);
         return row;
+    }
+
+    private FrameworkElement WindowsStartupToggle()
+    {
+        var check = new CheckBox
+        {
+            Content = "Windows 登录时启动 ExusiAI",
+            IsChecked = controller.WindowsStartupEnabled,
+            Margin = new Thickness(8, 7, 8, 7),
+            Foreground = Ink
+        };
+        var suppress = false;
+        check.Checked += async (_, _) =>
+        {
+            if (suppress) return;
+            if (await controller.SetWindowsStartupEnabledAsync(true)) return;
+            suppress = true;
+            check.IsChecked = false;
+            suppress = false;
+            SetRuntimeStatus("无法写入当前用户的 ExusiAI 开机启动项。");
+        };
+        check.Unchecked += async (_, _) =>
+        {
+            if (suppress) return;
+            if (await controller.SetWindowsStartupEnabledAsync(false)) return;
+            suppress = true;
+            check.IsChecked = true;
+            suppress = false;
+            SetRuntimeStatus("无法移除当前用户的 ExusiAI 开机启动项。");
+        };
+        return check;
+    }
+
+    private void SetRuntimeStatus(string message)
+    {
+        if (runtimeStatus is not null)
+            runtimeStatus.Text = message;
+        else
+            SetStatus(message);
     }
 
     private FrameworkElement Toggle(

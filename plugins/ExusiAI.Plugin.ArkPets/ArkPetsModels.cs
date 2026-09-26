@@ -196,11 +196,15 @@ public static class ArkModelsDataset
 
 public sealed record ArkPetsSettings
 {
-    public int SchemaVersion { get; init; } = 2;
+    public int SchemaVersion { get; init; } = 3;
     public string RuntimePath { get; init; } = "";
     public string ModelRoot { get; init; } = "";
     public string SelectedModelKey { get; init; } = "";
     public string[] FavoriteModelKeys { get; init; } = Array.Empty<string>();
+    public string RuntimeVersion { get; init; } = "";
+    public string NetworkProxy { get; init; } = "";
+    public bool AutoStartPetWithExusiAI { get; init; }
+    public bool StartExusiAIWithWindows { get; init; }
 
     public int BehaviorAiActivation { get; init; } = 4;
     public bool BehaviorAllowInteract { get; init; } = true;

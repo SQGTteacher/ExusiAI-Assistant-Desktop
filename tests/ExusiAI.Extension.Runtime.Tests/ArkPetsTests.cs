@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.IO;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using ExusiAI.Plugin.ArkPets;
 using ExusiAI.Plugin.MishaShowcase;
@@ -102,7 +103,7 @@ public sealed class ArkPetsTests
         var path = await ArkPetsConfigWriter.WriteAsync(settings, catalog, model);
         var json = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
 
-        Assert.Equal("models/103_angel", json["character_asset"]!.GetValue<string>().Replace('\\', '/'));
+        Assert.Equal(Path.GetFullPath(asset).Replace('\\', '/'), json["character_asset"]!.GetValue<string>().Replace('\\', '/'));
         Assert.Equal("能天使", json["character_label"]!.GetValue<string>());
         Assert.False(json["enable_telemetry"]!.GetValue<bool>());
         Assert.Equal("angel.skel", json["character_files"]![".skel"]!.GetValue<string>());
@@ -110,7 +111,7 @@ public sealed class ArkPetsTests
         Assert.Equal("#00FF00FF", json["canvas_color"]!.GetValue<string>());
         Assert.Equal(0.4, json["initial_position_x"]!.GetValue<double>(), 3);
         Assert.Equal(0.6, json["initial_position_y"]!.GetValue<double>(), 3);
-        Assert.False(json["launcher_solid_exit"]!.GetValue<bool>());
+        Assert.True(json["launcher_solid_exit"]!.GetValue<bool>());
         Assert.Equal(5, json["render_outline_emphasis"]!.GetValue<int>());
         Assert.Equal(0.6, json["transition_duration"]!.GetValue<double>(), 3);
         Assert.Equal("LINEAR", json["transition_type"]!.GetValue<string>());
@@ -184,6 +185,126 @@ public sealed class ArkPetsTests
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             ArkModelsLibraryManager.ImportAsync(zip, Path.Combine(root.Path, "imports")));
         Assert.False(File.Exists(Path.Combine(root.Path, "escape.txt")));
+    }
+
+    [Fact]
+    public void UpstreamReleaseParserSelectsPortableZipAndDigest()
+    {
+        const string json = """
+        {
+          "tag_name": "v3.13.1",
+          "assets": [
+            {
+              "name": "ArkPets-v3.13.1-Setup.exe",
+              "browser_download_url": "https://example.invalid/setup.exe"
+            },
+            {
+              "name": "ArkPets-v3.13.1.zip",
+              "browser_download_url": "https://example.invalid/ArkPets-v3.13.1.zip",
+              "digest": "sha256:17728d6385309f453d1d36ae1e048324bc030d4d363895f17b165814781b69c9"
+            }
+          ]
+        }
+        """;
+
+        var release = ArkPetsUpstreamManager.ParseRuntimeRelease(json);
+
+        Assert.Equal("3.13.1", release.Version);
+        Assert.Equal("ArkPets-v3.13.1.zip", release.AssetName);
+        Assert.Equal("17728d6385309f453d1d36ae1e048324bc030d4d363895f17b165814781b69c9", release.Sha256);
+    }
+
+    [Fact]
+    public async Task RuntimeArchiveExtractionRejectsPathTraversal()
+    {
+        using var root = new TestDirectory();
+        var zip = Path.Combine(root.Path, "runtime.zip");
+        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("../escape.exe");
+            await using var writer = new StreamWriter(entry.Open());
+            await writer.WriteAsync("escape");
+        }
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            ArkPetsUpstreamManager.ExtractArchiveSafeAsync(zip, Path.Combine(root.Path, "runtime")));
+        Assert.False(File.Exists(Path.Combine(root.Path, "escape.exe")));
+    }
+
+    [Fact]
+    public void IpcCodecParsesArkPetsLoginAndSerializesControl()
+    {
+        var uuid = Guid.NewGuid();
+        var nameBytes = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("能天使"));
+        var login = JsonSerializer.Serialize(new
+        {
+            uuid = uuid.ToString(),
+            operation = "LOGIN",
+            msg = new { bytes = nameBytes, encoding = "UTF-8" }
+        });
+
+        var parsed = ArkPetsIpcMessage.Parse(login);
+
+        Assert.NotNull(parsed);
+        Assert.Equal(uuid, parsed!.Uuid);
+        Assert.Equal(ArkPetsIpcOperation.Login, parsed.Operation);
+        Assert.Equal("能天使", parsed.MessageText);
+
+        var outbound = ArkPetsIpcMessage.Serialize(Guid.NewGuid(), ArkPetsIpcOperation.TransparentMode);
+        Assert.Contains("\"operation\":\"TRANSPARENT_MODE\"", outbound);
+    }
+
+    [Fact]
+    public async Task IpcServerHandlesHandshakeLoginAndHostControl()
+    {
+        await using var server = new ArkPetsIpcServer();
+        await server.StartAsync();
+
+        using var client = new System.Net.Sockets.TcpClient();
+        await client.ConnectAsync(System.Net.IPAddress.Loopback, server.Port);
+        await using var stream = client.GetStream();
+        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, leaveOpen: true);
+        await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true)
+        {
+            AutoFlush = true,
+            NewLine = "\n"
+        };
+
+        var uuid = Guid.NewGuid();
+        var nameBytes = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("Exusiai"));
+        var login = JsonSerializer.Serialize(new
+        {
+            uuid = uuid.ToString(),
+            operation = "LOGIN",
+            msg = new { bytes = nameBytes, encoding = "UTF-8" }
+        });
+        await writer.WriteLineAsync(login);
+
+        for (var index = 0; index < 20 && server.Clients.Count == 0; index++)
+            await Task.Delay(25);
+
+        var registered = Assert.Single(server.Clients);
+        Assert.Equal("Exusiai", registered.Name);
+
+        Assert.True(await server.SendAsync(uuid, ArkPetsIpcOperation.KeepAction));
+        var control = await reader.ReadLineAsync();
+        Assert.NotNull(control);
+        var controlMessage = ArkPetsIpcMessage.Parse(control!);
+        Assert.NotNull(controlMessage);
+        Assert.Equal(ArkPetsIpcOperation.KeepAction, controlMessage!.Operation);
+        Assert.True(Assert.Single(server.Clients).ManualMode);
+    }
+
+    [Fact]
+    public async Task IpcServerRejectsAnotherArkPetsHost()
+    {
+        await using var first = new ArkPetsIpcServer();
+        await first.StartAsync();
+
+        await using var second = new ArkPetsIpcServer();
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => second.StartAsync());
+
+        Assert.Contains("另一个 ArkPets 控制服务", exception.Message);
     }
 
     [Fact]
