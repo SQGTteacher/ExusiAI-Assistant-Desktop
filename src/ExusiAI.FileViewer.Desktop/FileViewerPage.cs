@@ -1481,7 +1481,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 bitmap.Freeze();
                 AddPdfPage(page.PageNumber, bitmap);
                 pdfLastLoadedPage = page.PageNumber;
-                await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             }
             status.Text = $"PDF 连续阅读 · 已载入 {pdfLastLoadedPage:N0} / {paged.PageCount:N0} 页 · 向下滚动继续加载";
         }
