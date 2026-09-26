@@ -9,7 +9,7 @@ namespace ExusiAI.Desktop;
 public partial class PluginWorkspacePage : UserControl
 {
     private PluginPageOption? previousPage;
-    private Point dragStart;
+    private System.Windows.Point dragStart;
     private PluginPageOption? dragCandidate;
 
     public PluginWorkspacePage()
@@ -38,6 +38,34 @@ public partial class PluginWorkspacePage : UserControl
         dragCandidate = null;
     }
 
+    private async void PluginList_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) == 0 ||
+            DataContext is not PluginWorkspaceViewModel viewModel ||
+            PluginList.SelectedItem is not PluginPageOption page) return;
+
+        var index = viewModel.Pages.IndexOf(page);
+        int insertionIndex;
+        switch (e.Key)
+        {
+            case Key.Left:
+            case Key.Up:
+                if (index <= 0) return;
+                insertionIndex = index - 1;
+                break;
+            case Key.Right:
+            case Key.Down:
+                if (index < 0 || index >= viewModel.Pages.Count - 1) return;
+                insertionIndex = index + 2;
+                break;
+            default:
+                return;
+        }
+
+        await viewModel.MovePageAsync(page, insertionIndex);
+        e.Handled = true;
+    }
+
     private void PluginList_OnDragOver(object sender, DragEventArgs e)
     {
         e.Effects = e.Data.GetDataPresent(typeof(PluginPageOption)) ? DragDropEffects.Move : DragDropEffects.None;
@@ -48,10 +76,28 @@ public partial class PluginWorkspacePage : UserControl
     {
         if (DataContext is not PluginWorkspaceViewModel viewModel ||
             e.Data.GetData(typeof(PluginPageOption)) is not PluginPageOption source) return;
-        var target = FindItem(e.OriginalSource as DependencyObject)?.DataContext as PluginPageOption;
-        var targetIndex = target is null ? viewModel.Pages.Count - 1 : viewModel.Pages.IndexOf(target);
-        await viewModel.MovePageAsync(source, targetIndex);
+
+        var insertionIndex = GetDropInsertionIndex(e.GetPosition(PluginList));
+        await viewModel.MovePageAsync(source, insertionIndex);
         e.Handled = true;
+    }
+
+    private int GetDropInsertionIndex(System.Windows.Point position)
+    {
+        for (var index = 0; index < PluginList.Items.Count; index++)
+        {
+            if (PluginList.ItemContainerGenerator.ContainerFromIndex(index) is not ListBoxItem item) continue;
+
+            var topLeft = item.TranslatePoint(new System.Windows.Point(0, 0), PluginList);
+            var bounds = new Rect(topLeft, item.RenderSize);
+
+            if (position.Y < bounds.Top) return index;
+            if (position.Y > bounds.Bottom) continue;
+            if (position.X < bounds.Left + bounds.Width / 2) return index;
+            if (position.X <= bounds.Right + item.Margin.Right) return index + 1;
+        }
+
+        return PluginList.Items.Count;
     }
 
     private ListBoxItem? FindItem(DependencyObject? source) =>

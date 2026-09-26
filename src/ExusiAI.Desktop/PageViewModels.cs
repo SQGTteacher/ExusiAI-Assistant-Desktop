@@ -301,10 +301,14 @@ public sealed partial class PluginWorkspaceViewModel : ObservableObject, IDispos
 
     public ObservableCollection<PluginPageOption> Pages { get; }
 
-    public async Task MovePageAsync(PluginPageOption page, int targetIndex)
+    public async Task MovePageAsync(PluginPageOption page, int insertionIndex)
     {
         var index = Pages.IndexOf(page);
-        if (index < 0 || targetIndex < 0 || targetIndex >= Pages.Count || targetIndex == index) return;
+        if (index < 0 || insertionIndex < 0 || insertionIndex > Pages.Count) return;
+
+        var targetIndex = insertionIndex > index ? insertionIndex - 1 : insertionIndex;
+        if (targetIndex == index || targetIndex < 0 || targetIndex >= Pages.Count) return;
+
         Pages.Move(index, targetIndex);
         SelectedPage = page;
         await settings.SaveAsync(settings.Current with { PluginPageOrder = Pages.Select(x => x.Route).ToArray() });
