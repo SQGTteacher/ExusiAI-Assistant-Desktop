@@ -581,7 +581,7 @@ internal static class MishaNativeMainWindowRenderer
             TextId => CreateText(settings, workspace),
             CountdownId => CreateCountdown(store, settings, workspace, tickers),
             SeparatorId => CreateSeparator(workspace),
-            WeatherId => CreateWeather(workspace),
+            WeatherId => CreateWeather(settings, workspace),
             GroupId => CreateContainer(store, settings, workspace, tickers, warnUnsupported, false),
             StackId => CreateContainer(store, settings, workspace, tickers, warnUnsupported, true),
             SlideId => CreateSlide(store, settings, workspace, tickers, warnUnsupported),
@@ -777,14 +777,34 @@ internal static class MishaNativeMainWindowRenderer
             Margin = new Thickness(6, 0, 6, 0)
         };
 
-    private static FrameworkElement? CreateWeather(ClassIslandWorkspace workspace)
+    private static FrameworkElement? CreateWeather(JsonObject? settings, ClassIslandWorkspace workspace)
     {
-        var current = workspace.Settings["LastWeatherInfo"]?["Current"];
-        var temperature = current?["Temperature"];
-        var value = NodeString(temperature?["Value"]);
-        var unit = NodeString(temperature?["Unit"]);
-        if (string.IsNullOrWhiteSpace(value) && string.IsNullOrWhiteSpace(unit)) return null;
-        return BaseText(workspace.GetDouble("MainWindowBodyFontSize", 16), value + unit);
+        var snapshot = ClassIslandWeatherCache.Parse(
+            workspace.Settings["LastWeatherInfo"],
+            DateTimeOffset.Now,
+            TimeSpan.FromHours(3));
+        if (!snapshot.HasData) return null;
+
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var main = BaseText(
+            workspace.GetDouble("MainWindowBodyFontSize", 16),
+            ClassIslandWeatherCache.MainText(snapshot, ReadInt(settings, "MainWeatherInfoKind")));
+        panel.Children.Add(main);
+
+        if (ReadBool(settings, "ShowAlerts", true) && snapshot.AlertCount > 0)
+        {
+            var alert = BaseText(workspace.GetDouble("MainWindowSecondaryFontSize", 14), $"  ⚠ {snapshot.AlertCount}");
+            alert.Foreground = Brushes.OrangeRed;
+            panel.Children.Add(alert);
+        }
+
+        if (snapshot.IsStale)
+        {
+            var stale = BaseText(workspace.GetDouble("MainWindowSecondaryFontSize", 14), "  缓存");
+            stale.Opacity = 0.62;
+            panel.Children.Add(stale);
+        }
+        return panel;
     }
 
     private static FrameworkElement CreateContainer(

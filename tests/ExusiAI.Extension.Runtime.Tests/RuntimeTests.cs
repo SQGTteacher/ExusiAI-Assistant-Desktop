@@ -67,18 +67,46 @@ public sealed class RuntimeTests
     }
 
     [Theory]
-    [InlineData("classisland.lessons.onClass", ClassIslandSchedulePhase.OnClass, true)]
-    [InlineData("classisland.lessons.onClass", ClassIslandSchedulePhase.Breaking, false)]
-    [InlineData("classisland.lessons.onBreakingTime", ClassIslandSchedulePhase.Breaking, true)]
-    [InlineData("classisland.lessons.onAfterSchool", ClassIslandSchedulePhase.AfterSchool, true)]
-    [InlineData("classisland.lessons.currentTimeStateChanged", ClassIslandSchedulePhase.BeforeClass, true)]
-    [InlineData("classisland.os.run", ClassIslandSchedulePhase.OnClass, false)]
+    [InlineData("classisland.lessons.onClass", (int)ClassIslandSchedulePhase.OnClass, true)]
+    [InlineData("classisland.lessons.onClass", (int)ClassIslandSchedulePhase.Breaking, false)]
+    [InlineData("classisland.lessons.onBreakingTime", (int)ClassIslandSchedulePhase.Breaking, true)]
+    [InlineData("classisland.lessons.onAfterSchool", (int)ClassIslandSchedulePhase.AfterSchool, true)]
+    [InlineData("classisland.lessons.currentTimeStateChanged", (int)ClassIslandSchedulePhase.BeforeClass, true)]
+    [InlineData("classisland.os.run", (int)ClassIslandSchedulePhase.OnClass, false)]
     public void MishaAutomationOnlyMatchesSafeScheduleTriggers(
         string triggerId,
-        ClassIslandSchedulePhase phase,
+        int phase,
         bool expected)
     {
-        Assert.Equal(expected, MishaAutomationRuntime.Matches(triggerId, phase));
+        Assert.Equal(expected, MishaAutomationRuntime.Matches(triggerId, (ClassIslandSchedulePhase)phase));
+    }
+
+    [Fact]
+    public void MishaWeatherCacheReadsNativeCamelCaseAndMarksStaleData()
+    {
+        var updated = new DateTimeOffset(2026, 9, 26, 8, 0, 0, TimeSpan.Zero);
+        var node = JsonNode.Parse($$"""
+        {
+          "current": {
+            "weather": "1",
+            "temperature": { "value": "26", "unit": "℃" },
+            "feelsLike": { "value": "28", "unit": "℃" },
+            "humidity": { "value": "70", "unit": "%" }
+          },
+          "alerts": [{ "title": "高温预警" }],
+          "updateTime": {{updated.ToUnixTimeMilliseconds()}}
+        }
+        """);
+
+        var snapshot = ClassIslandWeatherCache.Parse(node, updated.AddHours(4), TimeSpan.FromHours(3));
+        Assert.Equal("多云", snapshot.Condition);
+        Assert.Equal("26℃", snapshot.Temperature);
+        Assert.Equal("28℃", snapshot.FeelsLike);
+        Assert.Equal("70%", snapshot.Humidity);
+        Assert.Equal(1, snapshot.AlertCount);
+        Assert.True(snapshot.IsStale);
+        Assert.Equal("多云 26℃", ClassIslandWeatherCache.MainText(snapshot, 0));
+        Assert.Equal("体感 28℃", ClassIslandWeatherCache.MainText(snapshot, 5));
     }
 
     [Fact]
