@@ -117,11 +117,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         VerticalAlignment = VerticalAlignment.Stretch
     };
 
-    private readonly Image pdfPageImage = new()
-    {
-        Stretch = Stretch.None,
-        SnapsToDevicePixels = true
-    };
+    private const int PdfPageBatchSize = 4;
+    private readonly StackPanel pdfPagesPanel = new();
+    private int pdfLastLoadedPage;
+    private bool pdfBatchLoading;
 
     private readonly ScrollViewer pdfPageScroll;
 
@@ -317,23 +316,17 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         zoom.Value = Math.Clamp(15 * settings.DefaultZoomPercent / 100d, zoom.Minimum, zoom.Maximum);
         SetResourceReference(BackgroundProperty, "AppBackgroundBrush");
 
-        var pdfPageSurface = new Border
-        {
-            Margin = new Thickness(28),
-            Padding = new Thickness(1),
-            Background = Brushes.White,
-            BorderBrush = new SolidColorBrush(Color.FromRgb(74, 80, 92)),
-            BorderThickness = new Thickness(1),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top,
-            Child = pdfPageImage
-        };
         pdfPageScroll = new ScrollViewer
         {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Visibility = Visibility.Collapsed,
-            Content = pdfPageSurface
+            Content = pdfPagesPanel
+        };
+        pdfPageScroll.ScrollChanged += async (_, args) =>
+        {
+            if (args.VerticalOffset + args.ViewportHeight >= args.ExtentHeight - 900)
+                await LoadNextPdfBatchAsync();
         };
 
         tablePreview = new ListBox
@@ -1037,7 +1030,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         markdownPreviewMode = false;
         pagePreviewMode = false;
         pdfPageScroll.Visibility = Visibility.Collapsed;
-        pdfPageImage.Source = null;
+        pdfPagesPanel.Children.Clear();
+        pdfLastLoadedPage = 0;
 
         textPreview.Visibility = Visibility.Collapsed;
         markdownPreview.Visibility = Visibility.Collapsed;
@@ -1162,8 +1156,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     pageJumpLabel.Text = $"1 / {paged.PageCount:N0}";
                     changingPageJump = false;
                     pdfPageScroll.Visibility = Visibility.Visible;
-                    await NavigateDocumentPageAsync(1, debounce: false);
-                    status.Text = $"PDF 按需分页 · 共 {paged.PageCount:N0} 页 · 最近页面有界缓存";
+                    pdfPagesPanel.Children.Clear();
+                    pdfLastLoadedPage = 0;
+                    await LoadNextPdfBatchAsync();
+                    status.Text = $"PDF 连续阅读 · 共 {paged.PageCount:N0} 页 · 页面按需加载";
                     break;
 
                 case ITabularPreviewDocument table:
@@ -1401,7 +1397,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         textPreview.FontSize = zoom.Value;
         markdownPreview.Zoom = Math.Clamp(zoom.Value / 15d * 100d, markdownPreview.MinZoom, markdownPreview.MaxZoom);
         pagePreview.Zoom = Math.Clamp(zoom.Value / 15d * 100d, 5d, 500d);
-        pdfPageImage.LayoutTransform = new ScaleTransform(zoom.Value / 15d, zoom.Value / 15d);
+        foreach (var image in FindPdfPageImages())
+            image.LayoutTransform = new ScaleTransform(zoom.Value / 15d, zoom.Value / 15d);
         tablePreview.FontSize = Math.Max(11, zoom.Value - 1);
         slideTitle.FontSize = Math.Max(24, zoom.Value + 15);
         slideTitle.LineHeight = slideTitle.FontSize * 1.3;
@@ -1433,8 +1430,20 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 page.Pixels,
                 page.Stride);
             bitmap.Freeze();
-            pdfPageImage.Source = bitmap;
-            pdfPageScroll.ScrollToHome();
+            var existing = FindPdfPageBorder(page.PageNumber);
+            if (existing is null)
+            {
+                pdfPagesPanel.Children.Clear();
+                pdfLastLoadedPage = page.PageNumber - 1;
+                existing = AddPdfPage(page.PageNumber, bitmap);
+                pdfLastLoadedPage = page.PageNumber;
+                await LoadNextPdfBatchAsync();
+            }
+            else if (existing.Child is Image image)
+            {
+                image.Source = bitmap;
+            }
+            existing.BringIntoView();
             timer.Stop();
             changingPageJump = true;
             pageJumpSlider.Value = page.PageNumber;
@@ -1453,6 +1462,69 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             cancellation.Dispose();
         }
     }
+
+    private async Task LoadNextPdfBatchAsync()
+    {
+        if (pdfBatchLoading || document is not IPagedPreviewDocument paged || loadCancellation is null ||
+            pdfLastLoadedPage >= paged.PageCount)
+            return;
+
+        pdfBatchLoading = true;
+        try
+        {
+            var finalPage = Math.Min(paged.PageCount, pdfLastLoadedPage + PdfPageBatchSize);
+            for (var pageNumber = pdfLastLoadedPage + 1; pageNumber <= finalPage; pageNumber++)
+            {
+                var page = await paged.ReadPageAsync(pageNumber, loadCancellation.Token);
+                var bitmap = BitmapSource.Create(page.Width, page.Height, 96, 96, PixelFormats.Bgra32,
+                    null, page.Pixels, page.Stride);
+                bitmap.Freeze();
+                AddPdfPage(page.PageNumber, bitmap);
+                pdfLastLoadedPage = page.PageNumber;
+                await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+            }
+            status.Text = $"PDF 连续阅读 · 已载入 {pdfLastLoadedPage:N0} / {paged.PageCount:N0} 页 · 向下滚动继续加载";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            status.Text = $"PDF 页面渲染失败：{exception.Message}";
+        }
+        finally { pdfBatchLoading = false; }
+    }
+
+    private Border AddPdfPage(int pageNumber, BitmapSource bitmap)
+    {
+        var image = new Image
+        {
+            Source = bitmap,
+            Stretch = Stretch.None,
+            SnapsToDevicePixels = true,
+            LayoutTransform = new ScaleTransform(zoom.Value / 15d, zoom.Value / 15d)
+        };
+        var surface = new Border
+        {
+            Tag = pageNumber,
+            Margin = new Thickness(28, 18, 28, 18),
+            Padding = new Thickness(1),
+            Background = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(74, 80, 92)),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Child = image
+        };
+        pdfPagesPanel.Children.Add(surface);
+        return surface;
+    }
+
+    private Border? FindPdfPageBorder(int pageNumber) => pdfPagesPanel.Children
+        .OfType<Border>()
+        .FirstOrDefault(border => border.Tag is int value && value == pageNumber);
+
+    private IEnumerable<Image> FindPdfPageImages() => pdfPagesPanel.Children
+        .OfType<Border>()
+        .Select(border => border.Child)
+        .OfType<Image>();
 
     private void RenderSlide(SlidePreview slide)
     {
@@ -2963,7 +3035,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         pagePreview.Visibility = Visibility.Collapsed;
         pagePreview.Document = null;
         pdfPageScroll.Visibility = Visibility.Collapsed;
-        pdfPageImage.Source = null;
+        pdfPagesPanel.Children.Clear();
+        pdfLastLoadedPage = 0;
         pageViewButton.Visibility = Visibility.Collapsed;
         pageOrientationButton.Visibility = Visibility.Collapsed;
         pageSpreadButton.Visibility = Visibility.Collapsed;

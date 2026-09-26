@@ -19,12 +19,29 @@ internal sealed class OpenXmlPackageGuard : IDisposable
 
     public static OpenXmlPackageGuard Open(FileInfo file, ViewerOpenOptions options)
     {
-        var stream = SafeFileAccess.OpenSequentialRead(file);
+        var stream = SafeFileAccess.OpenPackageRead(file);
         try
         {
-            var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
-            ValidateArchive(archive, options);
-            return new(stream, archive, options);
+            ZipArchive archive;
+            try
+            {
+                archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+            }
+            catch (InvalidDataException)
+            {
+                throw new FileRejectedException(
+                    "文件不是完整的 Office Open XML 文档。请确认扩展名与实际格式一致，并等待下载或复制完成后重试。");
+            }
+            try
+            {
+                ValidateArchive(archive, options);
+                return new(stream, archive, options);
+            }
+            catch
+            {
+                archive.Dispose();
+                throw;
+            }
         }
         catch
         {

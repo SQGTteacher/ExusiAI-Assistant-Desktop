@@ -292,6 +292,18 @@ public sealed class FileViewerTests : IDisposable
     }
 
     [Fact]
+    public async Task Docx_provider_explains_invalid_or_incomplete_package()
+    {
+        var path = Path.Combine(directory, "broken.docx");
+        await File.WriteAllBytesAsync(path, "PK\u0003\u0004incomplete"u8.ToArray());
+
+        var exception = await Assert.ThrowsAsync<FileRejectedException>(async () =>
+            await CreateRegistry().OpenAsync(path));
+
+        Assert.Contains("不是完整的 Office Open XML 文档", exception.Message);
+    }
+
+    [Fact]
     public async Task Xlsx_provider_pages_first_worksheet_and_resolves_shared_strings()
     {
         var path = Path.Combine(directory, "lesson.xlsx");
