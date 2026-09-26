@@ -76,9 +76,9 @@ internal sealed class MishaMainWindowSettingsPage : UserControl
             "与 ClassIsland Theme 一致：0 跟随系统，1 明亮，2 黑暗。",
             ChoiceRow(themeOptions, 3)));
         root.Children.Add(MishaUi.SettingRow("背景不透明度", "Opacity，范围 0–1。", opacity));
-        root.Children.Add(MishaUi.SettingRow("圆角半径", "RadiusX / RadiusY。", radius));
+        root.Children.Add(MishaUi.SettingRow("圆角半径", "分别控制信息岛横向与纵向圆角。", radius));
         root.Children.Add(MishaUi.SettingRow("整体缩放", "Scale，建议 0.5–2。", scale));
-        root.Children.Add(MishaUi.SettingRow("行间距", "MainWindowLineVerticalMargin。", lineMargin));
+        root.Children.Add(MishaUi.SettingRow("行间距", "控制信息岛内各行内容之间的垂直距离。", lineMargin));
 
         var backgroundPanel = new StackPanel();
         backgroundPanel.Children.Add(customBackground);

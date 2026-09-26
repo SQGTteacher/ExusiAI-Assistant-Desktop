@@ -22,4 +22,12 @@ internal static class SafeFileAccess
         FileShare.ReadWrite | FileShare.Delete,
         bufferSize: 64 * 1024,
         options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+    public static FileStream OpenPackageRead(FileInfo info) => new(
+        info.FullName,
+        FileMode.Open,
+        FileAccess.Read,
+        FileShare.ReadWrite | FileShare.Delete,
+        bufferSize: 64 * 1024,
+        options: FileOptions.RandomAccess);
 }

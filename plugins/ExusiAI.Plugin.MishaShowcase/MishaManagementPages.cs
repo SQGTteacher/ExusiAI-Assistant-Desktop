@@ -33,7 +33,14 @@ internal static class MishaUi
 
     public static Button Button(string text, bool secondary = false)
     {
-        var button = new Button { Content = text, Margin = new Thickness(0, 0, 8, 0) };
+        var button = new Button
+        {
+            Content = text,
+            Margin = new Thickness(0, 0, 8, 0),
+            Padding = new Thickness(14, 7, 14, 7),
+            MinHeight = 34,
+            FocusVisualStyle = null
+        };
         if (secondary)
         {
             button.SetResourceReference(Control.BackgroundProperty, "SurfaceAltBrush");
@@ -41,6 +48,25 @@ internal static class MishaUi
         }
         return button;
     }
+
+    public static DataGrid DataGrid() => new()
+    {
+        AutoGenerateColumns = false,
+        CanUserAddRows = false,
+        CanUserDeleteRows = false,
+        HeadersVisibility = DataGridHeadersVisibility.Column,
+        GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
+        RowHeight = 36,
+        ColumnHeaderHeight = 38,
+        RowHeaderWidth = 0,
+        SelectionUnit = DataGridSelectionUnit.FullRow,
+        SelectionMode = DataGridSelectionMode.Single,
+        HorizontalGridLinesBrush = System.Windows.Media.Brushes.Transparent,
+        BorderThickness = new Thickness(1),
+        FocusVisualStyle = null,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+    };
 
     public static FrameworkElement SettingRow(string label, string description, FrameworkElement editor)
     {
@@ -168,7 +194,7 @@ internal sealed class MishaWorkspacePage : UserControl
 internal sealed class MishaSubjectsPage : UserControl
 {
     private readonly MishaPlatformStore store;
-    private readonly DataGrid grid = new();
+    private readonly DataGrid grid = MishaUi.DataGrid();
     private readonly TextBlock status = MishaUi.Note("");
 
     public MishaSubjectsPage(MishaPlatformStore store)
@@ -243,7 +269,7 @@ internal sealed class MishaTimeLayoutsPage : UserControl
 {
     private readonly MishaPlatformStore store;
     private readonly ComboBox layouts = new();
-    private readonly DataGrid points = new();
+    private readonly DataGrid points = MishaUi.DataGrid();
     private readonly TextBlock status = MishaUi.Note("");
 
     public MishaTimeLayoutsPage(MishaPlatformStore store)
@@ -307,7 +333,7 @@ internal sealed class MishaTimeLayoutsPage : UserControl
         points.MinHeight = 330;
         points.Columns.Add(new DataGridTextColumn { Header = "开始", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.StartTime)), Width = 105 });
         points.Columns.Add(new DataGridTextColumn { Header = "结束", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.EndTime)), Width = 105 });
-        points.Columns.Add(new DataGridTextColumn { Header = "TimeType", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.TimeType)), Width = 90 });
+        points.Columns.Add(new DataGridTextColumn { Header = "时间类型", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.TimeType)), Width = 90 });
         points.Columns.Add(new DataGridTextColumn { Header = "课间名称", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.BreakName)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         points.Columns.Add(new DataGridTextColumn { Header = "默认科目", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.DefaultSubject)), Width = 150 });
         points.Columns.Add(new DataGridCheckBoxColumn { Header = "默认隐藏", Binding = new Binding(nameof(ClassIslandTimeLayoutItemRow.IsHideDefault)), Width = 85 });
@@ -349,7 +375,7 @@ internal sealed class MishaClassPlansPage : UserControl
 {
     private readonly MishaPlatformStore store;
     private readonly ComboBox plans = new();
-    private readonly DataGrid lessons = new();
+    private readonly DataGrid lessons = MishaUi.DataGrid();
     private readonly StackPanel ruleArea = new();
     private readonly TextBlock status = MishaUi.Note("");
 

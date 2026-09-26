@@ -14,6 +14,47 @@ internal sealed record MishaSettingsCategory(
 
 internal static class MishaSettingsCatalog
 {
+    private static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["RadiusX"] = "横向圆角半径",
+        ["RadiusY"] = "纵向圆角半径",
+        ["Scale"] = "整体缩放",
+        ["MainWindowLineVerticalMargin"] = "组件行间距",
+        ["BackgroundColor"] = "背景颜色",
+        ["CustomForegroundColor"] = "文字颜色",
+        ["IsCustomBackgroundColorEnabled"] = "使用自定义背景颜色",
+        ["IsCustomForegroundColorEnabled"] = "使用自定义文字颜色",
+        ["MainWindowFont"] = "界面字体",
+        ["MainWindowBodyFontSize"] = "正文字号",
+        ["MainWindowEmphasizedFontSize"] = "强调文字字号",
+        ["MainWindowLargeFontSize"] = "大号文字字号",
+        ["MainWindowSecondaryFontSize"] = "辅助文字字号",
+        ["Opacity"] = "背景不透明度",
+        ["IsIslandSeperated"] = "分离显示信息岛",
+        ["Theme"] = "明暗主题",
+        ["AnimationLevel"] = "动画级别",
+        ["HideOnClass"] = "上课时自动隐藏",
+        ["HideOnFullscreen"] = "全屏时自动隐藏",
+        ["HideOnMaxWindow"] = "窗口最大化时自动隐藏",
+        ["IsSplashEnabled"] = "显示启动画面",
+        ["IsExactTimeEnabled"] = "启用精确时间",
+        ["IsAutoBackupEnabled"] = "启用自动备份",
+        ["AutoBackupIntervalDays"] = "自动备份间隔（天）",
+        ["AutoBackupLimit"] = "保留备份数量",
+        ["IsReportingEnabled"] = "发送诊断信息",
+        ["IsAutomationEnabled"] = "启用自动化",
+        ["IsNotificationEnabled"] = "启用提醒",
+        ["IsSpeechEnabled"] = "启用语音播报",
+        ["NotificationSoundVolume"] = "提醒音量",
+        ["SpeechVolume"] = "语音音量",
+        ["WindowDockingLocation"] = "信息岛停靠位置",
+        ["WindowDockingMonitorIndex"] = "显示器",
+        ["WindowDockingOffsetX"] = "水平偏移",
+        ["WindowDockingOffsetY"] = "垂直偏移"
+    };
+
+    public static string DisplayName(string key) => DisplayNames.TryGetValue(key, out var value) ? value : key;
+
     public static IReadOnlyList<MishaSettingsCategory> Categories { get; } =
     [
         new("general", "基本", "对应 ClassIsland 2.2 Misha 的基本设置。只修改真实 Settings.json 中已经存在的字段，不补写臆造默认值。",
@@ -168,7 +209,7 @@ internal sealed class MishaSettingsCategoryPage : UserControl
 
             var editor = SettingEditor.Create(node);
             editors[key] = editor;
-            fields.Children.Add(MishaUi.SettingRow(key, Describe(node), editor.Element));
+            fields.Children.Add(MishaUi.SettingRow(MishaSettingsCatalog.DisplayName(key), Describe(node), editor.Element));
         }
 
         if (editors.Count == 0)

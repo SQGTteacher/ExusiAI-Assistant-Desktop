@@ -12,7 +12,7 @@ internal sealed class MishaComponentLayoutsPage : UserControl
     private readonly MishaPlatformStore store;
     private readonly ComboBox configs = new() { MinWidth = 220 };
     private readonly ListBox lines = new();
-    private readonly DataGrid components = new();
+    private readonly DataGrid components = MishaUi.DataGrid();
     private readonly ComboBox addComponentCatalog = new() { MinWidth = 220, DisplayMemberPath = nameof(ClassIslandComponentCatalogItem.Name) };
     private readonly TextBox settingsEditor = new()
     {

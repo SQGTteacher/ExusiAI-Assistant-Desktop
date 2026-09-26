@@ -11,8 +11,8 @@ internal sealed class MishaAutomationEditorPage : UserControl
     private readonly MishaPlatformStore store;
     private readonly ComboBox configs = new() { MinWidth = 220 };
     private readonly ListBox workflows = new();
-    private readonly DataGrid triggers = new();
-    private readonly DataGrid actions = new();
+    private readonly DataGrid triggers = MishaUi.DataGrid();
+    private readonly DataGrid actions = MishaUi.DataGrid();
     private readonly ComboBox triggerCatalog = new() { MinWidth = 210, DisplayMemberPath = nameof(ClassIslandAutomationCatalogItem.Name) };
     private readonly ComboBox actionCatalog = new() { MinWidth = 210, DisplayMemberPath = nameof(ClassIslandAutomationCatalogItem.Name) };
     private readonly TextBox itemSettings = JsonEditor(150);

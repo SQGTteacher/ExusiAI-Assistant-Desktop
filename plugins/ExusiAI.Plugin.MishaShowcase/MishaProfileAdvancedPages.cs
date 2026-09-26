@@ -7,8 +7,8 @@ namespace ExusiAI.Plugin.MishaShowcase;
 internal sealed class MishaClassPlanGroupsPage : UserControl
 {
     private readonly MishaPlatformStore store;
-    private readonly DataGrid groups = new();
-    private readonly DataGrid plans = new();
+    private readonly DataGrid groups = MishaUi.DataGrid();
+    private readonly DataGrid plans = MishaUi.DataGrid();
     private readonly TextBlock status = MishaUi.Note("");
 
     public MishaClassPlanGroupsPage(MishaPlatformStore store)
@@ -56,7 +56,7 @@ internal sealed class MishaClassPlanGroupsPage : UserControl
         plans.CanUserAddRows = false;
         plans.MinHeight = 220;
         plans.Columns.Add(new DataGridTextColumn { Header = "课表", Binding = new Binding(nameof(ClassIslandClassPlanRow.Name)), IsReadOnly = true, Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-        plans.Columns.Add(new DataGridTextColumn { Header = "AssociatedGroup", Binding = new Binding(nameof(ClassIslandClassPlanRow.AssociatedGroup)), Width = 300 });
+        plans.Columns.Add(new DataGridTextColumn { Header = "关联课表群", Binding = new Binding(nameof(ClassIslandClassPlanRow.AssociatedGroup)), Width = 300 });
         root.Children.Add(plans);
 
         var save = MishaUi.Button("保存 Profile");
@@ -87,7 +87,7 @@ internal sealed class MishaClassPlanGroupsPage : UserControl
 internal sealed class MishaOrderedSchedulesPage : UserControl
 {
     private readonly MishaPlatformStore store;
-    private readonly DataGrid grid = new();
+    private readonly DataGrid grid = MishaUi.DataGrid();
     private readonly DatePicker date = new() { SelectedDate = DateTime.Today, Width = 160 };
     private readonly ComboBox plans = new() { MinWidth = 220, DisplayMemberPath = nameof(ClassIslandClassPlanRow.Name) };
     private readonly TextBlock status = MishaUi.Note("");
@@ -111,7 +111,7 @@ internal sealed class MishaOrderedSchedulesPage : UserControl
         grid.MinHeight = 320;
         grid.Columns.Add(new DataGridTextColumn { Header = "日期", Binding = new Binding(nameof(ClassIslandOrderedScheduleRow.Date)) { StringFormat = "yyyy-MM-dd" }, IsReadOnly = true, Width = 130 });
         grid.Columns.Add(new DataGridTextColumn { Header = "课表", Binding = new Binding(nameof(ClassIslandOrderedScheduleRow.ClassPlanName)), IsReadOnly = true, Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-        grid.Columns.Add(new DataGridTextColumn { Header = "ClassPlanId", Binding = new Binding(nameof(ClassIslandOrderedScheduleRow.ClassPlanId)), Width = 300 });
+        grid.Columns.Add(new DataGridTextColumn { Header = "课表标识", Binding = new Binding(nameof(ClassIslandOrderedScheduleRow.ClassPlanId)), Width = 300 });
         root.Children.Add(grid);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
@@ -162,7 +162,7 @@ internal sealed class MishaOrderedSchedulesPage : UserControl
 internal sealed class MishaScheduleModePage : UserControl
 {
     private readonly MishaPlatformStore store;
-    private readonly DataGrid grid = new();
+    private readonly DataGrid grid = MishaUi.DataGrid();
     private readonly TextBlock status = MishaUi.Note("");
 
     public MishaScheduleModePage(MishaPlatformStore store)
