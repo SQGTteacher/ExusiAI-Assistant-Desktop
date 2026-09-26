@@ -3,12 +3,14 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Xml;
 using ExusiAI.FileViewer.Core;
@@ -22,6 +24,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 {
     private const int MaximumTextPreviewCharacters = 8 * 1024 * 1024;
     private const int MaximumPrintCharacters = 2 * 1024 * 1024;
+    private const int MaximumPagePreviewCharacters = 2 * 1024 * 1024;
     private const int SlideThumbnailBatchSize = 16;
 
     private FileViewerProviderRegistry? providers;
@@ -29,6 +32,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private FileViewerProviderRegistry Providers => providers ??= new(new IFileViewerProvider[]
     {
         new TextFileViewerProvider(),
+        new RtfFileViewerProvider(),
         new CsvFileViewerProvider(),
         new DocxFileViewerProvider(),
         new XlsxFileViewerProvider(),
@@ -64,7 +68,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         FontSize = 11,
         Opacity = 0.72,
-        Text = "TXT · Markdown · CSV · DOCX · XLSX · PPTX",
+        Text = "TXT · Markdown · RTF · CSV · DOCX · XLSX · PPTX",
         TextTrimming = TextTrimming.CharacterEllipsis,
         VerticalAlignment = VerticalAlignment.Center
     };
@@ -100,6 +104,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
         Visibility = Visibility.Collapsed
+    };
+
+    private readonly DocumentViewer pagePreview = new()
+    {
+        Visibility = Visibility.Collapsed,
+        HorizontalAlignment = HorizontalAlignment.Stretch,
+        VerticalAlignment = VerticalAlignment.Stretch
     };
 
     private readonly TextBlock slideTitle = new()
@@ -201,6 +212,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly Button loadMoreSlidesButton = CreateSecondaryButton("更多幻灯片");
     private readonly Button goToLineButton = CreateSecondaryButton("转到行");
     private readonly Button markdownPreviewButton = CreateSecondaryButton("Markdown 预览");
+    private readonly Button pageViewButton = CreateSecondaryButton("页面视图");
+    private readonly Button pageOrientationButton = CreateSecondaryButton("纵向页面");
+    private readonly Button pageSpreadButton = CreateSecondaryButton("单页");
     private readonly TextBox goToLineBox = new() { Width = 76, ToolTip = "输入文本行号并按 Enter" };
     private readonly Border slideNavigationPane = new()
     {
@@ -244,7 +258,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private bool changingSlideThumbnailSelection;
     private bool isMarkdownDocument;
     private bool markdownPreviewMode;
+    private bool pagePreviewMode;
+    private bool landscapePages;
+    private bool twoPageSpread;
     private MarkdownParseResult? markdownParseResult;
+    private ImmutableArray<byte> richTextData = [];
     private FileSystemWatcher? fileWatcher;
     private DateTime lastKnownWriteTimeUtc;
     private readonly System.Windows.Threading.DispatcherTimer statisticsTimer = new()
@@ -397,6 +415,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         loadMoreSlidesButton.Click += async (_, _) => await LoadMoreSlideThumbnailsAsync();
         goToLineButton.Click += (_, _) => GoToTextLine();
         markdownPreviewButton.Click += (_, _) => ToggleMarkdownPreview();
+        pageViewButton.Click += (_, _) => TogglePagePreview();
+        pageOrientationButton.Click += (_, _) => TogglePageOrientation();
+        pageSpreadButton.Click += (_, _) => TogglePageSpread();
         goToLineBox.KeyDown += (_, args) =>
         {
             if (args.Key == Key.Enter) GoToTextLine();
@@ -413,6 +434,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         goToLineBox.Visibility = Visibility.Collapsed;
         goToLineButton.Visibility = Visibility.Collapsed;
         markdownPreviewButton.Visibility = Visibility.Collapsed;
+        pageViewButton.Visibility = Visibility.Collapsed;
+        pageOrientationButton.Visibility = Visibility.Collapsed;
+        pageSpreadButton.Visibility = Visibility.Collapsed;
 
         statisticsTimer.Tick += (_, _) =>
         {
@@ -592,6 +616,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         AddCommand(viewCommands, goToLineBox);
         AddCommand(viewCommands, goToLineButton);
         AddCommand(viewCommands, markdownPreviewButton);
+        AddCommand(viewCommands, pageViewButton);
+        AddCommand(viewCommands, pageOrientationButton);
+        AddCommand(viewCommands, pageSpreadButton);
 
         var commandHost = new Grid { MinHeight = 36 };
         commandHost.Children.Add(fileCommands);
@@ -639,6 +666,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var contentGrid = new Grid();
         contentGrid.Children.Add(textPreview);
         contentGrid.Children.Add(markdownPreview);
+        contentGrid.Children.Add(pagePreview);
         contentGrid.Children.Add(tablePreview);
         contentGrid.Children.Add(slideScroll);
         contentGrid.Children.Add(welcomePanel);
@@ -756,7 +784,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var picker = new OpenFileDialog
         {
             Title = "选择要预览的文件",
-            Filter = "支持的文件|*.txt;*.md;*.markdown;*.csv;*.docx;*.xlsx;*.pptx|纯文本|*.txt|Markdown|*.md;*.markdown|CSV|*.csv|Word Open XML|*.docx|Excel Open XML|*.xlsx|PowerPoint Open XML|*.pptx|计划支持的 Office/RTF 文件|*.doc;*.xls;*.ppt;*.rtf|所有文件|*.*",
+            Filter = "支持的文件|*.txt;*.md;*.markdown;*.rtf;*.csv;*.docx;*.xlsx;*.pptx|纯文本|*.txt|Markdown|*.md;*.markdown|RTF 文档|*.rtf|CSV|*.csv|Word Open XML|*.docx|Excel Open XML|*.xlsx|PowerPoint Open XML|*.pptx|计划支持的 Office/PDF 文件|*.doc;*.xls;*.ppt;*.pdf|所有文件|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -780,11 +808,21 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     internal void ZoomBy(double delta) => zoom.Value = Math.Clamp(zoom.Value + delta, zoom.Minimum, zoom.Maximum);
     internal void ResetZoom() => zoom.Value = Math.Clamp(15 * settings.DefaultZoomPercent / 100d, zoom.Minimum, zoom.Maximum);
-    internal Task PreviousPageAsync() => NavigateSlideAsync(currentSlideNumber - 1);
-    internal Task NextPageAsync() => NavigateSlideAsync(currentSlideNumber + 1);
+    internal Task PreviousPageAsync()
+    {
+        if (pagePreviewMode) pagePreview.PreviousPage();
+        return pagePreviewMode ? Task.CompletedTask : NavigateSlideAsync(currentSlideNumber - 1);
+    }
+
+    internal Task NextPageAsync()
+    {
+        if (pagePreviewMode) pagePreview.NextPage();
+        return pagePreviewMode ? Task.CompletedTask : NavigateSlideAsync(currentSlideNumber + 1);
+    }
 
     internal void FocusGoToLine()
     {
+        if (pagePreviewMode) SetPagePreviewMode(false);
         if (isMarkdownDocument && markdownPreviewMode) SetMarkdownPreviewMode(false);
         if (textPreview.Visibility != Visibility.Visible) return;
         goToLineBox.Focus();
@@ -839,12 +877,19 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         markdownOutline.Clear();
         markdownBlocksByLine.Clear();
         markdownParseResult = null;
+        richTextData = [];
         isMarkdownDocument = false;
         markdownPreviewMode = false;
+        pagePreviewMode = false;
 
         textPreview.Visibility = Visibility.Collapsed;
         markdownPreview.Visibility = Visibility.Collapsed;
         markdownPreview.Document = new FlowDocument();
+        pagePreview.Visibility = Visibility.Collapsed;
+        pagePreview.Document = null;
+        pageViewButton.Visibility = Visibility.Collapsed;
+        pageOrientationButton.Visibility = Visibility.Collapsed;
+        pageSpreadButton.Visibility = Visibility.Collapsed;
         tablePreview.Visibility = Visibility.Collapsed;
         slideScroll.Visibility = Visibility.Collapsed;
         searchPane.Visibility = Visibility.Collapsed;
@@ -889,6 +934,22 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
             switch (document)
             {
+                case IRichTextPreviewDocument richText:
+                    var richContent = await richText.ReadAsync(loadCancellation.Token);
+                    richTextData = richContent.Data;
+                    var richFlow = CreateRichTextFlowDocument();
+                    var richRange = new TextRange(richFlow.ContentStart, richFlow.ContentEnd);
+                    loadingTextPreview = true;
+                    textPreview.Text = richRange.Text.TrimEnd('\r', '\n');
+                    loadingTextPreview = false;
+                    textPreviewFullyLoaded = true;
+                    pageViewButton.Visibility = Visibility.Visible;
+                    pageViewButton.IsEnabled = true;
+                    SetPagePreviewMode(true);
+                    UpdateTextStatistics();
+                    status.Text = "RTF 安全分页视图 · 支持缩放、纵横纸张和单页/双页排版";
+                    break;
+
                 case ITextPreviewDocument text:
                     textPreview.Visibility = Visibility.Visible;
                     loadingTextPreview = true;
@@ -915,6 +976,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     }
                     UpdateEditingUi();
                     UpdateTextStatistics();
+                    pageViewButton.Visibility = Visibility.Visible;
+                    pageViewButton.IsEnabled = textPreviewFullyLoaded && textPreview.Text.Length <= MaximumPagePreviewCharacters;
                     break;
 
                 case IWorkbookPreviewDocument workbook:
@@ -957,7 +1020,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         }
         catch (UnsupportedFileFormatException)
         {
-            status.Text = "此格式尚未启用可靠 Provider。DOC、XLS、PPT、RTF 当前明确为未实现。";
+            status.Text = "此格式尚未启用可靠 Provider。DOC、XLS、PPT、PDF 当前明确为未实现。";
             welcomePanel.Visibility = Visibility.Visible;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or XmlException)
@@ -1099,6 +1162,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             currentSlideNumber = slide.SlideNumber;
             slideNumberBox.Text = slide.SlideNumber.ToString(CultureInfo.CurrentCulture);
             RenderSlide(slide);
+            AnimateSlideTransition(slide.Transition);
             var thumbnail = slideThumbnails.FirstOrDefault(item => item.SlideNumber == currentSlideNumber);
             if (thumbnail is not null)
             {
@@ -1133,6 +1197,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         textPreview.FontSize = zoom.Value;
         markdownPreview.Zoom = Math.Clamp(zoom.Value / 15d * 100d, markdownPreview.MinZoom, markdownPreview.MaxZoom);
+        pagePreview.Zoom = Math.Clamp(zoom.Value / 15d * 100d, 5d, 500d);
         tablePreview.FontSize = Math.Max(11, zoom.Value - 1);
         slideTitle.FontSize = Math.Max(24, zoom.Value + 15);
         slideTitle.LineHeight = slideTitle.FontSize * 1.3;
@@ -1196,6 +1261,57 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         slideVisualCanvas.Visibility = Visibility.Collapsed;
         RenderSlideText(slide.Text);
+    }
+
+    private void AnimateSlideTransition(SlideTransitionPreview? transition)
+    {
+        if (slideScroll.Content is not FrameworkElement surface) return;
+        surface.BeginAnimation(OpacityProperty, null);
+        surface.Opacity = 1;
+        surface.RenderTransform = Transform.Identity;
+        if (transition is null || transition.Kind is SlideTransitionKind.None or SlideTransitionKind.Cut) return;
+
+        var duration = new Duration(TimeSpan.FromMilliseconds(Math.Clamp(transition.DurationMilliseconds, 120, 1200)));
+
+        switch (transition.Kind)
+        {
+            case SlideTransitionKind.Push:
+            case SlideTransitionKind.Cover:
+            case SlideTransitionKind.Uncover:
+            case SlideTransitionKind.Wipe:
+                var horizontal = transition.Direction is "l" or "r";
+                var negative = transition.Direction is "l" or "u";
+                var offset = (negative ? -1 : 1) * (horizontal ? 90 : 54);
+                var translate = new TranslateTransform();
+                surface.RenderTransform = translate;
+                var movement = new DoubleAnimation(offset, 0, duration)
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                translate.BeginAnimation(horizontal ? TranslateTransform.XProperty : TranslateTransform.YProperty, movement);
+                surface.BeginAnimation(OpacityProperty, new DoubleAnimation(0.55, 1, duration));
+                break;
+
+            case SlideTransitionKind.Split:
+            case SlideTransitionKind.Shape:
+            case SlideTransitionKind.Wheel:
+            case SlideTransitionKind.Zoom:
+                surface.RenderTransformOrigin = new Point(0.5, 0.5);
+                var scale = new ScaleTransform(0.94, 0.94);
+                surface.RenderTransform = scale;
+                var scaling = new DoubleAnimation(0.94, 1, duration)
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaling);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaling);
+                surface.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration));
+                break;
+
+            default:
+                surface.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration));
+                break;
+        }
     }
 
     private static FrameworkElement CreateSlideShape(SlideElementPreview element, double scaleX, double scaleY)
@@ -1407,16 +1523,23 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         status.Text = "正在流式导出安全提取内容…";
         try
         {
-            await using var exportDocument = await Providers.OpenAsync(
-                document.Info.FilePath,
-                cancellationToken: operation.Token);
-            if (document is IWorkbookPreviewDocument currentWorkbook &&
-                exportDocument is IWorkbookPreviewDocument exportWorkbook)
+            if (document is IRichTextPreviewDocument)
             {
-                exportWorkbook.SelectWorksheet(currentWorkbook.ActiveWorksheetIndex);
+                await File.WriteAllTextAsync(dialog.FileName, textPreview.Text, new UTF8Encoding(false), operation.Token);
             }
+            else
+            {
+                await using var exportDocument = await Providers.OpenAsync(
+                    document.Info.FilePath,
+                    cancellationToken: operation.Token);
+                if (document is IWorkbookPreviewDocument currentWorkbook &&
+                    exportDocument is IWorkbookPreviewDocument exportWorkbook)
+                {
+                    exportWorkbook.SelectWorksheet(currentWorkbook.ActiveWorksheetIndex);
+                }
 
-            await ViewerDocumentExporter.ExportAsync(exportDocument, dialog.FileName, operation.Token);
+                await ViewerDocumentExporter.ExportAsync(exportDocument, dialog.FileName, operation.Token);
+            }
             status.Text = $"导出完成 · {dialog.FileName}";
         }
         catch (OperationCanceledException)
@@ -1440,7 +1563,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         if (document is null) return;
 
-        var content = markdownPreview.Visibility == Visibility.Visible && markdownParseResult is not null
+        var content = pagePreviewMode
+            ? textPreview.Text
+            : markdownPreview.Visibility == Visibility.Visible && markdownParseResult is not null
             ? textPreview.Text[..Math.Min(textPreview.Text.Length, markdownParseResult.ParsedCharacters)]
             : textPreview.Visibility == Visibility.Visible
                 ? textPreview.Text
@@ -1466,9 +1591,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         try
         {
-            var flow = markdownPreview.Visibility == Visibility.Visible && markdownParseResult is not null
-                ? CreateMarkdownFlowDocument(markdownParseResult, forPrint: true)
-                : new FlowDocument(new Paragraph(new Run(content)))
+            var flow = !richTextData.IsDefaultOrEmpty
+                ? CreateRichTextFlowDocument()
+                : markdownPreview.Visibility == Visibility.Visible && markdownParseResult is not null
+                    ? CreateMarkdownFlowDocument(markdownParseResult, forPrint: true)
+                    : new FlowDocument(new Paragraph(new Run(content)))
                 {
                     FontFamily = textPreview.Visibility == Visibility.Visible
                         ? new FontFamily("Cascadia Mono, Consolas")
@@ -1508,6 +1635,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private void ToggleMarkdownPreview()
     {
         if (!isMarkdownDocument) return;
+        if (pagePreviewMode) SetPagePreviewMode(false);
         if (markdownPreviewMode)
         {
             SetMarkdownPreviewMode(false);
@@ -1540,6 +1668,113 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             loadMoreSlidesButton.Visibility = Visibility.Collapsed;
         }
         if (document is not null) UpdateEditingUi();
+    }
+
+    private void TogglePagePreview()
+    {
+        if (document is not (ITextPreviewDocument or IRichTextPreviewDocument) || !textPreviewFullyLoaded) return;
+        if (textPreview.Text.Length > MaximumPagePreviewCharacters)
+        {
+            status.Text = "文档超过 2 Mi 字符页面排版预算；继续使用流式连续视图以避免课堂设备卡顿。";
+            return;
+        }
+        SetPagePreviewMode(!pagePreviewMode);
+        status.Text = pagePreviewMode
+            ? $"页面视图 · {(landscapePages ? "横向" : "纵向")} · {(twoPageSpread ? "双页" : "单页")}"
+            : "文本连续视图";
+    }
+
+    private void TogglePageOrientation()
+    {
+        if (!pagePreviewMode) return;
+        landscapePages = !landscapePages;
+        pageOrientationButton.Content = landscapePages ? "横向页面" : "纵向页面";
+        RefreshPagePreview();
+    }
+
+    private void TogglePageSpread()
+    {
+        if (!pagePreviewMode) return;
+        twoPageSpread = !twoPageSpread;
+        pageSpreadButton.Content = twoPageSpread ? "双页" : "单页";
+        ApplyPageSpread();
+    }
+
+    private void SetPagePreviewMode(bool enabled)
+    {
+        pagePreviewMode = enabled && document is (ITextPreviewDocument or IRichTextPreviewDocument) && textPreviewFullyLoaded;
+        if (pagePreviewMode)
+        {
+            markdownPreviewMode = false;
+            markdownPreview.Visibility = Visibility.Collapsed;
+            textPreview.Visibility = Visibility.Collapsed;
+            RefreshPagePreview();
+        }
+        else
+        {
+            pagePreview.Visibility = Visibility.Collapsed;
+            pagePreview.Document = null;
+            textPreview.Visibility = markdownPreviewMode ? Visibility.Collapsed : Visibility.Visible;
+            markdownPreview.Visibility = markdownPreviewMode ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        pageViewButton.Content = pagePreviewMode ? "连续视图" : "页面视图";
+        pageOrientationButton.Visibility = pagePreviewMode ? Visibility.Visible : Visibility.Collapsed;
+        pageSpreadButton.Visibility = pagePreviewMode ? Visibility.Visible : Visibility.Collapsed;
+        if (document is not null) UpdateEditingUi();
+    }
+
+    private void RefreshPagePreview()
+    {
+        if (!pagePreviewMode) return;
+        var flow = !richTextData.IsDefaultOrEmpty
+            ? CreateRichTextFlowDocument()
+            : isMarkdownDocument && markdownParseResult is not null
+                ? CreateMarkdownFlowDocument(markdownParseResult, forPrint: true)
+                : new FlowDocument(new Paragraph(new Run(textPreview.Text)))
+            {
+                FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+                FontSize = 12,
+                PagePadding = new Thickness(64, 58, 64, 64),
+                ColumnWidth = double.PositiveInfinity
+            };
+
+        const double portraitWidth = 793.7;
+        const double portraitHeight = 1122.5;
+        flow.PageWidth = landscapePages ? portraitHeight : portraitWidth;
+        flow.PageHeight = landscapePages ? portraitWidth : portraitHeight;
+        flow.ColumnWidth = double.PositiveInfinity;
+        flow.Background = Brushes.White;
+        flow.Foreground = Brushes.Black;
+        pagePreview.Document = flow;
+        pagePreview.Visibility = Visibility.Visible;
+        ApplyPageSpread();
+        ApplyZoom();
+    }
+
+    private FlowDocument CreateRichTextFlowDocument()
+    {
+        var flow = new FlowDocument
+        {
+            PagePadding = new Thickness(64, 58, 64, 64),
+            ColumnWidth = double.PositiveInfinity
+        };
+        try
+        {
+            using var stream = new MemoryStream(richTextData.ToArray(), writable: false);
+            new TextRange(flow.ContentStart, flow.ContentEnd).Load(stream, DataFormats.Rtf);
+            return flow;
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidDataException("RTF formatting is malformed or unsupported.", exception);
+        }
+    }
+
+    private void ApplyPageSpread()
+    {
+        if (!pagePreviewMode || pagePreview.Document is null) return;
+        pagePreview.FitToMaxPagesAcross(twoPageSpread ? 2 : 1);
     }
 
     private void RenderMarkdownPreview()
@@ -1690,7 +1925,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var timer = Stopwatch.StartNew();
         try
         {
-            if (document is IEditableTextDocument && textPreviewFullyLoaded)
+            if (document is (IEditableTextDocument or IRichTextPreviewDocument) && textPreviewFullyLoaded)
             {
                 SearchLoadedText(searchBox.Text.Trim());
                 timer.Stop();
@@ -2029,6 +2264,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                 break;
 
             case ViewerSearchLocationKind.Text:
+                if (pagePreviewMode) SetPagePreviewMode(false);
                 if (isMarkdownDocument && markdownPreviewMode) SetMarkdownPreviewMode(false);
                 if (textPreview.Visibility != Visibility.Visible) return;
                 var index = checked((int)Math.Min(hit.PrimaryIndex, int.MaxValue));
@@ -2101,6 +2337,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         if (document is not IEditableTextDocument || !textPreviewFullyLoaded)
             return;
 
+        if (pagePreviewMode) SetPagePreviewMode(false);
+
         if (isMarkdownDocument && markdownPreviewMode)
         {
             SetMarkdownPreviewMode(false);
@@ -2144,18 +2382,18 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         saveButton.IsEnabled = editable && isDirty;
         saveAsButton.IsEnabled = editable;
         editButton.IsEnabled = editable;
-        editButton.Content = markdownPreviewMode || textPreview.IsReadOnly ? "启用编辑" : "结束编辑";
+        editButton.Content = markdownPreviewMode || pagePreviewMode || textPreview.IsReadOnly ? "启用编辑" : "结束编辑";
 
-        var editing = editable && !textPreview.IsReadOnly && !markdownPreviewMode;
+        var editing = editable && !textPreview.IsReadOnly && !markdownPreviewMode && !pagePreviewMode;
         undoButton.IsEnabled = editing;
         redoButton.IsEnabled = editing;
         cutButton.IsEnabled = editing;
         pasteButton.IsEnabled = editing;
-        copyButton.IsEnabled = editable && !markdownPreviewMode;
-        selectAllButton.IsEnabled = editable && !markdownPreviewMode;
+        copyButton.IsEnabled = editable && !markdownPreviewMode && !pagePreviewMode;
+        selectAllButton.IsEnabled = editable && !markdownPreviewMode && !pagePreviewMode;
 
         modeChipText.Text = editable
-            ? isDirty ? "已修改" : editing ? "编辑中" : markdownPreviewMode ? "预览" : "可编辑"
+            ? isDirty ? "已修改" : editing ? "编辑中" : markdownPreviewMode || pagePreviewMode ? "预览" : "可编辑"
             : "只读";
 
         if (document is not null)
@@ -2374,10 +2612,17 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         markdownOutline.Clear();
         markdownBlocksByLine.Clear();
         markdownParseResult = null;
+        richTextData = [];
         isMarkdownDocument = false;
         markdownPreviewMode = false;
+        pagePreviewMode = false;
         markdownPreview.Visibility = Visibility.Collapsed;
         markdownPreview.Document = new FlowDocument();
+        pagePreview.Visibility = Visibility.Collapsed;
+        pagePreview.Document = null;
+        pageViewButton.Visibility = Visibility.Collapsed;
+        pageOrientationButton.Visibility = Visibility.Collapsed;
+        pageSpreadButton.Visibility = Visibility.Collapsed;
         reloadButton.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
         UpdateEditingUi();
         UpdateDocumentCommandState();

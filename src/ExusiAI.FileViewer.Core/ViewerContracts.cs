@@ -29,6 +29,7 @@ public sealed record ViewerOpenOptions
     public int MaximumPresentationSlides { get; init; } = 2_000;
     public int MaximumPresentationTextCharactersPerSlide { get; init; } = 2 * 1024 * 1024;
     public int MaximumPresentationImageBytes { get; init; } = 16 * 1024 * 1024;
+    public int MaximumRichTextBytes { get; init; } = 16 * 1024 * 1024;
     public int MaximumCachedSlides { get; init; } = 12;
     public int MaximumArchiveEntries { get; init; } = 4096;
     public long MaximumArchiveEntryBytes { get; init; } = 256L * 1024 * 1024;
@@ -49,6 +50,7 @@ public sealed record ViewerOpenOptions
         if (MaximumPresentationSlides is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationSlides));
         if (MaximumPresentationTextCharactersPerSlide is < 1 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationTextCharactersPerSlide));
         if (MaximumPresentationImageBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationImageBytes));
+        if (MaximumRichTextBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumRichTextBytes));
         if (MaximumCachedSlides is < 1 or > 128) throw new ArgumentOutOfRangeException(nameof(MaximumCachedSlides));
         if (MaximumArchiveEntries is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntries));
         if (MaximumArchiveEntryBytes <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntryBytes));
@@ -94,6 +96,13 @@ public interface IEditableTextDocument : ITextPreviewDocument
         string text,
         string destinationPath,
         CancellationToken cancellationToken = default);
+}
+
+public sealed record RichTextContent(ImmutableArray<byte> Data);
+
+public interface IRichTextPreviewDocument
+{
+    ValueTask<RichTextContent> ReadAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed record TabularPage(long StartRow, ImmutableArray<ImmutableArray<string>> Rows, bool IsFinal);
@@ -154,7 +163,31 @@ public sealed record SlidePreview(
     int SlideNumber,
     string Text,
     bool IsFinal,
-    SlideVisualPreview? Visual = null);
+    SlideVisualPreview? Visual = null,
+    SlideTransitionPreview? Transition = null);
+
+public enum SlideTransitionKind
+{
+    None,
+    Cut,
+    Fade,
+    Push,
+    Wipe,
+    Split,
+    Cover,
+    Uncover,
+    RandomBars,
+    Shape,
+    Wheel,
+    Dissolve,
+    Zoom,
+    Other
+}
+
+public sealed record SlideTransitionPreview(
+    SlideTransitionKind Kind,
+    string? Direction,
+    double DurationMilliseconds);
 
 public interface ISlidePreviewDocument
 {

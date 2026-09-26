@@ -79,7 +79,7 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
         var definition = slides[slideNumber - 1];
         var content = await PptxPackageReader.ReadSlideContentAsync(
             package, definition.PartName, definition.Width, definition.Height, options, cancellationToken).ConfigureAwait(false);
-        var preview = new SlidePreview(slideNumber, content.Text, slideNumber == slides.Length, content.Visual);
+        var preview = new SlidePreview(slideNumber, content.Text, slideNumber == slides.Length, content.Visual, content.Transition);
 
         lock (cacheGate)
         {
@@ -224,7 +224,7 @@ internal static class PptxPackageReader
         return normalized.StartsWith("ppt/", StringComparison.Ordinal) ? normalized : $"ppt/{normalized}";
     }
 
-    public static async Task<(string Text, SlideVisualPreview? Visual)> ReadSlideContentAsync(
+    public static async Task<(string Text, SlideVisualPreview? Visual, SlideTransitionPreview? Transition)> ReadSlideContentAsync(
         OpenXmlPackageGuard package,
         string partName,
         double slideWidth,
@@ -297,7 +297,36 @@ internal static class PptxPackageReader
         var visual = elements.Count == 0 && images.Count == 0
             ? null
             : new SlideVisualPreview(slideWidth, slideHeight, elements.ToImmutable(), images.ToImmutable());
-        return (allText.ToString().TrimEnd(), visual);
+        return (allText.ToString().TrimEnd(), visual, ReadTransition(document, p));
+    }
+
+    private static SlideTransitionPreview? ReadTransition(XDocument document, XNamespace presentation)
+    {
+        var transition = document.Root?.Element(presentation + "transition");
+        if (transition is null) return null;
+        var effect = transition.Elements().FirstOrDefault();
+        var name = effect?.Name.LocalName;
+        var kind = name switch
+        {
+            "cut" => SlideTransitionKind.Cut,
+            "fade" => SlideTransitionKind.Fade,
+            "push" => SlideTransitionKind.Push,
+            "wipe" => SlideTransitionKind.Wipe,
+            "split" => SlideTransitionKind.Split,
+            "cover" => SlideTransitionKind.Cover,
+            "pull" or "uncover" => SlideTransitionKind.Uncover,
+            "randomBar" => SlideTransitionKind.RandomBars,
+            "circle" or "diamond" or "plus" or "wedge" => SlideTransitionKind.Shape,
+            "wheel" => SlideTransitionKind.Wheel,
+            "dissolve" => SlideTransitionKind.Dissolve,
+            "zoom" or "newsflash" => SlideTransitionKind.Zoom,
+            null => SlideTransitionKind.None,
+            _ => SlideTransitionKind.Other
+        };
+        var speed = transition.Attribute("spd")?.Value;
+        var duration = speed switch { "fast" => 250d, "slow" => 900d, _ => 500d };
+        var direction = effect?.Attribute("dir")?.Value ?? effect?.Attribute("orient")?.Value;
+        return new(kind, direction, duration);
     }
 
     private static void ReadPicture(

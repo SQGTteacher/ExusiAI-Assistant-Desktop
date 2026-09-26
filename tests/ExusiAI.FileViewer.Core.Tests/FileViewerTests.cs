@@ -326,6 +326,10 @@ public sealed class FileViewerTests : IDisposable
         Assert.Equal("image/png", image.ContentType);
         Assert.NotEmpty(image.Data);
         Assert.Equal(1, image.ZIndex);
+        var transition = Assert.IsType<SlideTransitionPreview>(slides[0].Transition);
+        Assert.Equal(SlideTransitionKind.Push, transition.Kind);
+        Assert.Equal("l", transition.Direction);
+        Assert.Equal(250, transition.DurationMilliseconds);
         Assert.Equal(2, slides[1].SlideNumber);
         Assert.Contains("第二页", slides[1].Text);
         Assert.True(slides[1].IsFinal);
@@ -352,6 +356,34 @@ public sealed class FileViewerTests : IDisposable
         Assert.Contains("课堂标题", first.Text);
         Assert.Equal(second.Text, secondAgain.Text);
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await document.ReadSlideAsync(3));
+    }
+
+    [Fact]
+    public async Task Rtf_provider_reads_bounded_local_payload()
+    {
+        var path = Path.Combine(directory, "lesson.rtf");
+        await File.WriteAllTextAsync(path, @"{\rtf1\ansi Classroom \b notes\b0}", Encoding.ASCII);
+        var registry = CreateRegistry();
+
+        await using var opened = await registry.OpenAsync(path);
+        var document = Assert.IsAssignableFrom<IRichTextPreviewDocument>(opened);
+        var content = await document.ReadAsync();
+
+        Assert.False(content.Data.IsDefaultOrEmpty);
+        Assert.Equal("RTF 分页文档", opened.Info.FormatName);
+        Assert.True(opened.Info.IsReadOnly);
+    }
+
+    [Fact]
+    public async Task Rtf_provider_rejects_non_rtf_payload()
+    {
+        var path = Path.Combine(directory, "fake.rtf");
+        await File.WriteAllTextAsync(path, "not rtf", Encoding.ASCII);
+        var registry = CreateRegistry();
+
+        await using var opened = await registry.OpenAsync(path);
+        var document = Assert.IsAssignableFrom<IRichTextPreviewDocument>(opened);
+        await Assert.ThrowsAsync<FileRejectedException>(async () => await document.ReadAsync());
     }
 
     [Fact]
@@ -405,6 +437,7 @@ public sealed class FileViewerTests : IDisposable
     private static FileViewerProviderRegistry CreateRegistry() => new(new IFileViewerProvider[]
     {
         new TextFileViewerProvider(),
+        new RtfFileViewerProvider(),
         new CsvFileViewerProvider(),
         new DocxFileViewerProvider(),
         new XlsxFileViewerProvider(),
@@ -422,7 +455,7 @@ public sealed class FileViewerTests : IDisposable
             (externalSlide ? "https://example.invalid/slide1.xml\" TargetMode=\"External" : "slides/slide1.xml") +
             "\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide2.xml\"/></Relationships>");
         WriteEntry(archive, "ppt/slides/slide1.xml",
-            "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x=\"914400\" y=\"685800\"/><a:ext cx=\"5486400\" cy=\"1828800\"/></a:xfrm><a:solidFill><a:srgbClr val=\"FFF2CC\"/></a:solidFill></p:spPr><p:txBody><a:p><a:r><a:rPr sz=\"2400\" b=\"1\"><a:solidFill><a:srgbClr val=\"1F1F1F\"/></a:solidFill></a:rPr><a:t>课堂标题</a:t></a:r></a:p><a:p><a:r><a:t>第一点</a:t></a:r></a:p></p:txBody></p:sp><p:pic><p:blipFill><a:blip r:embed=\"rIdImage1\"/></p:blipFill><p:spPr><a:xfrm><a:off x=\"7315200\" y=\"914400\"/><a:ext cx=\"3657600\" cy=\"2743200\"/></a:xfrm></p:spPr></p:pic><p:sp><p:spPr><a:xfrm><a:off x=\"1000000\" y=\"3000000\"/><a:ext cx=\"1000000\" cy=\"1000000\"/></a:xfrm><a:prstGeom prst=\"ellipse\"/><a:solidFill><a:srgbClr val=\"5B9BD5\"/></a:solidFill><a:ln w=\"25400\"><a:solidFill><a:srgbClr val=\"2F5597\"/></a:solidFill></a:ln></p:spPr></p:sp><p:sp><p:spPr><a:xfrm rot=\"900000\"><a:off x=\"2500000\" y=\"3500000\"/><a:ext cx=\"2000000\" cy=\"10000\"/></a:xfrm><a:prstGeom prst=\"line\"/><a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"C00000\"/></a:solidFill></a:ln></p:spPr></p:sp></p:spTree></p:cSld></p:sld>");
+            "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x=\"914400\" y=\"685800\"/><a:ext cx=\"5486400\" cy=\"1828800\"/></a:xfrm><a:solidFill><a:srgbClr val=\"FFF2CC\"/></a:solidFill></p:spPr><p:txBody><a:p><a:r><a:rPr sz=\"2400\" b=\"1\"><a:solidFill><a:srgbClr val=\"1F1F1F\"/></a:solidFill></a:rPr><a:t>课堂标题</a:t></a:r></a:p><a:p><a:r><a:t>第一点</a:t></a:r></a:p></p:txBody></p:sp><p:pic><p:blipFill><a:blip r:embed=\"rIdImage1\"/></p:blipFill><p:spPr><a:xfrm><a:off x=\"7315200\" y=\"914400\"/><a:ext cx=\"3657600\" cy=\"2743200\"/></a:xfrm></p:spPr></p:pic><p:sp><p:spPr><a:xfrm><a:off x=\"1000000\" y=\"3000000\"/><a:ext cx=\"1000000\" cy=\"1000000\"/></a:xfrm><a:prstGeom prst=\"ellipse\"/><a:solidFill><a:srgbClr val=\"5B9BD5\"/></a:solidFill><a:ln w=\"25400\"><a:solidFill><a:srgbClr val=\"2F5597\"/></a:solidFill></a:ln></p:spPr></p:sp><p:sp><p:spPr><a:xfrm rot=\"900000\"><a:off x=\"2500000\" y=\"3500000\"/><a:ext cx=\"2000000\" cy=\"10000\"/></a:xfrm><a:prstGeom prst=\"line\"/><a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"C00000\"/></a:solidFill></a:ln></p:spPr></p:sp></p:spTree></p:cSld><p:transition spd=\"fast\"><p:push dir=\"l\"/></p:transition></p:sld>");
         WriteEntry(archive, "ppt/slides/_rels/slide1.xml.rels",
             "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdImage1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"../media/image1.png\"/></Relationships>");
         WriteBinaryEntry(archive, "ppt/media/image1.png", Convert.FromBase64String(
