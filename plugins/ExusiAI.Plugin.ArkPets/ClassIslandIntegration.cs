@@ -1,3 +1,4 @@
+using System.IO;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -204,13 +205,14 @@ internal static class DesktopLessonOrganizer
         ClassIslandPetState state,
         CancellationToken cancellationToken = default)
     {
-        if (state.Previous is null || !Directory.Exists(desktopDirectory))
+        var previous = state.Previous;
+        if (previous is null || !Directory.Exists(desktopDirectory))
             return Task.FromResult(0);
 
-        var lessonStart = state.Date.ToDateTime(TimeOnly.FromTimeSpan(state.Previous.Start)).AddMinutes(-5);
+        var lessonStart = state.Date.ToDateTime(TimeOnly.FromTimeSpan(previous.Start)).AddMinutes(-5);
         var observedAt = state.GeneratedAt == DateTimeOffset.MinValue ? DateTime.Now : state.GeneratedAt.LocalDateTime;
         var targetRoot = Path.Combine(desktopDirectory, "ExusiAI 课堂整理");
-        var subject = Sanitize(string.IsNullOrWhiteSpace(state.Previous.Subject) ? "课堂" : state.Previous.Subject);
+        var subject = Sanitize(string.IsNullOrWhiteSpace(previous.Subject) ? "课堂" : previous.Subject);
         var target = Path.Combine(targetRoot, state.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), subject);
         Directory.CreateDirectory(target);
 
