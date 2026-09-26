@@ -12,6 +12,13 @@ internal sealed record MishaSettingsCategory(
     string Description,
     IReadOnlyList<string> Keys);
 
+internal sealed record MishaSettingDescriptor(
+    string Title,
+    string Description,
+    string? DefaultJson = null,
+    IReadOnlyDictionary<int, string>? Choices = null,
+    bool IsReadOnly = false);
+
 internal static class MishaSettingsCatalog
 {
     private static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -53,11 +60,54 @@ internal static class MishaSettingsCatalog
         ["WindowDockingOffsetY"] = "垂直偏移"
     };
 
+    private static readonly IReadOnlyDictionary<string, MishaSettingDescriptor> Descriptors =
+        new Dictionary<string, MishaSettingDescriptor>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["AnimationLevel"] = new("动画级别", "控制界面动画数量；与 ClassIsland Misha 的 0–2 级一致。", "2",
+                new Dictionary<int, string> { [0] = "关闭动画", [1] = "减少动画", [2] = "完整动画" }),
+            ["CriticalSafeModeMethod"] = new("严重错误恢复方式", "ClassIsland 检测到连续启动错误时采用的恢复方式。", "0",
+                new Dictionary<int, string> { [0] = "询问后处理", [1] = "自动进入安全模式", [2] = "继续启动" }),
+            ["HideMode"] = new("隐藏方式", "决定满足隐藏条件时信息岛的处理方式。", "0",
+                new Dictionary<int, string> { [0] = "隐藏窗口", [1] = "降低不透明度" }),
+            ["HideOnClass"] = new("上课时隐藏", "进入上课状态后自动隐藏信息岛。", "false"),
+            ["HideOnFullscreen"] = new("全屏时隐藏", "检测到其他应用全屏时自动隐藏信息岛。", "false"),
+            ["HideOnMaxWindow"] = new("窗口最大化时隐藏", "检测到其他应用最大化时自动隐藏信息岛。", "false"),
+            ["IsCriticalSafeMode"] = new("严重错误安全模式", "下次启动时进入 ClassIsland 严重错误安全模式。", "false"),
+            ["IsSplashEnabled"] = new("显示启动画面", "启动 ClassIsland 模块时显示 Misha 启动画面。", "false"),
+            ["IsWaitForTransientDisabled"] = new("等待临时禁用结束", "启动时等待集控临时禁用状态结束。", "false"),
+            ["MultiWeekRotationMaxCycle"] = new("最大轮换周数", "多周课表轮换的最大周期，ClassIsland 默认 4 周。", "4"),
+            ["ReduceProgressAccuracy"] = new("降低进度精度", "降低进度动画刷新频率以减少资源占用。", "false"),
+            ["ShowDetailedStatusOnSplash"] = new("启动画面显示详细状态", "在启动画面展示当前加载步骤。", "false"),
+            ["ShowSellingAnnouncement"] = new("显示开源软件提示", "显示 ClassIsland 原版关于倒卖与开源渠道的提示。", "true"),
+            ["SingleWeekStartTime"] = new("学期开始日期", "多周轮换课表的计算起点，使用 ClassIsland 日期字符串格式。"),
+            ["SplashCustomLogoSource"] = new("启动画面自定义图标", "自定义启动图标路径；留空使用默认图标。", "\"\""),
+            ["SplashCustomText"] = new("启动画面自定义文字", "自定义启动画面标题；留空使用默认标题。", "\"\""),
+            ["TaskBarIconClickBehavior"] = new("托盘图标单击行为", "单击托盘图标时执行的 ClassIsland 操作。", "0",
+                new Dictionary<int, string> { [0] = "打开设置", [1] = "显示/隐藏信息岛", [2] = "打开档案编辑", [4] = "不执行操作" }),
+            ["ExactTimeServer"] = new("时间服务器", "精确时间使用的 NTP 服务器。", "\"ntp.aliyun.com\""),
+            ["IsExactTimeEnabled"] = new("使用精确时间", "从指定服务器同步时间，而不是只使用系统时间。", "true"),
+            ["IsTimeAutoAdjustEnabled"] = new("自动时间偏移", "每天自动增加设定的时间偏移量。", "false"),
+            ["TimeAutoAdjustSeconds"] = new("每日偏移增量", "每天自动调整的秒数。", "0.0"),
+            ["TimeOffsetSeconds"] = new("课程时间偏移", "增大可抵消铃声提前，减小可抵消铃声滞后，单位为秒。", "0.0"),
+            ["IsAutoBackupEnabled"] = new("自动备份", "按周期备份 ClassIsland 数据。", "true"),
+            ["AutoBackupIntervalDays"] = new("备份间隔", "两次自动备份之间的天数。", "7"),
+            ["AutoBackupLimit"] = new("备份保留数量", "超过此数量时清理较旧的自动备份。", "16"),
+            ["BackupFilesSize"] = new("备份占用空间", "由 ClassIsland 运行时计算的展示值。", "\"计算中...\"", IsReadOnly: true),
+            ["LastAutoBackupTime"] = new("上次自动备份", "由 ClassIsland 运行时维护。", IsReadOnly: true),
+            ["IsReportingEnabled"] = new("发送诊断信息", "允许发送匿名崩溃与诊断信息。", "true"),
+            ["TrustedProfileIds"] = new("受信任档案", "ClassIsland 信任的档案 GUID 列表；保留原生 JSON 结构。", "[]")
+        };
+
     public static string DisplayName(string key) => DisplayNames.TryGetValue(key, out var value) ? value : key;
+
+    public static MishaSettingDescriptor Describe(string key) =>
+        Descriptors.TryGetValue(key, out var value)
+            ? value
+            : new MishaSettingDescriptor(DisplayName(key), "ClassIsland 原生设置字段；保存时保持原 JSON 类型。");
 
     public static IReadOnlyList<MishaSettingsCategory> Categories { get; } =
     [
-        new("general", "基本", "对应 ClassIsland 2.2 Misha 的基本设置。只修改真实 Settings.json 中已经存在的字段，不补写臆造默认值。",
+        new("general", "基本", "对应 ClassIsland 2.2 Misha 的行为与启动设置。未写入文件的项目显示上游默认值，保存后仍使用原生字段名和 JSON 类型。",
         [
             "AnimationLevel", "CriticalSafeModeMethod", "HideMode", "HideOnClass", "HideOnFullscreen", "HideOnMaxWindow",
             "HideRules", "IsCriticalSafeMode", "IsSplashEnabled", "IsWaitForTransientDisabled", "MultiWeekRotationMaxCycle",
@@ -198,27 +248,32 @@ internal sealed class MishaSettingsCategoryPage : UserControl
             return;
         }
 
-        var unavailableCount = 0;
         foreach (var key in keys)
         {
-            if (!workspace.Settings.TryGetPropertyValue(key, out var node))
+            var descriptor = MishaSettingsCatalog.Describe(key);
+            workspace.Settings.TryGetPropertyValue(key, out var node);
+            var effectiveNode = node?.DeepClone();
+            if (effectiveNode is null && descriptor.DefaultJson is not null)
+                effectiveNode = JsonNode.Parse(descriptor.DefaultJson);
+
+            if (effectiveNode is null)
             {
-                unavailableCount++;
+                fields.Children.Add(MishaUi.SettingRow(
+                    descriptor.Title,
+                    descriptor.Description + " 当前文件未记录该值。",
+                    MishaUi.Note("等待 ClassIsland 写入运行时值")));
                 continue;
             }
 
-            var editor = SettingEditor.Create(node);
-            editors[key] = editor;
-            fields.Children.Add(MishaUi.SettingRow(MishaSettingsCatalog.DisplayName(key), Describe(node), editor.Element));
+            var editor = SettingEditor.Create(effectiveNode, descriptor);
+            if (!descriptor.IsReadOnly)
+                editors[key] = editor;
+            fields.Children.Add(MishaUi.SettingRow(descriptor.Title, descriptor.Description, editor.Element));
         }
 
         if (editors.Count == 0)
         {
-            fields.Children.Add(MishaUi.Note("此分类的字段当前均由 ClassIsland 使用默认值，因此不显示空白选项。ClassIsland 将字段写入 Settings.json 后，这里会自动出现对应控件。"));
-        }
-        else if (unavailableCount > 0)
-        {
-            status.Text += $" · 已显示 {editors.Count} 项；另有 {unavailableCount} 项沿用 ClassIsland 默认值，未生成空白控件。";
+            fields.Children.Add(MishaUi.Note("此分类只有 ClassIsland 运行时维护的只读状态。"));
         }
     }
 
@@ -245,21 +300,10 @@ internal sealed class MishaSettingsCategoryPage : UserControl
         }
     }
 
-    private static string Describe(JsonNode? node) => node switch
-    {
-        null => "ClassIsland 原生 null；可保持 null 或改为任意合法 JSON 值。",
-        JsonArray => "ClassIsland 原生数组；按 JSON 编辑并进行语法验证。",
-        JsonObject => "ClassIsland 原生对象；按 JSON 编辑并进行语法验证，未知字段原样保留。",
-        JsonValue value when value.TryGetValue<bool>(out _) => "布尔设置。",
-        JsonValue value when value.TryGetValue<int>(out _) => "整数设置。",
-        JsonValue value when value.TryGetValue<long>(out _) => "整数设置。",
-        JsonValue value when value.TryGetValue<double>(out _) => "数值设置。",
-        _ => "文本设置。"
-    };
-
     private enum SettingEditorKind
     {
         Boolean,
+        Choice,
         Integer,
         Long,
         Number,
@@ -272,35 +316,68 @@ internal sealed class MishaSettingsCategoryPage : UserControl
         private readonly SettingEditorKind kind;
         private readonly CheckBox? checkBox;
         private readonly TextBox? textBox;
+        private readonly ComboBox? comboBox;
 
-        private SettingEditor(SettingEditorKind kind, FrameworkElement element, CheckBox? checkBox = null, TextBox? textBox = null)
+        private SettingEditor(
+            SettingEditorKind kind,
+            FrameworkElement element,
+            CheckBox? checkBox = null,
+            TextBox? textBox = null,
+            ComboBox? comboBox = null)
         {
             this.kind = kind;
             Element = element;
             this.checkBox = checkBox;
             this.textBox = textBox;
+            this.comboBox = comboBox;
         }
 
         public FrameworkElement Element { get; }
 
-        public static SettingEditor Create(JsonNode? node)
+        public static SettingEditor Create(JsonNode? node, MishaSettingDescriptor descriptor)
         {
+            if (descriptor.Choices is not null &&
+                node is JsonValue choiceValue &&
+                choiceValue.TryGetValue<int>(out var selectedValue))
+            {
+                var choices = descriptor.Choices
+                    .Select(x => new SettingChoice(x.Key, x.Value))
+                    .ToArray();
+                var combo = new ComboBox
+                {
+                    ItemsSource = choices,
+                    DisplayMemberPath = nameof(SettingChoice.Title),
+                    SelectedItem = choices.FirstOrDefault(x => x.Value == selectedValue) ?? choices.FirstOrDefault(),
+                    MinWidth = 190,
+                    IsEnabled = !descriptor.IsReadOnly
+                };
+                return new(SettingEditorKind.Choice, combo, comboBox: combo);
+            }
+
             if (node is JsonValue value)
             {
                 if (value.TryGetValue<bool>(out var boolean))
                 {
-                    var checkBox = new CheckBox { IsChecked = boolean, Content = "启用", MinWidth = 90 };
+                    var checkBox = new CheckBox
+                    {
+                        IsChecked = boolean,
+                        Content = boolean ? "已启用" : "已关闭",
+                        MinWidth = 90,
+                        IsEnabled = !descriptor.IsReadOnly
+                    };
+                    checkBox.Checked += (_, _) => checkBox.Content = "已启用";
+                    checkBox.Unchecked += (_, _) => checkBox.Content = "已关闭";
                     return new(SettingEditorKind.Boolean, checkBox, checkBox: checkBox);
                 }
 
                 if (value.TryGetValue<int>(out var integer))
-                    return Text(SettingEditorKind.Integer, integer.ToString(CultureInfo.InvariantCulture));
+                    return Text(SettingEditorKind.Integer, integer.ToString(CultureInfo.InvariantCulture), descriptor.IsReadOnly);
                 if (value.TryGetValue<long>(out var longInteger))
-                    return Text(SettingEditorKind.Long, longInteger.ToString(CultureInfo.InvariantCulture));
+                    return Text(SettingEditorKind.Long, longInteger.ToString(CultureInfo.InvariantCulture), descriptor.IsReadOnly);
                 if (value.TryGetValue<double>(out var number))
-                    return Text(SettingEditorKind.Number, number.ToString("R", CultureInfo.InvariantCulture));
+                    return Text(SettingEditorKind.Number, number.ToString("R", CultureInfo.InvariantCulture), descriptor.IsReadOnly);
                 if (value.TryGetValue<string>(out var text))
-                    return Text(SettingEditorKind.Text, text ?? "", 360);
+                    return Text(SettingEditorKind.Text, text ?? "", descriptor.IsReadOnly, 360);
             }
 
             var jsonBox = new TextBox
@@ -314,6 +391,7 @@ internal sealed class MishaSettingsCategoryPage : UserControl
                 MinHeight = node is JsonArray or JsonObject ? 120 : 72,
                 MaxHeight = 320
             };
+            jsonBox.IsReadOnly = descriptor.IsReadOnly;
             return new(SettingEditorKind.Json, jsonBox, textBox: jsonBox);
         }
 
@@ -323,6 +401,8 @@ internal sealed class MishaSettingsCategoryPage : UserControl
             return kind switch
             {
                 SettingEditorKind.Boolean => JsonValue.Create(checkBox?.IsChecked == true),
+                SettingEditorKind.Choice => JsonValue.Create((comboBox?.SelectedItem as SettingChoice)?.Value
+                    ?? throw new FormatException("请选择一个有效选项。")),
                 SettingEditorKind.Integer => JsonValue.Create(int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
                 SettingEditorKind.Long => JsonValue.Create(long.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
                 SettingEditorKind.Number => JsonValue.Create(double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture)),
@@ -334,10 +414,12 @@ internal sealed class MishaSettingsCategoryPage : UserControl
             };
         }
 
-        private static SettingEditor Text(SettingEditorKind kind, string value, double minWidth = 180)
+        private static SettingEditor Text(SettingEditorKind kind, string value, bool isReadOnly, double minWidth = 180)
         {
-            var box = new TextBox { Text = value, MinWidth = minWidth };
+            var box = new TextBox { Text = value, MinWidth = minWidth, IsReadOnly = isReadOnly };
             return new(kind, box, textBox: box);
         }
+
+        private sealed record SettingChoice(int Value, string Title);
     }
 }

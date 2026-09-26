@@ -66,6 +66,24 @@ public sealed class MishaSettingsParityTests
     }
 
     [Fact]
+    public void NativeSettingDescriptorsExposeUpstreamDefaultsAndChoices()
+    {
+        var animation = MishaSettingsCatalog.Describe("AnimationLevel");
+        Assert.Equal("2", animation.DefaultJson);
+        Assert.Equal("完整动画", animation.Choices![2]);
+
+        var clock = MishaSettingsCatalog.Describe("ExactTimeServer");
+        Assert.Equal("\"ntp.aliyun.com\"", clock.DefaultJson);
+
+        var backupSize = MishaSettingsCatalog.Describe("BackupFilesSize");
+        Assert.True(backupSize.IsReadOnly);
+
+        var unknown = MishaSettingsCatalog.Describe("FutureMishaField");
+        Assert.Null(unknown.DefaultJson);
+        Assert.Equal("FutureMishaField", unknown.Title);
+    }
+
+    [Fact]
     public async Task SettingsWorkspaceRoundTripsKnownAndUnknownFieldsWithBackup()
     {
         using var root = new TemporaryDirectory();
