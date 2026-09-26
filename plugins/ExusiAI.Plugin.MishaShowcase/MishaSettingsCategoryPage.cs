@@ -319,6 +319,8 @@ internal sealed class MishaSettingsCategoryPage : UserControl
             return;
         }
 
+        var advancedFields = new StackPanel();
+        var advancedCount = 0;
         foreach (var key in keys)
         {
             var descriptor = MishaSettingsCatalog.Describe(key);
@@ -339,7 +341,29 @@ internal sealed class MishaSettingsCategoryPage : UserControl
             var editor = SettingEditor.Create(effectiveNode, descriptor);
             if (!descriptor.IsReadOnly)
                 editors[key] = editor;
-            fields.Children.Add(MishaUi.SettingRow(descriptor.Title, descriptor.Description, editor.Element));
+            var row = MishaUi.SettingRow(descriptor.Title, descriptor.Description, editor.Element);
+            if (category.Id == "compat" || effectiveNode is JsonArray or JsonObject || effectiveNode is null)
+            {
+                advancedFields.Children.Add(row);
+                advancedCount++;
+            }
+            else
+            {
+                fields.Children.Add(row);
+            }
+        }
+
+        if (advancedCount > 0)
+        {
+            var advanced = new Expander
+            {
+                Header = $"高级原生配置（{advancedCount} 项）",
+                Content = advancedFields,
+                IsExpanded = category.Id == "compat",
+                Margin = new Thickness(0, 8, 0, 12),
+                Padding = new Thickness(0, 6, 0, 0)
+            };
+            fields.Children.Add(advanced);
         }
 
         if (editors.Count == 0)

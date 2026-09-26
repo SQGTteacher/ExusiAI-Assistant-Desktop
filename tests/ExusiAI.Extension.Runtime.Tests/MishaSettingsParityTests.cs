@@ -161,6 +161,21 @@ public sealed class MishaSettingsParityTests
                 host.Measure(new System.Windows.Size(1280, 800));
                 host.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
                 host.UpdateLayout();
+
+                foreach (var page in new System.Windows.FrameworkElement[]
+                {
+                    new MishaClassPlanGroupsPage(store),
+                    new MishaOrderedSchedulesPage(store),
+                    new MishaScheduleModePage(store),
+                    new MishaTemporarySchedulePage(store),
+                    new MishaComponentLayoutsPage(store),
+                    new MishaAutomationEditorPage(store)
+                })
+                {
+                    page.Measure(new System.Windows.Size(1280, 800));
+                    page.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
+                    page.UpdateLayout();
+                }
             }
             catch (Exception exception)
             {
