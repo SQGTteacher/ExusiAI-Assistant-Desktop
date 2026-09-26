@@ -66,6 +66,29 @@ public sealed class MishaSettingsParityTests
     }
 
     [Fact]
+    public void NativeSettingDescriptorsExposeUpstreamDefaultsAndChoices()
+    {
+        var animation = MishaSettingsCatalog.Describe("AnimationLevel");
+        Assert.Equal("1", animation.DefaultJson);
+        Assert.Equal("完整动画", animation.Choices![2]);
+
+        var clock = MishaSettingsCatalog.Describe("ExactTimeServer");
+        Assert.Equal("\"ntp.aliyun.com\"", clock.DefaultJson);
+
+        var backupSize = MishaSettingsCatalog.Describe("BackupFilesSize");
+        Assert.True(backupSize.IsReadOnly);
+
+        Assert.Equal("true", MishaSettingsCatalog.Describe("IsNotificationEnabled").DefaultJson);
+        Assert.Equal("false", MishaSettingsCatalog.Describe("IsAutomationEnabled").DefaultJson);
+        Assert.Equal("stable", JsonNode.Parse(MishaSettingsCatalog.Describe("SelectedUpdateChannelV2").DefaultJson!)!.GetValue<string>());
+        Assert.True(MishaSettingsCatalog.Describe("PluginIndexes").IsReadOnly);
+
+        var unknown = MishaSettingsCatalog.Describe("FutureMishaField");
+        Assert.Null(unknown.DefaultJson);
+        Assert.Equal("FutureMishaField", unknown.Title);
+    }
+
+    [Fact]
     public async Task SettingsWorkspaceRoundTripsKnownAndUnknownFieldsWithBackup()
     {
         using var root = new TemporaryDirectory();
@@ -138,6 +161,21 @@ public sealed class MishaSettingsParityTests
                 host.Measure(new System.Windows.Size(1280, 800));
                 host.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
                 host.UpdateLayout();
+
+                foreach (var page in new System.Windows.FrameworkElement[]
+                {
+                    new MishaClassPlanGroupsPage(store),
+                    new MishaOrderedSchedulesPage(store),
+                    new MishaScheduleModePage(store),
+                    new MishaTemporarySchedulePage(store),
+                    new MishaComponentLayoutsPage(store),
+                    new MishaAutomationEditorPage(store)
+                })
+                {
+                    page.Measure(new System.Windows.Size(1280, 800));
+                    page.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
+                    page.UpdateLayout();
+                }
             }
             catch (Exception exception)
             {

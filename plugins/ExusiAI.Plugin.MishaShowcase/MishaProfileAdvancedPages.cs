@@ -9,6 +9,11 @@ internal sealed class MishaClassPlanGroupsPage : UserControl
     private readonly MishaPlatformStore store;
     private readonly DataGrid groups = MishaUi.DataGrid();
     private readonly DataGrid plans = MishaUi.DataGrid();
+    private readonly ComboBox assignedGroup = new()
+    {
+        MinWidth = 240,
+        DisplayMemberPath = nameof(ClassIslandClassPlanGroupRow.Name)
+    };
     private readonly TextBlock status = MishaUi.Note("");
 
     public MishaClassPlanGroupsPage(MishaPlatformStore store)
@@ -56,8 +61,19 @@ internal sealed class MishaClassPlanGroupsPage : UserControl
         plans.CanUserAddRows = false;
         plans.MinHeight = 220;
         plans.Columns.Add(new DataGridTextColumn { Header = "课表", Binding = new Binding(nameof(ClassIslandClassPlanRow.Name)), IsReadOnly = true, Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-        plans.Columns.Add(new DataGridTextColumn { Header = "关联课表群", Binding = new Binding(nameof(ClassIslandClassPlanRow.AssociatedGroup)), Width = 300 });
+        plans.SelectionChanged += (_, _) => RefreshAssignedGroup();
         root.Children.Add(plans);
+
+        assignedGroup.SelectionChanged += (_, _) =>
+        {
+            if (plans.SelectedItem is ClassIslandClassPlanRow plan &&
+                assignedGroup.SelectedItem is ClassIslandClassPlanGroupRow group)
+                plan.AssociatedGroup = group.Id;
+        };
+        root.Children.Add(MishaUi.SettingRow(
+            "选中课表所属课表群",
+            "以课表群名称选择，保存时仍写入 ClassIsland 原生 GUID。",
+            assignedGroup));
 
         var save = MishaUi.Button("保存 Profile");
         save.Margin = new Thickness(0, 12, 0, 0);
@@ -79,9 +95,30 @@ internal sealed class MishaClassPlanGroupsPage : UserControl
 
     private void Reload()
     {
-        groups.ItemsSource = store.Profile?.ClassPlanGroups ?? [];
-        plans.ItemsSource = store.Profile?.ClassPlans ?? [];
+        var profile = store.Profile;
+        var groupRows = profile?.ClassPlanGroups ?? [];
+        groups.ItemsSource = groupRows;
+        plans.ItemsSource = profile?.ClassPlans ?? [];
+        assignedGroup.ItemsSource = groupRows;
+        RefreshAssignedGroup();
     }
+
+    private void RefreshAssignedGroup()
+    {
+        if (plans.SelectedItem is not ClassIslandClassPlanRow plan ||
+            assignedGroup.ItemsSource is not IEnumerable<ClassIslandClassPlanGroupRow> groupRows)
+        {
+            assignedGroup.SelectedItem = null;
+            return;
+        }
+
+        assignedGroup.SelectedItem = groupRows.FirstOrDefault(group => SameId(group.Id, plan.AssociatedGroup));
+    }
+
+    private static bool SameId(string left, string right) =>
+        Guid.TryParse(left, out var leftGuid) && Guid.TryParse(right, out var rightGuid)
+            ? leftGuid == rightGuid
+            : string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed class MishaOrderedSchedulesPage : UserControl
@@ -111,7 +148,6 @@ internal sealed class MishaOrderedSchedulesPage : UserControl
         grid.MinHeight = 320;
         grid.Columns.Add(new DataGridTextColumn { Header = "日期", Binding = new Binding(nameof(ClassIslandOrderedScheduleRow.Date)) { StringFormat = "yyyy-MM-dd" }, IsReadOnly = true, Width = 130 });
         grid.Columns.Add(new DataGridTextColumn { Header = "课表", Binding = new Binding(nameof(ClassIslandOrderedScheduleRow.ClassPlanName)), IsReadOnly = true, Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-        grid.Columns.Add(new DataGridTextColumn { Header = "课表标识", Binding = new Binding(nameof(ClassIslandOrderedScheduleRow.ClassPlanId)), Width = 300 });
         root.Children.Add(grid);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
@@ -170,12 +206,12 @@ internal sealed class MishaScheduleModePage : UserControl
         this.store = store;
         var root = MishaUi.Page("日程模式", "直接编辑 Profile.ScheduleItems 和 ScheduleType。ScheduleType=1 时 ClassIsland 使用独立日程项目。");
 
-        var mode = new ComboBox { ItemsSource = new[] { "Classic", "Schedule" }, Width = 160 };
+        var mode = new ComboBox { ItemsSource = new[] { "经典课表", "独立日程" }, Width = 160 };
         mode.SelectionChanged += (_, _) =>
         {
             if (store.Profile is not null) store.Profile.ScheduleType = mode.SelectedIndex;
         };
-        root.Children.Add(MishaUi.SettingRow("ScheduleType", "Classic=0，Schedule=1。", mode));
+        root.Children.Add(MishaUi.SettingRow("日程模式", "与 ClassIsland ScheduleType 一致；经典课表使用 ClassPlans，独立日程使用 ScheduleItems。", mode));
 
         grid.AutoGenerateColumns = false;
         grid.CanUserAddRows = false;
