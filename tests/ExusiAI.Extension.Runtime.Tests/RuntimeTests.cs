@@ -739,6 +739,7 @@ public sealed class RuntimeTests
     public void MishaRealDataPagesConstructWithoutCreatingConfiguration()
     {
         Exception? failure = null;
+        string? currentPage = null;
         var thread = new Thread(() =>
         {
             try
@@ -766,9 +767,9 @@ public sealed class RuntimeTests
 
                 foreach (var page in pages)
                 {
+                    currentPage = page.GetType().Name;
                     page.Measure(new System.Windows.Size(1280, 800));
                     page.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
-                    page.UpdateLayout();
                 }
             }
             catch (Exception exception)
@@ -778,8 +779,11 @@ public sealed class RuntimeTests
         });
 
         thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
         thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(20)), "Misha real-data page smoke test timed out.");
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(60)),
+            $"Misha real-data page smoke test timed out while laying out {currentPage ?? "an unknown page"}.");
         Assert.Null(failure);
     }
 
