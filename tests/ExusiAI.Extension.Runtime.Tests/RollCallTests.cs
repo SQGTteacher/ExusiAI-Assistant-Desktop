@@ -1,4 +1,5 @@
 using ExusiAI.Plugin.RollCall;
+using System.IO.Compression;
 
 namespace ExusiAI.Extension.Runtime.Tests;
 
@@ -44,5 +45,31 @@ public sealed class RollCallTests
         Assert.Equal(1, session.RemainingCount);
         Assert.Empty(session.Events);
         Assert.Null(session.Current);
+    }
+
+    [Fact]
+    public async Task ImporterReadsFirstXlsxWorksheet()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"roster-{Guid.NewGuid():N}.xlsx");
+        try
+        {
+            using (var archive = ZipFile.Open(path, ZipArchiveMode.Create))
+            {
+                Write(archive, "xl/workbook.xml", """<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="名单" sheetId="1" r:id="rId1"/></sheets></workbook>""");
+                Write(archive, "xl/_rels/workbook.xml.rels", """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml" Type="worksheet"/></Relationships>""");
+                Write(archive, "xl/sharedStrings.xml", """<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>学号</t></si><si><t>姓名</t></si><si><t>班级</t></si><si><t>张三</t></si><si><t>高一一班</t></si></sst>""");
+                Write(archive, "xl/worksheets/sheet1.xml", """<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c></row><row r="2"><c r="A2"><v>01</v></c><c r="B2" t="s"><v>3</v></c><c r="C2" t="s"><v>4</v></c></row></sheetData></worksheet>""");
+            }
+
+            var result = await RosterImporter.ParseFileAsync(path);
+            Assert.Equal(new RosterEntry("张三", "01", "高一一班"), Assert.Single(result));
+        }
+        finally { File.Delete(path); }
+    }
+
+    private static void Write(ZipArchive archive, string path, string content)
+    {
+        using var writer = new StreamWriter(archive.CreateEntry(path).Open());
+        writer.Write(content);
     }
 }

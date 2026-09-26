@@ -84,11 +84,11 @@ internal sealed class RollCallPage : UserControl
 
     private async Task ImportAsync()
     {
-        var dialog = new OpenFileDialog { Title = "导入班级名单", Filter = "名单文件 (*.csv;*.tsv;*.txt)|*.csv;*.tsv;*.txt|所有文件 (*.*)|*.*" };
+        var dialog = new OpenFileDialog { Title = "导入班级名单", Filter = "名单文件 (*.xlsx;*.csv;*.tsv;*.txt)|*.xlsx;*.csv;*.tsv;*.txt|所有文件 (*.*)|*.*" };
         if (dialog.ShowDialog() != true) return;
         try
         {
-            var entries = RosterImporter.Parse(await File.ReadAllTextAsync(dialog.FileName, Encoding.UTF8));
+            var entries = await RosterImporter.ParseFileAsync(dialog.FileName);
             if (entries.Count == 0) { status.Text = "没有识别到姓名，请检查文件内容或表头。"; return; }
             session = new(entries); status.Text = $"已导入 {entries.Count} 名学生。"; await SaveAndRefreshAsync();
         }

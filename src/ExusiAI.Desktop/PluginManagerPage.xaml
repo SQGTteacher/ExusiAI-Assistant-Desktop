@@ -1,6 +1,9 @@
 <UserControl x:Class="ExusiAI.Desktop.PluginManagerPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-        <StackPanel><TextBlock Text="扩展管理" Style="{StaticResource PageTitle}" /><TextBlock Text="启用、禁用或重试本地插件。禁用状态会在下次启动时保留。" Style="{StaticResource PageSubtitle}" /></StackPanel>
+        <StackPanel><Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel><TextBlock Text="扩展管理" Style="{StaticResource PageTitle}" /><TextBlock Text="内置与外部插件统一保存在本地插件目录，可导入、导出、启用或卸载。" Style="{StaticResource PageSubtitle}" /></StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Button Content="打开插件目录" Command="{Binding OpenPackagesFolderCommand}" Margin="0,0,9,0" /><Button Content="导入 ZIP 插件" Command="{Binding ImportCommand}" /></StackPanel>
+            </Grid><TextBlock Text="{Binding OperationMessage}" Foreground="{DynamicResource AccentBrush}" Margin="0,8,0,0" TextWrapping="Wrap" /></StackPanel>
         <ScrollViewer Grid.Row="1" Margin="0,22,0,0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <ItemsControl ItemsSource="{Binding Entries}"><ItemsControl.ItemTemplate><DataTemplate>
@@ -8,7 +11,7 @@
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="42" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <Border Width="32" Height="32" CornerRadius="6" Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top"><Path Data="M12,3 A3,3 0 1 1 12,9 A3,3 0 1 1 12,3 M5,13 H19 V21 H5 Z" Width="17" Height="17" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
                             <StackPanel Grid.Column="1"><TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" /><TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" /><TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,8,0,0"><Run Text="{Binding PackageId, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Version, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Publisher, Mode=OneWay}" /></TextBlock><TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource DangerBrush}" FontSize="11" Margin="0,5,0,0" TextWrapping="Wrap" /></StackPanel>
-                            <StackPanel Grid.Column="2" Margin="14,0,0,0"><TextBlock Text="{Binding State}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" HorizontalAlignment="Right" /><Button Content="{Binding ActionText}" Command="{Binding ToggleCommand}" IsEnabled="{Binding CanToggle}" Margin="0,10,0,0" MinWidth="72" /></StackPanel>
+                            <StackPanel Grid.Column="2" Margin="14,0,0,0"><TextBlock Text="{Binding State}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" HorizontalAlignment="Right" /><Button Content="{Binding ActionText}" Command="{Binding ToggleCommand}" IsEnabled="{Binding CanToggle}" Margin="0,10,0,0" MinWidth="82" /><Button Content="导出 ZIP" Command="{Binding ExportCommand}" Margin="0,7,0,0" MinWidth="82" /><Button Content="卸载" Command="{Binding UninstallCommand}" Margin="0,7,0,0" MinWidth="82" /></StackPanel>
                         </Grid>
                     </Border>
                 </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
