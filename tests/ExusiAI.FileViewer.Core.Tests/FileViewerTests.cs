@@ -312,11 +312,20 @@ public sealed class FileViewerTests : IDisposable
         Assert.Contains("课堂标题", slides[0].Text);
         Assert.Contains("第一点", slides[0].Text);
         var visual = Assert.IsType<SlideVisualPreview>(slides[0].Visual);
-        Assert.Single(visual.Elements);
+        Assert.Equal(3, visual.Elements.Length);
         Assert.Contains("课堂标题", visual.Elements[0].Text);
+        Assert.Equal(SlideShapeKind.Rectangle, visual.Elements[0].ShapeKind);
+        Assert.Equal(0, visual.Elements[0].ZIndex);
+        Assert.Equal(SlideShapeKind.Ellipse, visual.Elements[1].ShapeKind);
+        Assert.Equal("#5B9BD5", visual.Elements[1].FillColor);
+        Assert.Equal("#2F5597", visual.Elements[1].StrokeColor);
+        Assert.Equal(2, visual.Elements[1].ZIndex);
+        Assert.Equal(SlideShapeKind.Line, visual.Elements[2].ShapeKind);
+        Assert.Equal(15, visual.Elements[2].Rotation);
         var image = Assert.Single(visual.Images);
         Assert.Equal("image/png", image.ContentType);
         Assert.NotEmpty(image.Data);
+        Assert.Equal(1, image.ZIndex);
         Assert.Equal(2, slides[1].SlideNumber);
         Assert.Contains("第二页", slides[1].Text);
         Assert.True(slides[1].IsFinal);
@@ -413,7 +422,7 @@ public sealed class FileViewerTests : IDisposable
             (externalSlide ? "https://example.invalid/slide1.xml\" TargetMode=\"External" : "slides/slide1.xml") +
             "\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide2.xml\"/></Relationships>");
         WriteEntry(archive, "ppt/slides/slide1.xml",
-            "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x=\"914400\" y=\"685800\"/><a:ext cx=\"5486400\" cy=\"1828800\"/></a:xfrm><a:solidFill><a:srgbClr val=\"FFF2CC\"/></a:solidFill></p:spPr><p:txBody><a:p><a:r><a:rPr sz=\"2400\" b=\"1\"><a:solidFill><a:srgbClr val=\"1F1F1F\"/></a:solidFill></a:rPr><a:t>课堂标题</a:t></a:r></a:p><a:p><a:r><a:t>第一点</a:t></a:r></a:p></p:txBody></p:sp><p:pic><p:blipFill><a:blip r:embed=\"rIdImage1\"/></p:blipFill><p:spPr><a:xfrm><a:off x=\"7315200\" y=\"914400\"/><a:ext cx=\"3657600\" cy=\"2743200\"/></a:xfrm></p:spPr></p:pic></p:spTree></p:cSld></p:sld>");
+            "<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x=\"914400\" y=\"685800\"/><a:ext cx=\"5486400\" cy=\"1828800\"/></a:xfrm><a:solidFill><a:srgbClr val=\"FFF2CC\"/></a:solidFill></p:spPr><p:txBody><a:p><a:r><a:rPr sz=\"2400\" b=\"1\"><a:solidFill><a:srgbClr val=\"1F1F1F\"/></a:solidFill></a:rPr><a:t>课堂标题</a:t></a:r></a:p><a:p><a:r><a:t>第一点</a:t></a:r></a:p></p:txBody></p:sp><p:pic><p:blipFill><a:blip r:embed=\"rIdImage1\"/></p:blipFill><p:spPr><a:xfrm><a:off x=\"7315200\" y=\"914400\"/><a:ext cx=\"3657600\" cy=\"2743200\"/></a:xfrm></p:spPr></p:pic><p:sp><p:spPr><a:xfrm><a:off x=\"1000000\" y=\"3000000\"/><a:ext cx=\"1000000\" cy=\"1000000\"/></a:xfrm><a:prstGeom prst=\"ellipse\"/><a:solidFill><a:srgbClr val=\"5B9BD5\"/></a:solidFill><a:ln w=\"25400\"><a:solidFill><a:srgbClr val=\"2F5597\"/></a:solidFill></a:ln></p:spPr></p:sp><p:sp><p:spPr><a:xfrm rot=\"900000\"><a:off x=\"2500000\" y=\"3500000\"/><a:ext cx=\"2000000\" cy=\"10000\"/></a:xfrm><a:prstGeom prst=\"line\"/><a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"C00000\"/></a:solidFill></a:ln></p:spPr></p:sp></p:spTree></p:cSld></p:sld>");
         WriteEntry(archive, "ppt/slides/_rels/slide1.xml.rels",
             "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdImage1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"../media/image1.png\"/></Relationships>");
         WriteBinaryEntry(archive, "ppt/media/image1.png", Convert.FromBase64String(
