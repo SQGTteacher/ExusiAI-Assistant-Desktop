@@ -2,12 +2,15 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Input;
 
 namespace ExusiAI.Desktop;
 
 public partial class PluginWorkspacePage : UserControl
 {
     private PluginPageOption? previousPage;
+    private Point dragStart;
+    private PluginPageOption? dragCandidate;
 
     public PluginWorkspacePage()
     {
@@ -19,14 +22,40 @@ public partial class PluginWorkspacePage : UserControl
         };
     }
 
-    private void MoveEarlier_OnClick(object sender, RoutedEventArgs e) => Move(sender, -1);
-    private void MoveLater_OnClick(object sender, RoutedEventArgs e) => Move(sender, 1);
-
-    private void Move(object sender, int offset)
+    private void PluginList_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (DataContext is not PluginWorkspaceViewModel viewModel || sender is not FrameworkElement { DataContext: PluginPageOption page }) return;
-        viewModel.MovePageCommand.Execute(new PluginPageMoveRequest(page, offset));
+        dragStart = e.GetPosition(PluginList);
+        dragCandidate = FindItem(e.OriginalSource as DependencyObject)?.DataContext as PluginPageOption;
     }
+
+    private void PluginList_OnPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || dragCandidate is null) return;
+        var point = e.GetPosition(PluginList);
+        if (Math.Abs(point.X - dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(point.Y - dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        DragDrop.DoDragDrop(PluginList, dragCandidate, DragDropEffects.Move);
+        dragCandidate = null;
+    }
+
+    private void PluginList_OnDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(PluginPageOption)) ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void PluginList_OnDrop(object sender, DragEventArgs e)
+    {
+        if (DataContext is not PluginWorkspaceViewModel viewModel ||
+            e.Data.GetData(typeof(PluginPageOption)) is not PluginPageOption source) return;
+        var target = FindItem(e.OriginalSource as DependencyObject)?.DataContext as PluginPageOption;
+        var targetIndex = target is null ? viewModel.Pages.Count - 1 : viewModel.Pages.IndexOf(target);
+        await viewModel.MovePageAsync(source, targetIndex);
+        e.Handled = true;
+    }
+
+    private ListBoxItem? FindItem(DependencyObject? source) =>
+        source is null ? null : ItemsControl.ContainerFromElement(PluginList, source) as ListBoxItem;
 
     private void ViewModel_OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

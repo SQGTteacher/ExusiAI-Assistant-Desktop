@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.Abstractions;
 using ExusiAI.Infrastructure;
@@ -30,7 +31,11 @@ public sealed class BundledPackageSynchronizer(IAppPaths paths, ISettingsService
                     {
                         var installed = await parser.ParseAsync(installedManifestPath, cancellationToken).ConfigureAwait(false);
                         if (SemanticVersion.TryParse(installed.Version, out var current) &&
-                            SemanticVersion.TryParse(manifest.Version, out var bundled) && current.CompareTo(bundled) >= 0) continue;
+                            SemanticVersion.TryParse(manifest.Version, out var bundled))
+                        {
+                            var comparison = current.CompareTo(bundled);
+                            if (comparison > 0 || comparison == 0 && DirectoryPayloadMatches(source, destination)) continue;
+                        }
                     }
                 }
                 ReplaceDirectory(source, destination);
@@ -71,5 +76,31 @@ public sealed class BundledPackageSynchronizer(IAppPaths paths, ISettingsService
             Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
         foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
             File.Copy(file, Path.Combine(destination, Path.GetRelativePath(source, file)), true);
+    }
+
+    private static bool DirectoryPayloadMatches(string source, string destination)
+    {
+        var sourceFiles = Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(source, path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var destinationFiles = Directory.EnumerateFiles(destination, "*", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(destination, path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (!sourceFiles.SequenceEqual(destinationFiles, StringComparer.OrdinalIgnoreCase)) return false;
+
+        foreach (var relativePath in sourceFiles)
+        {
+            var sourcePath = Path.Combine(source, relativePath);
+            var destinationPath = Path.Combine(destination, relativePath);
+            var sourceInfo = new FileInfo(sourcePath);
+            var destinationInfo = new FileInfo(destinationPath);
+            if (sourceInfo.Length != destinationInfo.Length) return false;
+            using var sourceStream = File.OpenRead(sourcePath);
+            using var destinationStream = File.OpenRead(destinationPath);
+            if (!SHA256.HashData(sourceStream).SequenceEqual(SHA256.HashData(destinationStream))) return false;
+        }
+        return true;
     }
 }
