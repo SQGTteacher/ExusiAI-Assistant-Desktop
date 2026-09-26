@@ -1,3 +1,4 @@
+using System.IO;
 using ExusiAI.Plugin.RollCall;
 using System.IO.Compression;
 

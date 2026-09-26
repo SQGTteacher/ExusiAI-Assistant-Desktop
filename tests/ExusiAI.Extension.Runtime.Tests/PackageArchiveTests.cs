@@ -1,3 +1,4 @@
+using System.IO;
 using System.IO.Compression;
 using ExusiAI.Extension.Runtime;
 using Microsoft.Extensions.Logging.Abstractions;
