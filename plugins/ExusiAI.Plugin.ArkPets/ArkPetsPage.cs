@@ -10,7 +10,6 @@ internal sealed class ArkPetsPage : UserControl
 {
     private static readonly Brush Theme = Brush("#2A528C");
     private static readonly Brush ThemeLight = Brush("#86ABDE");
-    private static readonly Brush ThemeDim = Brush("#8492A5");
     private static readonly Brush Ink = Brush("#242424");
     private static readonly Brush Paper = Brushes.White;
 
@@ -28,6 +27,8 @@ internal sealed class ArkPetsPage : UserControl
     private TextBlock? modelDetails;
     private TextBlock? integrationStatus;
     private bool loaded;
+    private bool isModelsView;
+    private bool suppressModelSelection;
 
     public ArkPetsPage(ArkPetsController controller)
     {
@@ -127,6 +128,7 @@ internal sealed class ArkPetsPage : UserControl
 
     private void ShowModels()
     {
+        isModelsView = true;
         SetActive(modelsButton);
         contentHost.Children.Clear();
 
@@ -210,8 +212,9 @@ internal sealed class ArkPetsPage : UserControl
         };
         modelList.SelectionChanged += async (_, _) =>
         {
-            if (modelList.SelectedItem is not ArkPetModel model) return;
-            await controller.SelectModelAsync(model.Key);
+            if (suppressModelSelection || modelList.SelectedItem is not ArkPetModel model) return;
+            if (!string.Equals(controller.Settings.SelectedModelKey, model.Key, StringComparison.OrdinalIgnoreCase))
+                await controller.SelectModelAsync(model.Key);
             RefreshModelDetails(model);
         };
         Grid.SetRow(modelList, 1);
@@ -287,6 +290,8 @@ internal sealed class ArkPetsPage : UserControl
 
     private void ShowBehavior()
     {
+        isModelsView = false;
+        modelStatus = null;
         SetActive(behaviorButton);
         contentHost.Children.Clear();
 
@@ -318,6 +323,8 @@ internal sealed class ArkPetsPage : UserControl
 
     private void ShowOptions()
     {
+        isModelsView = false;
+        modelStatus = null;
         SetActive(optionsButton);
         contentHost.Children.Clear();
 
@@ -354,11 +361,21 @@ internal sealed class ArkPetsPage : UserControl
         stack.Children.Add(Toggle("长时间未交互时降低帧率", controller.Settings.EcoMode, value => s => s with { EcoMode = value }));
 
         stack.Children.Add(GroupTitle("ClassIsland 可选联动"));
+        stack.Children.Add(Toggle(
+            "上下课提醒",
+            controller.Settings.ClassIslandRemindersEnabled,
+            value => s => s with { ClassIslandRemindersEnabled = value },
+            controller.ClassIslandAvailable));
+        stack.Children.Add(Toggle(
+            "课间自动整理本节课新/修改的课件文件",
+            controller.Settings.OrganizeDesktopDuringBreaks,
+            value => s => s with { OrganizeDesktopDuringBreaks = value },
+            controller.ClassIslandAvailable));
         integrationStatus = new TextBlock
         {
             Text = controller.ClassIslandAvailable
-                ? "已检测到独立的 ClassIsland 2.2 Misha 插件。后续课堂联动将通过该插件的数据副本读取课程状态，不会把两个插件合并。"
-                : "未检测到 ClassIsland 2.2 Misha。桌宠本体和 ArkPets 功能不受影响。",
+                ? "已检测到独立的 ClassIsland 2.2 Misha 插件。联动通过独立状态桥接文件读取课程阶段；整理功能只移动本节课开始后新增/修改的常见文档、课件和图片，不处理程序、快捷方式或文件夹。"
+                : "未检测到 ClassIsland 2.2 Misha。联动选项已禁用，桌宠本体和 ArkPets 功能不受影响。",
             Foreground = controller.ClassIslandAvailable ? Theme : Brushes.DimGray,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(4, 8, 4, 10)
@@ -465,12 +482,20 @@ internal sealed class ArkPetsPage : UserControl
     {
         if (modelList is null) return;
         var items = FilterModels().ToArray();
-        modelList.ItemsSource = items;
         var key = selectKey ?? controller.Settings.SelectedModelKey;
         var selected = items.FirstOrDefault(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase));
-        modelList.SelectedItem = selected;
-        if (selected is not null)
-            modelList.ScrollIntoView(selected);
+        suppressModelSelection = true;
+        try
+        {
+            modelList.ItemsSource = items;
+            modelList.SelectedItem = selected;
+            if (selected is not null)
+                modelList.ScrollIntoView(selected);
+        }
+        finally
+        {
+            suppressModelSelection = false;
+        }
         RefreshModelDetails(selected);
         if (modelStatus is not null)
             modelStatus.Text = controller.Catalog.Models.Count == 0
@@ -508,12 +533,14 @@ internal sealed class ArkPetsPage : UserControl
     private FrameworkElement Toggle(
         string label,
         bool initial,
-        Func<bool, Func<ArkPetsSettings, ArkPetsSettings>> update)
+        Func<bool, Func<ArkPetsSettings, ArkPetsSettings>> update,
+        bool enabled = true)
     {
         var check = new CheckBox
         {
             Content = label,
             IsChecked = initial,
+            IsEnabled = enabled,
             Margin = new Thickness(8, 7, 8, 7),
             Foreground = Ink
         };
@@ -601,7 +628,7 @@ internal sealed class ArkPetsPage : UserControl
             _ = Dispatcher.InvokeAsync(() => Controller_OnChanged(sender, e));
             return;
         }
-        if (modelList is not null && contentHost.Children.Count > 0)
+        if (isModelsView && modelList is not null && contentHost.Children.Count > 0)
             RefreshModelList(controller.Settings.SelectedModelKey);
     }
 

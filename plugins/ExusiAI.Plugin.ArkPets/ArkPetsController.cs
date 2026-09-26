@@ -11,6 +11,7 @@ public sealed class ArkPetsController : IAsyncDisposable
     private readonly ArkPetsSettingsStore store = new();
     private readonly List<Process> processes = [];
     private readonly SemaphoreSlim gate = new(1, 1);
+    private ClassIslandIntegrationBridge? classIslandBridge;
 
     public ArkPetsController(IExtensionLogger logger)
     {
@@ -19,9 +20,9 @@ public sealed class ArkPetsController : IAsyncDisposable
 
     public ArkPetsSettings Settings { get; private set; } = new();
     public ArkModelsCatalog Catalog { get; private set; } = ArkModelsCatalog.Empty();
-    public bool ClassIslandAvailable => File.Exists(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "ExusiAI", "packages", "exusiai.misha-showcase", "package.json"));
+    public bool ClassIslandAvailable =>
+        File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "packages", "exusiai.misha-showcase", "package.json")) ||
+        File.Exists(ClassIslandStateFile.DefaultPath);
 
     public event EventHandler? Changed;
 
@@ -34,6 +35,12 @@ public sealed class ArkPetsController : IAsyncDisposable
         else
             Changed?.Invoke(this, EventArgs.Empty);
         await store.SaveAsync(Settings, cancellationToken);
+    }
+
+    public void StartClassIslandBridge()
+    {
+        classIslandBridge ??= new ClassIslandIntegrationBridge(this, logger);
+        classIslandBridge.Start();
     }
 
     public async Task UpdateSettingsAsync(
@@ -142,7 +149,11 @@ public sealed class ArkPetsController : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         StopAll();
-        await Task.CompletedTask;
+        if (classIslandBridge is not null)
+        {
+            await classIslandBridge.DisposeAsync();
+            classIslandBridge = null;
+        }
         gate.Dispose();
     }
 

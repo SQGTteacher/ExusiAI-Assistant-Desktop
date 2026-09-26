@@ -238,6 +238,9 @@ public sealed record ArkPetsSettings
     public string LoggingLevel { get; init; } = "INFO";
     public bool WindowStyleToolwindow { get; init; } = true;
     public bool WindowStyleTopmost { get; init; } = true;
+
+    public bool ClassIslandRemindersEnabled { get; init; }
+    public bool OrganizeDesktopDuringBreaks { get; init; }
 }
 
 internal sealed class ArkPetsSettingsStore
