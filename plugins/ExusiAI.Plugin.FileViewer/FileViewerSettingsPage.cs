@@ -51,7 +51,12 @@ internal sealed class FileViewerSettingsPage : UserControl
 
     private FrameworkElement BuildLayout()
     {
-        var root = new StackPanel { MaxWidth = 820, HorizontalAlignment = HorizontalAlignment.Left };
+        var root = new StackPanel
+        {
+            MaxWidth = 820,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(28, 26, 28, 30)
+        };
         root.Children.Add(new TextBlock { Text = "文件查看器设置", FontSize = 27, FontWeight = FontWeights.SemiBold });
         root.Children.Add(new TextBlock
         {

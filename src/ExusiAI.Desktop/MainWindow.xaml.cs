@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Input;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 using ExusiAI.Theme;
@@ -14,12 +16,14 @@ public partial class MainWindow : Window
     private readonly IWindowBackdropService backdrop;
     private readonly Forms.NotifyIcon trayIcon;
     private bool exitRequested;
+    private NavigationItem? previousNavigationItem;
 
     public MainWindow(IThemeService theme, IWindowBackdropService backdrop)
     {
         this.theme = theme;
         this.backdrop = backdrop;
         InitializeComponent();
+        DataContextChanged += MainWindow_OnDataContextChanged;
         trayIcon = CreateTrayIcon();
         SourceInitialized += (_, _) =>
         {
@@ -35,6 +39,42 @@ public partial class MainWindow : Window
             trayIcon.Visible = false;
             trayIcon.Dispose();
         };
+    }
+
+    private void MainWindow_OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is ShellViewModel oldViewModel) oldViewModel.PropertyChanged -= ShellViewModel_OnPropertyChanged;
+        if (e.NewValue is ShellViewModel newViewModel)
+        {
+            previousNavigationItem = newViewModel.SelectedItem;
+            newViewModel.PropertyChanged += ShellViewModel_OnPropertyChanged;
+        }
+    }
+
+    private void ShellViewModel_OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ShellViewModel.SelectedItem) || sender is not ShellViewModel viewModel) return;
+        var oldIndex = previousNavigationItem is null ? -1 : viewModel.NavigationItems.IndexOf(previousNavigationItem);
+        var newIndex = viewModel.SelectedItem is null ? -1 : viewModel.NavigationItems.IndexOf(viewModel.SelectedItem);
+        previousNavigationItem = viewModel.SelectedItem;
+        Dispatcher.BeginInvoke(() => AnimateNavigation(newIndex >= oldIndex ? 22 : -22));
+    }
+
+    private void AnimateNavigation(double offset)
+    {
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        AnimateElement(PageHost, offset, 230, easing);
+        AnimateElement(SectionTitle, offset > 0 ? 8 : -8, 180, easing);
+    }
+
+    private static void AnimateElement(UIElement element, double offset, int milliseconds, IEasingFunction easing)
+    {
+        var transform = new TranslateTransform(0, offset);
+        element.RenderTransform = transform;
+        element.Opacity = 0;
+        transform.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(0, TimeSpan.FromMilliseconds(milliseconds)) { EasingFunction = easing });
+        element.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(milliseconds - 35)));
     }
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

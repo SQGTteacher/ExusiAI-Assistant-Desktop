@@ -8,7 +8,8 @@ public sealed record ApplicationSettings(
     string Theme = "system",
     string Backdrop = "mica",
     string[]? DisabledPackages = null,
-    string[]? RemovedBundledPackages = null);
+    string[]? RemovedBundledPackages = null,
+    string[]? PluginPageOrder = null);
 
 public interface ISettingsService
 {
