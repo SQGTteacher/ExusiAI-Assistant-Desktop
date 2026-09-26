@@ -145,7 +145,18 @@ internal sealed class ClassIslandIntegrationBridge : IAsyncDisposable
                 continue;
 
             lastTransitionKey = state.TransitionKey;
-            await HandleTransitionAsync(state, stop.Token);
+            try
+            {
+                await HandleTransitionAsync(state, stop.Token);
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                logger.Warning($"ArkPets ClassIsland integration skipped a transition: {exception.Message}");
+            }
         }
     }
 

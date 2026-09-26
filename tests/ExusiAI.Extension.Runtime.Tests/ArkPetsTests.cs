@@ -102,8 +102,8 @@ public sealed class ArkPetsTests
         var lesson = new ClassIslandLessonSnapshot("plan", "高一", 0, "数学", "张老师", TimeSpan.FromHours(8), TimeSpan.FromHours(8.75));
         var state = ClassIslandRuntimeStateResolver.Resolve([lesson], DateTime.Today.AddHours(8.25));
 
-        using (var publisher = new ClassIslandIntegrationStatePublisher(path))
-            publisher.Publish(state);
+        using var publisher = new ClassIslandIntegrationStatePublisher(path);
+        publisher.Publish(state);
 
         var read = ClassIslandStateFile.Read(path);
         Assert.NotNull(read);
