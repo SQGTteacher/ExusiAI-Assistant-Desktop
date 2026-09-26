@@ -119,7 +119,20 @@ public sealed record SlideElementPreview(
     string? FillColor,
     string? TextColor,
     double FontSize,
-    bool IsBold);
+    bool IsBold,
+    SlideShapeKind ShapeKind = SlideShapeKind.Rectangle,
+    string? StrokeColor = null,
+    double StrokeWidth = 0,
+    double Rotation = 0,
+    int ZIndex = 0);
+
+public enum SlideShapeKind
+{
+    Rectangle,
+    RoundedRectangle,
+    Ellipse,
+    Line
+}
 
 public sealed record SlideVisualPreview(
     double Width,
@@ -133,7 +146,9 @@ public sealed record SlideImagePreview(
     double X,
     double Y,
     double Width,
-    double Height);
+    double Height,
+    double Rotation = 0,
+    int ZIndex = 0);
 
 public sealed record SlidePreview(
     int SlideNumber,

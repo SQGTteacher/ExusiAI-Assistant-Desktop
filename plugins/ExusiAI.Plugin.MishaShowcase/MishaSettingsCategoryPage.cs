@@ -157,19 +157,27 @@ internal sealed class MishaSettingsCategoryPage : UserControl
             return;
         }
 
+        var unavailableCount = 0;
         foreach (var key in keys)
         {
             if (!workspace.Settings.TryGetPropertyValue(key, out var node))
             {
-                var missing = MishaUi.Note("当前 Settings.json 中没有写入此字段；保留 ClassIsland 自身的默认行为，不创建占位配置。");
-                missing.Margin = new Thickness(0);
-                fields.Children.Add(MishaUi.SettingRow(key, "不会自动补写上游未保存的默认值。", missing));
+                unavailableCount++;
                 continue;
             }
 
             var editor = SettingEditor.Create(node);
             editors[key] = editor;
             fields.Children.Add(MishaUi.SettingRow(key, Describe(node), editor.Element));
+        }
+
+        if (editors.Count == 0)
+        {
+            fields.Children.Add(MishaUi.Note("此分类的字段当前均由 ClassIsland 使用默认值，因此不显示空白选项。ClassIsland 将字段写入 Settings.json 后，这里会自动出现对应控件。"));
+        }
+        else if (unavailableCount > 0)
+        {
+            status.Text += $" · 已显示 {editors.Count} 项；另有 {unavailableCount} 项沿用 ClassIsland 默认值，未生成空白控件。";
         }
     }
 

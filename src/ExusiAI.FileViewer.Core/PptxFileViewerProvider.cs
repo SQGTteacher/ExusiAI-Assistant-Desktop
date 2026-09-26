@@ -48,8 +48,8 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
             ViewerCapabilities.Search | ViewerCapabilities.IncrementalRead | ViewerCapabilities.Slides,
             true,
             ImmutableArray.Create(
-                "当前会按幻灯片坐标呈现基础文本框、字号、粗体和纯色填充；复杂主题效果仍可能降级。",
-                "图片、图表、SmartArt、动画、转场、音视频、批注、宏、外部链接和嵌入对象不会执行。")))
+                "当前会按幻灯片坐标和层级呈现内嵌图片、基础形状、文本、纯色填充、边框与旋转；复杂主题效果仍可能降级。",
+                "图表、SmartArt、动画、转场、音视频、批注、宏、外部链接和嵌入对象不会执行。")))
     {
         this.file = file;
         this.options = options;
@@ -242,19 +242,33 @@ internal static class PptxPackageReader
         var images = ImmutableArray.CreateBuilder<SlideImagePreview>();
         var allText = new StringBuilder();
 
-        foreach (var shape in document.Descendants(p + "sp"))
+        var shapeTree = document.Descendants(p + "spTree").FirstOrDefault();
+        var visualNodes = shapeTree?.Elements()
+            .Where(node => node.Name == p + "sp" || node.Name == p + "pic")
+            .ToArray() ?? [];
+        var relationships = ReadSlideImageRelationships(package, partName);
+        for (var zIndex = 0; zIndex < visualNodes.Length; zIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var shape = visualNodes[zIndex];
+            if (shape.Name == p + "pic")
+            {
+                ReadPicture(package, shape, relationships, options, images, zIndex);
+                continue;
+            }
+
             var paragraphs = shape.Descendants(a + "p")
                 .Select(paragraph => string.Concat(paragraph.Descendants(a + "t").Select(node => node.Value)))
                 .Where(value => value.Length > 0)
                 .ToArray();
-            if (paragraphs.Length == 0) continue;
             var shapeText = string.Join(Environment.NewLine, paragraphs);
-            if ((long)allText.Length + shapeText.Length > options.MaximumPresentationTextCharactersPerSlide)
+            if (shapeText.Length > 0 && (long)allText.Length + shapeText.Length > options.MaximumPresentationTextCharactersPerSlide)
                 throw new FileRejectedException("PPTX slide text exceeds the configured per-slide safety limit.");
-            if (allText.Length > 0) allText.AppendLine();
-            allText.Append(shapeText);
+            if (shapeText.Length > 0)
+            {
+                if (allText.Length > 0) allText.AppendLine();
+                allText.Append(shapeText);
+            }
 
             var transform = shape.Descendants(a + "xfrm").FirstOrDefault();
             var offset = transform?.Element(a + "off");
@@ -269,32 +283,15 @@ internal static class PptxPackageReader
             var fontSize = ReadFontSize(runProperties) ?? ReadFontSize(endProperties) ?? 18;
             var bold = string.Equals(runProperties?.Attribute("b")?.Value, "1", StringComparison.Ordinal) ||
                        string.Equals(runProperties?.Attribute("b")?.Value, "true", StringComparison.OrdinalIgnoreCase);
-            var fill = ReadColor(shape.Element(p + "spPr")?.Element(a + "solidFill"));
+            var shapeProperties = shape.Element(p + "spPr");
+            var fill = ReadColor(shapeProperties?.Element(a + "solidFill"));
             var textColor = ReadColor(runProperties?.Element(a + "solidFill"));
-            elements.Add(new(shapeText, x, y, width, height, fill, textColor, fontSize, bold));
-        }
-
-        var relationships = ReadSlideImageRelationships(package, partName);
-        foreach (var picture in document.Descendants(p + "pic"))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var relationshipId = picture.Descendants(a + "blip")
-                .Select(node => node.Attribute(XName.Get("embed", OfficeRelationshipNamespace))?.Value)
-                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-            if (relationshipId is null || !relationships.TryGetValue(relationshipId, out var imagePart)) continue;
-
-            var transform = picture.Descendants(a + "xfrm").FirstOrDefault();
-            var offset = transform?.Element(a + "off");
-            var extent = transform?.Element(a + "ext");
-            if (!TryNumber(offset, "x", out var x) || !TryNumber(offset, "y", out var y) ||
-                !TryNumber(extent, "cx", out var width) || !TryNumber(extent, "cy", out var height) ||
-                width <= 0 || height <= 0)
-                continue;
-
-            var data = package.ReadRequiredPart(imagePart, options.MaximumPresentationImageBytes);
-            var contentType = ResolveImageContentType(imagePart, data);
-            if (contentType is null) continue;
-            images.Add(new(data.ToImmutableArray(), contentType, x, y, width, height));
+            var stroke = ReadColor(shapeProperties?.Element(a + "ln")?.Element(a + "solidFill"));
+            var strokeWidth = ReadLineWidth(shapeProperties?.Element(a + "ln"));
+            var shapeKind = ReadShapeKind(shapeProperties);
+            var rotation = ReadRotation(transform);
+            elements.Add(new(shapeText, x, y, width, height, fill, textColor, fontSize, bold,
+                shapeKind, stroke, strokeWidth, rotation, zIndex));
         }
 
         var visual = elements.Count == 0 && images.Count == 0
@@ -302,6 +299,54 @@ internal static class PptxPackageReader
             : new SlideVisualPreview(slideWidth, slideHeight, elements.ToImmutable(), images.ToImmutable());
         return (allText.ToString().TrimEnd(), visual);
     }
+
+    private static void ReadPicture(
+        OpenXmlPackageGuard package,
+        XElement picture,
+        IReadOnlyDictionary<string, string> relationships,
+        ViewerOpenOptions options,
+        ImmutableArray<SlideImagePreview>.Builder images,
+        int zIndex)
+    {
+        XNamespace a = DrawingNamespace;
+        var relationshipId = picture.Descendants(a + "blip")
+            .Select(node => node.Attribute(XName.Get("embed", OfficeRelationshipNamespace))?.Value)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (relationshipId is null || !relationships.TryGetValue(relationshipId, out var imagePart)) return;
+
+        var transform = picture.Descendants(a + "xfrm").FirstOrDefault();
+        var offset = transform?.Element(a + "off");
+        var extent = transform?.Element(a + "ext");
+        if (!TryNumber(offset, "x", out var x) || !TryNumber(offset, "y", out var y) ||
+            !TryNumber(extent, "cx", out var width) || !TryNumber(extent, "cy", out var height) ||
+            width <= 0 || height <= 0)
+            return;
+
+        var data = package.ReadRequiredPart(imagePart, options.MaximumPresentationImageBytes);
+        var contentType = ResolveImageContentType(imagePart, data);
+        if (contentType is null) return;
+        images.Add(new(data.ToImmutableArray(), contentType, x, y, width, height, ReadRotation(transform), zIndex));
+    }
+
+    private static SlideShapeKind ReadShapeKind(XElement? shapeProperties)
+    {
+        XNamespace a = DrawingNamespace;
+        var preset = shapeProperties?.Element(a + "prstGeom")?.Attribute("prst")?.Value;
+        return preset switch
+        {
+            "ellipse" => SlideShapeKind.Ellipse,
+            "roundRect" => SlideShapeKind.RoundedRectangle,
+            "line" => SlideShapeKind.Line,
+            _ => SlideShapeKind.Rectangle
+        };
+    }
+
+    private static double ReadRotation(XElement? transform) =>
+        int.TryParse(transform?.Attribute("rot")?.Value, out var rotation) ? rotation / 60_000d : 0;
+
+    private static double ReadLineWidth(XElement? line) =>
+        double.TryParse(line?.Attribute("w")?.Value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var width) ? Math.Max(0, width / 12_700d) : 0;
 
     private static Dictionary<string, string> ReadSlideImageRelationships(OpenXmlPackageGuard package, string slidePart)
     {

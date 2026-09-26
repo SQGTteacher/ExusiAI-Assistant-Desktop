@@ -13,6 +13,8 @@ using System.Windows.Media.Imaging;
 using System.Xml;
 using ExusiAI.FileViewer.Core;
 using Microsoft.Win32;
+using SlideEllipse = System.Windows.Shapes.Ellipse;
+using SlideLine = System.Windows.Shapes.Line;
 
 namespace ExusiAI.FileViewer.Desktop;
 
@@ -1167,10 +1169,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                         Source = bitmap,
                         Stretch = Stretch.Uniform,
                         Width = Math.Max(1, image.Width * scaleX),
-                        Height = Math.Max(1, image.Height * scaleY)
+                        Height = Math.Max(1, image.Height * scaleY),
+                        RenderTransformOrigin = new Point(0.5, 0.5),
+                        RenderTransform = new RotateTransform(image.Rotation)
                     };
                     Canvas.SetLeft(view, Math.Max(0, image.X * scaleX));
                     Canvas.SetTop(view, Math.Max(0, image.Y * scaleY));
+                    Canvas.SetZIndex(view, image.ZIndex);
                     slideVisualCanvas.Children.Add(view);
                 }
                 catch (Exception exception) when (exception is IOException or NotSupportedException or FileFormatException)
@@ -1180,24 +1185,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             }
             foreach (var element in visual.Elements)
             {
-                var box = new Border
-                {
-                    Width = Math.Max(1, element.Width * scaleX),
-                    Height = Math.Max(1, element.Height * scaleY),
-                    Padding = new Thickness(4),
-                    Background = ParseSlideBrush(element.FillColor, Brushes.Transparent),
-                    Child = new TextBlock
-                    {
-                        Text = element.Text,
-                        TextWrapping = TextWrapping.Wrap,
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                        Foreground = ParseSlideBrush(element.TextColor, Brushes.Black),
-                        FontSize = Math.Clamp(element.FontSize, 8, 72),
-                        FontWeight = element.IsBold ? FontWeights.Bold : FontWeights.Normal
-                    }
-                };
+                var box = CreateSlideShape(element, scaleX, scaleY);
                 Canvas.SetLeft(box, Math.Max(0, element.X * scaleX));
                 Canvas.SetTop(box, Math.Max(0, element.Y * scaleY));
+                Canvas.SetZIndex(box, element.ZIndex);
                 slideVisualCanvas.Children.Add(box);
             }
             return;
@@ -1205,6 +1196,77 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         slideVisualCanvas.Visibility = Visibility.Collapsed;
         RenderSlideText(slide.Text);
+    }
+
+    private static FrameworkElement CreateSlideShape(SlideElementPreview element, double scaleX, double scaleY)
+    {
+        var width = Math.Max(1, element.Width * scaleX);
+        var height = Math.Max(1, element.Height * scaleY);
+        var fill = ParseSlideBrush(element.FillColor, Brushes.Transparent);
+        var stroke = ParseSlideBrush(element.StrokeColor, Brushes.Transparent);
+        var strokeWidth = Math.Max(0, element.StrokeWidth * Math.Min(scaleX, scaleY));
+        FrameworkElement visual;
+
+        if (element.ShapeKind == SlideShapeKind.Line)
+        {
+            visual = new SlideLine
+            {
+                X1 = 0,
+                Y1 = 0,
+                X2 = width,
+                Y2 = height,
+                Width = width,
+                Height = height,
+                Stroke = element.StrokeColor is null ? ParseSlideBrush(element.FillColor, Brushes.Black) : stroke,
+                StrokeThickness = Math.Max(1, strokeWidth),
+                Stretch = Stretch.Fill
+            };
+        }
+        else
+        {
+            var grid = new Grid { Width = width, Height = height };
+            if (element.ShapeKind == SlideShapeKind.Ellipse)
+            {
+                grid.Children.Add(new SlideEllipse
+                {
+                    Fill = fill,
+                    Stroke = stroke,
+                    StrokeThickness = strokeWidth
+                });
+            }
+            else
+            {
+                grid.Children.Add(new Border
+                {
+                    Background = fill,
+                    BorderBrush = stroke,
+                    BorderThickness = new Thickness(strokeWidth),
+                    CornerRadius = element.ShapeKind == SlideShapeKind.RoundedRectangle
+                        ? new CornerRadius(Math.Min(width, height) * 0.12)
+                        : default
+                });
+            }
+
+            if (!string.IsNullOrEmpty(element.Text))
+            {
+                grid.Children.Add(new TextBlock
+                {
+                    Text = element.Text,
+                    Margin = new Thickness(4),
+                    TextWrapping = TextWrapping.Wrap,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Foreground = ParseSlideBrush(element.TextColor, Brushes.Black),
+                    FontSize = Math.Clamp(element.FontSize, 8, 72),
+                    FontWeight = element.IsBold ? FontWeights.Bold : FontWeights.Normal,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+            }
+            visual = grid;
+        }
+
+        visual.RenderTransformOrigin = new Point(0.5, 0.5);
+        visual.RenderTransform = new RotateTransform(element.Rotation);
+        return visual;
     }
 
     private static Brush ParseSlideBrush(string? value, Brush fallback)
