@@ -26,6 +26,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     private readonly ClassIslandScheduleNotificationTracker notificationTracker = new();
     private readonly MishaScheduleNotificationPresenter notificationPresenter = new();
     private readonly MishaAutomationRuntime automationRuntime;
+    private readonly ClassIslandIntegrationStatePublisher integrationStatePublisher = new();
     private MishaMainWindow? window;
     private bool started;
 
@@ -63,6 +64,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         notificationTracker.Reset();
         notificationPresenter.Dispose();
         automationRuntime.Dispose();
+        integrationStatePublisher.Dispose();
     }
 
     private void Store_OnChanged(object? sender, EventArgs e)
@@ -142,6 +144,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         if (workspace is null) return;
         var now = GetClassIslandNow(workspace);
         var scheduleState = ClassIslandRuntimeStateResolver.Resolve(store, now);
+        integrationStatePublisher.Publish(scheduleState);
 
         foreach (var ticker in tickers.ToArray())
         {
