@@ -143,6 +143,8 @@ internal sealed class MishaSettingsHostPage : UserControl
         icon.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(MishaSection.Icon)));
         icon.SetValue(TextBlock.WidthProperty, 30d);
         icon.SetValue(TextBlock.FontSizeProperty, 13d);
+        icon.SetValue(TextBlock.TextAlignmentProperty, TextAlignment.Center);
+        icon.SetValue(TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Center);
         icon.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
         stack.AppendChild(icon);
 

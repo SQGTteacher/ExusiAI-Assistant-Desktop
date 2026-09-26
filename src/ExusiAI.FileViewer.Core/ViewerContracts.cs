@@ -11,7 +11,8 @@ public enum ViewerCapabilities
     Tabular = 4,
     Slides = 8,
     Edit = 16,
-    Save = 32
+    Save = 32,
+    Pages = 64
 }
 
 public sealed record ViewerOpenOptions
@@ -34,6 +35,11 @@ public sealed record ViewerOpenOptions
     public int MaximumPresentationImageBytes { get; init; } = 8 * 1024 * 1024;
     public int MaximumRichTextBytes { get; init; } = 8 * 1024 * 1024;
     public int MaximumCachedSlides { get; init; } = 4;
+    public int MaximumCachedDocumentPages { get; init; } = 3;
+    public int PdfRenderWidth { get; init; } = 1280;
+    public int MaximumPdfPages { get; init; } = 100_000;
+    public int MaximumLegacyWordBytes { get; init; } = 16 * 1024 * 1024;
+    public int MaximumLegacyWordCharacters { get; init; } = 16 * 1024 * 1024;
     public int MaximumArchiveEntries { get; init; } = 4096;
     public long MaximumArchiveEntryBytes { get; init; } = 256L * 1024 * 1024;
     public long MaximumArchiveExpandedBytes { get; init; } = 1024L * 1024 * 1024;
@@ -58,6 +64,11 @@ public sealed record ViewerOpenOptions
         if (MaximumPresentationImageBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationImageBytes));
         if (MaximumRichTextBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumRichTextBytes));
         if (MaximumCachedSlides is < 1 or > 128) throw new ArgumentOutOfRangeException(nameof(MaximumCachedSlides));
+        if (MaximumCachedDocumentPages is < 1 or > 32) throw new ArgumentOutOfRangeException(nameof(MaximumCachedDocumentPages));
+        if (PdfRenderWidth is < 640 or > 4096) throw new ArgumentOutOfRangeException(nameof(PdfRenderWidth));
+        if (MaximumPdfPages is < 1 or > 1_000_000) throw new ArgumentOutOfRangeException(nameof(MaximumPdfPages));
+        if (MaximumLegacyWordBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumLegacyWordBytes));
+        if (MaximumLegacyWordCharacters is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumLegacyWordCharacters));
         if (MaximumArchiveEntries is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntries));
         if (MaximumArchiveEntryBytes <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveEntryBytes));
         if (MaximumArchiveExpandedBytes < MaximumArchiveEntryBytes) throw new ArgumentOutOfRangeException(nameof(MaximumArchiveExpandedBytes));
@@ -94,6 +105,26 @@ public sealed record TextChunk(long CharacterOffset, string Text, bool IsFinal);
 public interface ITextPreviewDocument
 {
     IAsyncEnumerable<TextChunk> ReadChunksAsync(CancellationToken cancellationToken = default);
+}
+
+public enum DocumentPixelFormat
+{
+    Bgra32
+}
+
+public sealed record DocumentPagePreview(
+    int PageNumber,
+    int Width,
+    int Height,
+    int Stride,
+    DocumentPixelFormat PixelFormat,
+    byte[] Pixels,
+    string Text);
+
+public interface IPagedPreviewDocument
+{
+    int PageCount { get; }
+    ValueTask<DocumentPagePreview> ReadPageAsync(int pageNumber, CancellationToken cancellationToken = default);
 }
 
 public interface IEditableTextDocument : ITextPreviewDocument
