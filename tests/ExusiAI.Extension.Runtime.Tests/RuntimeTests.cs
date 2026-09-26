@@ -15,6 +15,33 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class RuntimeTests
 {
     [Fact]
+    public void MishaRuntimeStateTracksClassAndBreakTransitions()
+    {
+        var lessons = new[]
+        {
+            new ClassIslandLessonSnapshot("plan", "课表", 1, "语文", "教师", TimeSpan.FromHours(8), TimeSpan.FromMinutes(8 * 60 + 40)),
+            new ClassIslandLessonSnapshot("plan", "课表", 2, "数学", "教师", TimeSpan.FromMinutes(8 * 60 + 50), TimeSpan.FromMinutes(9 * 60 + 30))
+        };
+        var date = new DateTime(2026, 9, 26);
+
+        Assert.Equal(ClassIslandSchedulePhase.BeforeClass,
+            ClassIslandRuntimeStateResolver.Resolve(lessons, date.AddHours(7)).Phase);
+
+        var onClass = ClassIslandRuntimeStateResolver.Resolve(lessons, date.AddHours(8).AddMinutes(10));
+        Assert.Equal(ClassIslandSchedulePhase.OnClass, onClass.Phase);
+        Assert.Equal("语文", onClass.Current!.Subject);
+        Assert.Equal("数学", onClass.Next!.Subject);
+
+        var breaking = ClassIslandRuntimeStateResolver.Resolve(lessons, date.AddHours(8).AddMinutes(45));
+        Assert.Equal(ClassIslandSchedulePhase.Breaking, breaking.Phase);
+        Assert.Equal("语文", breaking.Previous!.Subject);
+        Assert.Equal("数学", breaking.Next!.Subject);
+
+        Assert.Equal(ClassIslandSchedulePhase.AfterSchool,
+            ClassIslandRuntimeStateResolver.Resolve(lessons, date.AddHours(10)).Phase);
+    }
+
+    [Fact]
     public void MishaRefreshQueueCoalescesChangesWithoutDroppingLatestRequest()
     {
         var queue = new CoalescingRefreshQueue();

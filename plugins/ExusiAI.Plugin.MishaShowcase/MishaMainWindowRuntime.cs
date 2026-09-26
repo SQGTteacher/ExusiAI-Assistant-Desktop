@@ -472,10 +472,7 @@ internal static class MishaNativeMainWindowRenderer
     public static bool ShouldShow(MishaPlatformStore store, ClassIslandWorkspace workspace, DateTime now)
     {
         if (!workspace.GetBool("HideOnClass")) return true;
-        var profile = store.Profile;
-        if (profile is null) return true;
-        var lessons = profile.GetLessonsForDate(now.Date, store.ResolveRotationWeek(now.Date));
-        return !lessons.Any(x => now.TimeOfDay >= x.Start && now.TimeOfDay < x.End);
+        return ClassIslandRuntimeStateResolver.Resolve(store, now).Phase != ClassIslandSchedulePhase.OnClass;
     }
 
     private static FrameworkElement? CreateComponent(
@@ -547,8 +544,9 @@ internal static class MishaNativeMainWindowRenderer
         void Update(DateTime now)
         {
             panel.Children.Clear();
-            var lessons = store.Profile.GetLessonsForDate(now.Date, store.ResolveRotationWeek(now.Date));
-            var current = lessons.FirstOrDefault(x => now.TimeOfDay >= x.Start && now.TimeOfDay < x.End);
+            var state = ClassIslandRuntimeStateResolver.Resolve(store, now);
+            var lessons = state.Lessons;
+            var current = state.Current;
             var hideFinished = ReadBool(settings, "HideFinishedClass");
             var currentOnly = ReadBool(settings, "ShowCurrentLessonOnlyOnClass");
             IEnumerable<ClassIslandLessonSnapshot> visible = lessons;
@@ -668,7 +666,7 @@ internal static class MishaNativeMainWindowRenderer
         }
         if (source == 2)
         {
-            var lessons = store.Profile?.GetLessonsForDate(now.Date, store.ResolveRotationWeek(now.Date)) ?? [];
+            var lessons = ClassIslandRuntimeStateResolver.Resolve(store, now).Lessons;
             if (lessons.Count > 0) return (now.Date + lessons.First().Start, now.Date + lessons.Last().End);
             return (now.Date, now.Date.AddDays(1));
         }
