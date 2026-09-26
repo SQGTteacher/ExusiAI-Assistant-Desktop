@@ -1,6 +1,8 @@
 # Extension runtime
 
-Discovery enumerates package directories and reads `package.json`. Validation
+At startup, bundled packages are synchronized into the per-user package directory;
+bundled and third-party packages then share the same discovery, export, and uninstall
+path. Discovery enumerates package directories and reads `package.json`. Validation
 checks schema, package id, semantic versions, API compatibility, host
 compatibility, entry points, dependencies, permissions, and safe relative
 paths. Invalid packages are recorded as failures rather than terminating the

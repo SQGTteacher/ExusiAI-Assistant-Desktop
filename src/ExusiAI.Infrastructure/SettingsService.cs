@@ -7,7 +7,8 @@ public sealed record ApplicationSettings(
     int SchemaVersion = 1,
     string Theme = "system",
     string Backdrop = "mica",
-    string[]? DisabledPackages = null);
+    string[]? DisabledPackages = null,
+    string[]? RemovedBundledPackages = null);
 
 public interface ISettingsService
 {

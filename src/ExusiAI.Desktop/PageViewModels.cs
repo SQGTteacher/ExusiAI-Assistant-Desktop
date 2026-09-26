@@ -109,11 +109,15 @@ public sealed partial class PluginManagerViewModel : ObservableObject, IDisposab
 {
     private readonly ExtensionRuntime runtime;
     private readonly ISettingsService settings;
+    private readonly PluginPackageManager packageManager;
+    [ObservableProperty] private string? operationMessage;
+    [ObservableProperty] private bool isManagingPackage;
 
-    public PluginManagerViewModel(ExtensionRuntime runtime, ISettingsService settings)
+    public PluginManagerViewModel(ExtensionRuntime runtime, ISettingsService settings, PluginPackageManager packageManager)
     {
         this.runtime = runtime;
         this.settings = settings;
+        this.packageManager = packageManager;
         Entries = new(runtime.Entries.Select(CreateEntry));
         Failures = new(runtime.DiscoveryFailures.Select(x => new DiscoveryFailureViewModel(x)));
         runtime.EntriesChanged += Runtime_OnEntriesChanged;
@@ -129,12 +133,38 @@ public sealed partial class PluginManagerViewModel : ObservableObject, IDisposab
         GC.SuppressFinalize(this);
     }
 
-    private PluginEntryViewModel CreateEntry(ExtensionRuntimeEntry entry) => new(entry, runtime, settings);
+    private PluginEntryViewModel CreateEntry(ExtensionRuntimeEntry entry) => new(entry, runtime, settings, packageManager, message => OperationMessage = message);
+
+    [RelayCommand]
+    private async Task ImportAsync()
+    {
+        if (IsManagingPackage) return;
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "导入 ExusiAI 插件", Filter = "插件压缩包 (*.zip)|*.zip" };
+        if (dialog.ShowDialog() != true) return;
+        IsManagingPackage = true;
+        try
+        {
+            var manifest = await packageManager.ImportAsync(dialog.FileName);
+            OperationMessage = $"已安装并启动 {manifest.DisplayName} {manifest.Version}。";
+        }
+        catch (Exception exception) { OperationMessage = $"导入失败：{exception.Message}"; }
+        finally { IsManagingPackage = false; }
+    }
+
+    [RelayCommand]
+    private void OpenPackagesFolder()
+    {
+        Directory.CreateDirectory(packageManager.PackagesDirectory);
+        Process.Start(new ProcessStartInfo(packageManager.PackagesDirectory) { UseShellExecute = true });
+        OperationMessage = "也可以将包含 package.json 的插件文件夹直接放入此目录，重启后自动加载。";
+    }
 
     private void Runtime_OnEntriesChanged(object? sender, EventArgs e)
     {
         void Refresh()
         {
+            var currentIds = runtime.Entries.Select(x => x.Package.Manifest.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var stale in Entries.Where(x => !currentIds.Contains(x.PackageId)).ToArray()) Entries.Remove(stale);
             foreach (var snapshot in runtime.Entries)
             {
                 var existing = Entries.FirstOrDefault(x => string.Equals(x.PackageId, snapshot.Package.Manifest.Id, StringComparison.OrdinalIgnoreCase));
@@ -154,6 +184,8 @@ public sealed partial class PluginEntryViewModel : ObservableObject
     private readonly ExtensionRuntime runtime;
     private readonly ISettingsService settings;
     private ExtensionRuntimeEntry entry;
+    private readonly PluginPackageManager packageManager;
+    private readonly Action<string> report;
 
     [ObservableProperty] private string state = string.Empty;
     [ObservableProperty] private string actionText = string.Empty;
@@ -161,11 +193,13 @@ public sealed partial class PluginEntryViewModel : ObservableObject
     [ObservableProperty] private bool canToggle = true;
     [ObservableProperty] private string? errorMessage;
 
-    public PluginEntryViewModel(ExtensionRuntimeEntry entry, ExtensionRuntime runtime, ISettingsService settings)
+    public PluginEntryViewModel(ExtensionRuntimeEntry entry, ExtensionRuntime runtime, ISettingsService settings, PluginPackageManager packageManager, Action<string> report)
     {
         this.entry = entry;
         this.runtime = runtime;
         this.settings = settings;
+        this.packageManager = packageManager;
+        this.report = report;
         Refresh(entry);
     }
 
@@ -211,6 +245,35 @@ public sealed partial class PluginEntryViewModel : ObservableObject
         {
             ErrorMessage = exception.Message;
         }
+        finally { IsBusy = false; CanToggle = true; }
+    }
+
+    [RelayCommand]
+    private async Task ExportAsync()
+    {
+        if (IsBusy) return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "导出插件",
+            Filter = "插件压缩包 (*.zip)|*.zip",
+            FileName = $"{PackageId}-{Version}.zip"
+        };
+        if (dialog.ShowDialog() != true) return;
+        IsBusy = true;
+        try { await packageManager.ExportAsync(PackageId, dialog.FileName); report($"{Name} 已导出为 ZIP 插件包。 "); }
+        catch (Exception exception) { ErrorMessage = exception.Message; }
+        finally { IsBusy = false; }
+    }
+
+    [RelayCommand]
+    private async Task UninstallAsync()
+    {
+        if (IsBusy) return;
+        if (MessageBox.Show($"确定卸载“{Name}”吗？插件设置将保留，之后可以重新导入。", "卸载插件", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        IsBusy = true;
+        CanToggle = false;
+        try { await packageManager.UninstallAsync(PackageId); report($"{Name} 已卸载。 "); }
+        catch (Exception exception) { ErrorMessage = $"卸载失败：{exception.Message}"; }
         finally { IsBusy = false; CanToggle = true; }
     }
 }

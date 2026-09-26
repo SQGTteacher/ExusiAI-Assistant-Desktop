@@ -44,6 +44,7 @@ public partial class App : Application
             runtime = host.Services.GetRequiredService<ExtensionRuntime>();
             var paths = host.Services.GetRequiredService<IAppPaths>();
             RemoveLegacyBundledSample(paths.ApplicationDirectory);
+            await host.Services.GetRequiredService<BundledPackageSynchronizer>().SynchronizeAsync();
 
             var window = host.Services.GetRequiredService<MainWindow>();
             window.DataContext = host.Services.GetRequiredService<ShellViewModel>();
@@ -127,9 +128,7 @@ public partial class App : Application
             await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ContextIdle, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            await runtime.DiscoverAsync(
-                [Path.Combine(paths.ApplicationDirectory, "packages"), paths.PackagesDirectory],
-                cancellationToken);
+            await runtime.DiscoverAsync(paths.PackagesDirectory, cancellationToken);
             await runtime.StartAsync(disabledPackages, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -164,7 +163,10 @@ public partial class App : Application
         builder.Services.AddSingleton<ManifestParser>();
         builder.Services.AddSingleton<ManifestValidator>();
         builder.Services.AddSingleton<PackageDiscoveryService>();
+        builder.Services.AddSingleton<PackageArchiveService>();
         builder.Services.AddSingleton<ExtensionRuntime>();
+        builder.Services.AddSingleton<BundledPackageSynchronizer>();
+        builder.Services.AddSingleton<PluginPackageManager>();
         builder.Services.AddSingleton<WpfNavigationRegistry>();
         builder.Services.AddSingleton<WpfExtensionCoordinator>();
         builder.Services.AddSingleton<SystemThemeProvider>();

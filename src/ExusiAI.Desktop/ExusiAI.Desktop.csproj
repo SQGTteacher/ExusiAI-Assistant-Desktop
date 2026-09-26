@@ -18,6 +18,7 @@
     <ProjectReference Include="..\ExusiAI.Theme\ExusiAI.Theme.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\ExusiAI.FileViewer.Desktop\ExusiAI.FileViewer.Desktop.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
@@ -44,6 +45,13 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\THIRD_PARTY_NOTICES.md" DestinationFolder="$(MishaPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(MishaPackageDir)" />
   </Target>
+  <Target Name="CopyRollCallPackage" AfterTargets="Build">
+    <PropertyGroup><RollCallPackageDir>$(TargetDir)packages\exusiai.roll-call</RollCallPackageDir></PropertyGroup>
+    <MakeDir Directories="$(RollCallPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.RollCall\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.RollCall.dll" DestinationFolder="$(RollCallPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.RollCall\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.RollCall\README.md" DestinationFolder="$(RollCallPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(RollCallPackageDir)" />
+  </Target>
   <Target Name="CopyMishaShowcasePackageToPublish" AfterTargets="Publish">
     <PropertyGroup><MishaPublishPackageDir>$(PublishDir)packages\exusiai.misha-showcase</MishaPublishPackageDir></PropertyGroup>
     <MakeDir Directories="$(MishaPublishPackageDir)" />
@@ -59,5 +67,12 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(FileViewerPublishPackageDir)" SkipUnchangedFiles="true" />
     <ItemGroup><FileViewerDesktopPublishFiles Include="$(MSBuildProjectDirectory)\..\ExusiAI.FileViewer.Desktop\bin\$(Configuration)\net8.0-windows\**\*" /></ItemGroup>
     <Copy SourceFiles="@(FileViewerDesktopPublishFiles)" DestinationFolder="$(PublishDir)viewer\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyRollCallPackageToPublish" AfterTargets="Publish">
+    <PropertyGroup><RollCallPublishPackageDir>$(PublishDir)packages\exusiai.roll-call</RollCallPublishPackageDir></PropertyGroup>
+    <MakeDir Directories="$(RollCallPublishPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.RollCall\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.RollCall.dll" DestinationFolder="$(RollCallPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.RollCall\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.RollCall\README.md" DestinationFolder="$(RollCallPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(RollCallPublishPackageDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

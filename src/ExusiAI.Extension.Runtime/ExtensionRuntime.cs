@@ -119,6 +119,50 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         finally { gate.Release(); }
     }
 
+    public async Task<DiscoveredPackage> RemoveAsync(string packageId, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var slot = slots.FirstOrDefault(x => string.Equals(x.Snapshot.Package.Manifest.Id, packageId, StringComparison.OrdinalIgnoreCase))
+                ?? throw new KeyNotFoundException($"Extension '{packageId}' was not discovered.");
+            if (slot.Snapshot.State != PackageState.Disabled)
+                await StopOneAsync(slot, PackageState.Stopped, cancellationToken).ConfigureAwait(false);
+            slots.Remove(slot);
+            EntriesChanged?.Invoke(this, EventArgs.Empty);
+            return slot.Snapshot.Package;
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task AddAndStartAsync(DiscoveredPackage package, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(package);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (slots.Any(x => string.Equals(x.Snapshot.Package.Manifest.Id, package.Manifest.Id, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException($"Extension '{package.Manifest.Id}' is already installed.");
+            var slot = new RuntimeSlot(new(package, PackageState.Validated, null, null, null));
+            slots.Add(slot);
+            EntriesChanged?.Invoke(this, EventArgs.Empty);
+            if (package.Manifest.Type == PackageType.Plugin)
+            {
+                await TryStartOneAsync(slot, cancellationToken).ConfigureAwait(false);
+                if (slot.Snapshot.State == PackageState.Failed)
+                {
+                    slots.Remove(slot);
+                    EntriesChanged?.Invoke(this, EventArgs.Empty);
+                    throw new InvalidOperationException(slot.Snapshot.FailureMessage ?? "The plugin could not be started.");
+                }
+            }
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);

@@ -18,5 +18,6 @@
     <ProjectReference Include="..\ExusiAI.Extension.TestPlugin\ExusiAI.Extension.TestPlugin.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" />
   </ItemGroup>
 </Project>
