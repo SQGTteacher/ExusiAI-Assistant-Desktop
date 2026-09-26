@@ -42,6 +42,31 @@ public sealed class RuntimeTests
     }
 
     [Fact]
+    public void MishaScheduleNotificationsAreTransitionDrivenAndDeduplicated()
+    {
+        var lesson = new ClassIslandLessonSnapshot(
+            "plan", "课表", 1, "语文", "教师", TimeSpan.FromHours(8), TimeSpan.FromMinutes(8 * 60 + 40));
+        var date = new DateTime(2026, 9, 26);
+        var tracker = new ClassIslandScheduleNotificationTracker();
+
+        var initial = ClassIslandRuntimeStateResolver.Resolve([lesson], date.AddHours(7).AddMinutes(58));
+        Assert.Null(tracker.Evaluate(initial, true, true, true, 60));
+
+        var prepare = ClassIslandRuntimeStateResolver.Resolve([lesson], date.AddHours(7).AddMinutes(59).AddSeconds(30));
+        Assert.Equal(ClassIslandScheduleNotificationKind.Prepare,
+            tracker.Evaluate(prepare, true, true, true, 60)!.Kind);
+        Assert.Null(tracker.Evaluate(prepare, true, true, true, 60));
+
+        var begin = ClassIslandRuntimeStateResolver.Resolve([lesson], date.AddHours(8));
+        Assert.Equal(ClassIslandScheduleNotificationKind.ClassBegin,
+            tracker.Evaluate(begin, true, true, true, 60)!.Kind);
+
+        var finished = ClassIslandRuntimeStateResolver.Resolve([lesson], date.AddHours(8).AddMinutes(40));
+        Assert.Equal(ClassIslandScheduleNotificationKind.AfterSchool,
+            tracker.Evaluate(finished, true, true, true, 60)!.Kind);
+    }
+
+    [Fact]
     public void MishaRefreshQueueCoalescesChangesWithoutDroppingLatestRequest()
     {
         var queue = new CoalescingRefreshQueue();

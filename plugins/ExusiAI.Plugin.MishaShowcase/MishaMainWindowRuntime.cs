@@ -23,6 +23,8 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     private readonly List<Action<DateTime>> tickers = [];
     private readonly HashSet<string> warnedComponents = new(StringComparer.OrdinalIgnoreCase);
     private readonly CoalescingRefreshQueue refreshQueue = new();
+    private readonly ClassIslandScheduleNotificationTracker notificationTracker = new();
+    private readonly MishaScheduleNotificationPresenter notificationPresenter = new();
     private MishaMainWindow? window;
     private bool started;
 
@@ -56,6 +58,8 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         window = null;
         tickers.Clear();
         refreshQueue.Reset();
+        notificationTracker.Reset();
+        notificationPresenter.Dispose();
     }
 
     private void Store_OnChanged(object? sender, EventArgs e)
@@ -134,11 +138,24 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         var workspace = store.Workspace;
         if (workspace is null) return;
         var now = GetClassIslandNow(workspace);
+        var scheduleState = ClassIslandRuntimeStateResolver.Resolve(store, now);
 
         foreach (var ticker in tickers.ToArray())
         {
             try { ticker(now); }
             catch (Exception exception) { logger.Error("A ClassIsland main-window component update failed.", exception); }
+        }
+
+        if (workspace.GetBool("IsNotificationEnabled", true))
+        {
+            var notification = notificationTracker.Evaluate(
+                scheduleState,
+                workspace.GetBool("IsClassChangingNotificationEnabled", true),
+                workspace.GetBool("IsClassPrepareNotificationEnabled", true),
+                workspace.GetBool("IsClassOffNotificationEnabled", true),
+                workspace.GetInt("ClassPrepareNotifySeconds", 60));
+            if (notification is not null)
+                notificationPresenter.Show(notification, workspace);
         }
 
         if (window is null) return;
@@ -154,6 +171,74 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     {
         var offset = workspace.GetDouble("TimeOffsetSeconds") + workspace.GetDouble("DebugTimeOffsetSeconds");
         return DateTime.Now.AddSeconds(offset);
+    }
+}
+
+internal sealed class MishaScheduleNotificationPresenter : IDisposable
+{
+    private readonly DispatcherTimer closeTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    private Window? window;
+
+    public MishaScheduleNotificationPresenter()
+    {
+        closeTimer.Tick += (_, _) =>
+        {
+            closeTimer.Stop();
+            window?.Hide();
+        };
+    }
+
+    public void Show(ClassIslandScheduleNotification notification, ClassIslandWorkspace workspace)
+    {
+        window ??= CreateWindow();
+        if (window.Content is not Border { Child: StackPanel panel }) return;
+
+        ((TextBlock)panel.Children[0]).Text = notification.Title;
+        ((TextBlock)panel.Children[1]).Text = notification.Body;
+        window.Topmost = workspace.GetBool("IsNotificationTopmostEnabled", true);
+        window.Left = SystemParameters.WorkArea.Right - window.Width - 20;
+        window.Top = SystemParameters.WorkArea.Top + 20;
+        if (!window.IsVisible) window.Show();
+        closeTimer.Stop();
+        closeTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        closeTimer.Stop();
+        window?.Close();
+        window = null;
+    }
+
+    private static Window CreateWindow()
+    {
+        var title = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold };
+        var body = new TextBlock { FontSize = 13, Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap };
+        var panel = new StackPanel { Margin = new Thickness(18, 14, 18, 14) };
+        panel.Children.Add(title);
+        panel.Children.Add(body);
+        var border = new Border
+        {
+            Child = panel,
+            CornerRadius = new CornerRadius(10),
+            Background = new SolidColorBrush(Color.FromArgb(242, 32, 32, 36)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(96, 255, 255, 255)),
+            BorderThickness = new Thickness(1)
+        };
+        TextElement.SetForeground(panel, Brushes.White);
+        return new Window
+        {
+            Width = 340,
+            Height = 92,
+            Content = border,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Focusable = false
+        };
     }
 }
 
