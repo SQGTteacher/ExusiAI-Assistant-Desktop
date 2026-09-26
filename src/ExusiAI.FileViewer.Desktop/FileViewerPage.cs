@@ -35,6 +35,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         new TextFileViewerProvider(),
         new RtfFileViewerProvider(),
+        new PdfFileViewerProvider(),
+        new LegacyDocFileViewerProvider(),
         new CsvFileViewerProvider(),
         new DocxFileViewerProvider(),
         new XlsxFileViewerProvider(),
@@ -114,6 +116,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         HorizontalAlignment = HorizontalAlignment.Stretch,
         VerticalAlignment = VerticalAlignment.Stretch
     };
+
+    private readonly Image pdfPageImage = new()
+    {
+        Stretch = Stretch.None,
+        SnapsToDevicePixels = true
+    };
+
+    private readonly ScrollViewer pdfPageScroll;
 
     private readonly TextBlock slideTitle = new()
     {
@@ -267,6 +277,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     private CancellationTokenSource? loadCancellation;
     private CancellationTokenSource? operationCancellation;
+    private CancellationTokenSource? pageNavigationCancellation;
     private ViewerDocument? document;
     private IAsyncEnumerator<TabularPage>? tablePages;
     private int currentSlideNumber;
@@ -296,14 +307,34 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private Border? documentCanvas;
 
     public event EventHandler<string>? DocumentOpened;
+    public event EventHandler? DocumentClosed;
     public bool HasDocument => document is not null;
-    public bool CanNavigateSlides => document is ISlidePreviewDocument;
+    public bool CanNavigateSlides => document is ISlidePreviewDocument or IPagedPreviewDocument;
 
     public FileViewerPage(ViewerSettings settings)
     {
         this.settings = settings;
         zoom.Value = Math.Clamp(15 * settings.DefaultZoomPercent / 100d, zoom.Minimum, zoom.Maximum);
         SetResourceReference(BackgroundProperty, "AppBackgroundBrush");
+
+        var pdfPageSurface = new Border
+        {
+            Margin = new Thickness(28),
+            Padding = new Thickness(1),
+            Background = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(74, 80, 92)),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = pdfPageImage
+        };
+        pdfPageScroll = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Visibility = Visibility.Collapsed,
+            Content = pdfPageSurface
+        };
 
         tablePreview = new ListBox
         {
@@ -518,11 +549,16 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         };
 
         zoom.ValueChanged += (_, _) => ApplyZoom();
-        pageJumpSlider.ValueChanged += (_, _) =>
+        pageJumpSlider.ValueChanged += async (_, _) =>
         {
-            if (changingPageJump || !pagePreviewMode) return;
+            if (changingPageJump) return;
             var target = Math.Max(1, (int)Math.Round(pageJumpSlider.Value));
-            pagePreview.GoToPage(target);
+            if (document is IPagedPreviewDocument)
+                await NavigateDocumentPageAsync(target, debounce: true);
+            else if (pagePreviewMode)
+                pagePreview.GoToPage(target);
+            else
+                return;
             pageJumpLabel.Text = $"{target:N0} / {pageJumpSlider.Maximum:N0}";
         };
         ApplyZoom();
@@ -690,6 +726,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         contentGrid.Children.Add(textPreview);
         contentGrid.Children.Add(markdownPreview);
         contentGrid.Children.Add(pagePreview);
+        contentGrid.Children.Add(pdfPageScroll);
         contentGrid.Children.Add(tablePreview);
         contentGrid.Children.Add(slideScroll);
         contentGrid.Children.Add(welcomePanel);
@@ -885,7 +922,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var picker = new OpenFileDialog
         {
             Title = "选择要预览的文件",
-            Filter = "支持的文件|*.txt;*.md;*.markdown;*.rtf;*.csv;*.docx;*.xlsx;*.pptx|纯文本|*.txt|Markdown|*.md;*.markdown|RTF 文档|*.rtf|CSV|*.csv|Word Open XML|*.docx|Excel Open XML|*.xlsx|PowerPoint Open XML|*.pptx|计划支持的 Office/PDF 文件|*.doc;*.xls;*.ppt;*.pdf|所有文件|*.*",
+            Filter = "支持的文件|*.txt;*.md;*.markdown;*.rtf;*.csv;*.doc;*.docx;*.xlsx;*.pptx;*.pdf|纯文本|*.txt|Markdown|*.md;*.markdown|RTF 文档|*.rtf|CSV|*.csv|Word 文档|*.doc;*.docx|Excel Open XML|*.xlsx|PowerPoint Open XML|*.pptx|PDF 文档|*.pdf|计划支持的旧版 Office 文件|*.xls;*.ppt|所有文件|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -893,6 +930,19 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     }
 
     internal Task OpenFileAsync(string filePath) => OpenAsync(filePath);
+    internal async Task<bool> ReturnHomeAsync()
+    {
+        if (!await ResolvePendingChangesAsync()) return false;
+        await CloseDocumentAsync();
+        await RefreshRecentFilesAsync();
+        welcomePanel.Visibility = Visibility.Visible;
+        await RefreshWelcomeAsync();
+        title.Text = "尚未打开文件";
+        documentMeta.Text = "安全只读查看器";
+        status.Text = "TXT · Markdown · RTF · CSV · DOC · DOCX · XLSX · PPTX · PDF";
+        DocumentClosed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
     internal Task SaveCurrentAsync() => SaveCurrentDocumentAsync();
     internal Task SaveAsCurrentAsync() => SaveAsCurrentDocumentAsync();
     internal Task ReloadCurrentAsync() => ReloadCurrentDocumentAsync();
@@ -912,12 +962,16 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     internal Task PreviousPageAsync()
     {
         if (pagePreviewMode) pagePreview.PreviousPage();
+        if (document is IPagedPreviewDocument)
+            return NavigateDocumentPageAsync(Math.Max(1, (int)pageJumpSlider.Value - 1), debounce: false);
         return pagePreviewMode ? Task.CompletedTask : NavigateSlideAsync(currentSlideNumber - 1);
     }
 
     internal Task NextPageAsync()
     {
         if (pagePreviewMode) pagePreview.NextPage();
+        if (document is IPagedPreviewDocument paged)
+            return NavigateDocumentPageAsync(Math.Min(paged.PageCount, (int)pageJumpSlider.Value + 1), debounce: false);
         return pagePreviewMode ? Task.CompletedTask : NavigateSlideAsync(currentSlideNumber + 1);
     }
 
@@ -982,6 +1036,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         isMarkdownDocument = false;
         markdownPreviewMode = false;
         pagePreviewMode = false;
+        pdfPageScroll.Visibility = Visibility.Collapsed;
+        pdfPageImage.Source = null;
 
         textPreview.Visibility = Visibility.Collapsed;
         markdownPreview.Visibility = Visibility.Collapsed;
@@ -1096,6 +1152,20 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     await LoadNextTablePageAsync();
                     break;
 
+                case IPagedPreviewDocument paged:
+                    pageJumpSlider.Visibility = Visibility.Visible;
+                    pageJumpLabel.Visibility = Visibility.Visible;
+                    changingPageJump = true;
+                    pageJumpSlider.Minimum = 1;
+                    pageJumpSlider.Maximum = paged.PageCount;
+                    pageJumpSlider.Value = 1;
+                    pageJumpLabel.Text = $"1 / {paged.PageCount:N0}";
+                    changingPageJump = false;
+                    pdfPageScroll.Visibility = Visibility.Visible;
+                    await NavigateDocumentPageAsync(1, debounce: false);
+                    status.Text = $"PDF 按需分页 · 共 {paged.PageCount:N0} 页 · 最近页面有界缓存";
+                    break;
+
                 case ITabularPreviewDocument table:
                     tablePreview.Visibility = Visibility.Visible;
                     loadMoreButton.Visibility = Visibility.Visible;
@@ -1122,17 +1192,17 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             status.Text = "已取消加载。";
         }
-        catch (UnsupportedFileFormatException)
+        catch (UnsupportedFileFormatException exception)
         {
-            status.Text = "此格式尚未启用可靠 Provider。DOC、XLS、PPT、PDF 当前明确为未实现。";
-            welcomePanel.Visibility = Visibility.Visible;
-            SetWelcomeChrome(true);
+            await ShowOpenFailureAsync($"此格式尚未启用可靠 Provider。\n{exception.Message}");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or XmlException)
         {
-            status.Text = $"文件被安全拒绝：{exception.Message}";
-            welcomePanel.Visibility = Visibility.Visible;
-            SetWelcomeChrome(true);
+            await ShowOpenFailureAsync($"文件被安全拒绝：{exception.Message}");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            await ShowOpenFailureAsync($"查看器无法打开此文件：{exception.Message}");
         }
         finally
         {
@@ -1141,6 +1211,33 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             UpdateEditingUi();
             UpdateDocumentCommandState();
         }
+    }
+
+    private async Task ShowOpenFailureAsync(string message)
+    {
+        await CloseDocumentAsync();
+        await RefreshRecentFilesAsync();
+        welcomePanel.Visibility = Visibility.Visible;
+        await RefreshWelcomeAsync();
+        var notice = new Border
+        {
+            Padding = new Thickness(14, 11, 14, 11),
+            Margin = new Thickness(0, 0, 0, 18),
+            CornerRadius = new CornerRadius(8),
+            Child = new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 13
+            }
+        };
+        notice.SetResourceReference(Border.BackgroundProperty, "AccentSoftBrush");
+        notice.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
+        notice.BorderThickness = new Thickness(1);
+        welcomeContent.Children.Insert(Math.Min(2, welcomeContent.Children.Count), notice);
+        status.Text = message.Replace(Environment.NewLine, " ", StringComparison.Ordinal);
+        DocumentClosed?.Invoke(this, EventArgs.Empty);
+        MessageBox.Show(message, "无法打开文件", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private async Task<bool> LoadTextPreviewAsync(ITextPreviewDocument text, CancellationToken cancellationToken)
@@ -1304,11 +1401,57 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         textPreview.FontSize = zoom.Value;
         markdownPreview.Zoom = Math.Clamp(zoom.Value / 15d * 100d, markdownPreview.MinZoom, markdownPreview.MaxZoom);
         pagePreview.Zoom = Math.Clamp(zoom.Value / 15d * 100d, 5d, 500d);
+        pdfPageImage.LayoutTransform = new ScaleTransform(zoom.Value / 15d, zoom.Value / 15d);
         tablePreview.FontSize = Math.Max(11, zoom.Value - 1);
         slideTitle.FontSize = Math.Max(24, zoom.Value + 15);
         slideTitle.LineHeight = slideTitle.FontSize * 1.3;
         slideBody.FontSize = Math.Max(16, zoom.Value + 5);
         slideBody.LineHeight = slideBody.FontSize * 1.55;
+    }
+
+    private async Task NavigateDocumentPageAsync(int pageNumber, bool debounce)
+    {
+        if (document is not IPagedPreviewDocument paged || loadCancellation is null) return;
+        pageNavigationCancellation?.Cancel();
+        pageNavigationCancellation?.Dispose();
+        pageNavigationCancellation = CancellationTokenSource.CreateLinkedTokenSource(loadCancellation.Token);
+        var cancellation = pageNavigationCancellation;
+        try
+        {
+            if (debounce) await Task.Delay(140, cancellation.Token);
+            status.Text = $"正在渲染第 {pageNumber:N0} / {paged.PageCount:N0} 页…";
+            var timer = Stopwatch.StartNew();
+            var page = await paged.ReadPageAsync(pageNumber, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            var bitmap = BitmapSource.Create(
+                page.Width,
+                page.Height,
+                96,
+                96,
+                PixelFormats.Bgra32,
+                null,
+                page.Pixels,
+                page.Stride);
+            bitmap.Freeze();
+            pdfPageImage.Source = bitmap;
+            pdfPageScroll.ScrollToHome();
+            timer.Stop();
+            changingPageJump = true;
+            pageJumpSlider.Value = page.PageNumber;
+            pageJumpLabel.Text = $"{page.PageNumber:N0} / {paged.PageCount:N0}";
+            changingPageJump = false;
+            status.Text = $"PDF 第 {page.PageNumber:N0} / {paged.PageCount:N0} 页 · 渲染 {timer.ElapsedMilliseconds:N0} ms";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            status.Text = $"PDF 页面渲染失败：{exception.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(pageNavigationCancellation, cancellation)) pageNavigationCancellation = null;
+            cancellation.Dispose();
+        }
     }
 
     private void RenderSlide(SlidePreview slide)
@@ -2280,8 +2423,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         wrapTextButton.IsEnabled = document is ITextPreviewDocument;
         previousSearchButton.IsEnabled = searchResults.Count > 0;
         nextSearchButton.IsEnabled = searchResults.Count > 0;
-        exportButton.IsEnabled = hasDocument && operationCancellation is null;
-        printButton.IsEnabled = hasDocument && operationCancellation is null;
+        exportButton.IsEnabled = document is ITextPreviewDocument or ITabularPreviewDocument or ISlidePreviewDocument && operationCancellation is null;
+        printButton.IsEnabled = hasDocument && document is not IPagedPreviewDocument && operationCancellation is null;
         goToLineBox.IsEnabled = document is ITextPreviewDocument;
         goToLineBox.Visibility = document is ITextPreviewDocument ? Visibility.Visible : Visibility.Collapsed;
         goToLineButton.IsEnabled = document is ITextPreviewDocument;
@@ -2778,6 +2921,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private async Task CloseDocumentAsync()
     {
         statisticsTimer.Stop();
+        pageNavigationCancellation?.Cancel();
+        pageNavigationCancellation?.Dispose();
+        pageNavigationCancellation = null;
         fileWatcher?.Dispose();
         fileWatcher = null;
         loadCancellation?.Cancel();
@@ -2816,6 +2962,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         markdownPreview.Document = new FlowDocument();
         pagePreview.Visibility = Visibility.Collapsed;
         pagePreview.Document = null;
+        pdfPageScroll.Visibility = Visibility.Collapsed;
+        pdfPageImage.Source = null;
         pageViewButton.Visibility = Visibility.Collapsed;
         pageOrientationButton.Visibility = Visibility.Collapsed;
         pageSpreadButton.Visibility = Visibility.Collapsed;

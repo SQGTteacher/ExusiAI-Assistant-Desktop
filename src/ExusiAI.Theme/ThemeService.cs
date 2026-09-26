@@ -27,8 +27,7 @@ public sealed record ThemeDefinition(
 
 public static class ThemeCatalog
 {
-    // Exusiai's stable visual identity is red/burgundy hair, black/white clothing,
-    // and a warm golden halo. Cyan is deliberately not used as the primary accent.
+    // Neutral red/black/white defaults with a warm gold secondary accent.
     public static ThemePalette Light { get; } = new(
         "#F6F3F1", "#FFFFFF", "#EEE8E6", "#242126", "#746B70", "#D9CFCC",
         "#C84450", "#F5DDE0", "#2F8F72", "#C89035", "#C94E5C");
@@ -39,12 +38,12 @@ public static class ThemeCatalog
 
     public static IReadOnlyList<ThemeDefinition> All { get; } =
     [
-        new("system", "跟随系统", "自动匹配 Windows 深浅色，并保持能天使的红黑白金视觉基调", false, Light, Dark),
+        new("system", "跟随系统", "自动匹配 Windows 深浅色，并保持清晰的红黑白金视觉层级", false, Light, Dark),
         new("paper", "Paper", "克制清晰的暖白工作区", false,
             new("#EDF7F5F0", "#F9FFFDF8", "#E8EEE9E1", "#24231F", "#706E66", "#9ED8D3C8", "#3568D4", "#D8E4EDFF", "#2E8B68", "#B97818", "#C84B55")),
         new("solarized", "Solarized Light", "适合长时间阅读的低对比浅色", false,
             new("#EDFDF6E3", "#F9FFFBED", "#E8EEE8D5", "#586E75", "#7C8B8E", "#9ECBC4B4", "#268BD2", "#D8DCEAF0", "#2AA198", "#B58900", "#DC322F")),
-        new("exusiai", "Exusiai", "能天使主题：深石墨黑、黑白层级、酒红强调与光环金点缀", true, Dark),
+        new("exusiai", "Crimson", "深石墨黑、黑白层级、酒红强调与暖金点缀", true, Dark),
         new("graphite", "Graphite", "中性的深灰编辑器配色", true,
             new("#EA17191C", "#EA202327", "#DC292D32", "#F2F4F7", "#AAB0BA", "#70464B53", "#7DA2F8", "#87314360", "#55C59A", "#E8B15B", "#ED7784")),
         new("nord", "Nord", "冷静的极地蓝灰色调", true,

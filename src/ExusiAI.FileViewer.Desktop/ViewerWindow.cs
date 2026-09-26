@@ -14,6 +14,7 @@ internal sealed class ViewerWindow : Window
     private readonly ColumnDefinition railColumn = new() { Width = new GridLength(72) };
     private readonly ContentControl viewerHost = new();
     private Border? rail;
+    private Button? homeButton;
     private FileViewerPage? viewer;
     private string? pendingFile;
     private bool initializing;
@@ -69,7 +70,16 @@ internal sealed class ViewerWindow : Window
             await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ContextIdle);
 
             var page = new FileViewerPage(settings);
-            page.DocumentOpened += (_, path) => Title = $"{Path.GetFileName(path)} — ExusiAI Viewer";
+            page.DocumentOpened += (_, path) =>
+            {
+                Title = $"{Path.GetFileName(path)} — ExusiAI Viewer";
+                if (homeButton is not null) homeButton.Visibility = Visibility.Visible;
+            };
+            page.DocumentClosed += (_, _) =>
+            {
+                Title = "ExusiAI Viewer";
+                if (homeButton is not null) homeButton.Visibility = Visibility.Collapsed;
+            };
             viewer = page;
             viewerHost.Content = page;
 
@@ -124,6 +134,29 @@ internal sealed class ViewerWindow : Window
         };
         railLabel.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
         railContent.Children.Add(railLabel);
+        var returnHome = new Button
+        {
+            Content = "⌂",
+            Width = 38,
+            Height = 38,
+            Margin = new Thickness(0, 24, 0, 0),
+            Padding = new Thickness(0),
+            FontSize = 20,
+            ToolTip = "返回查看器首页",
+            Visibility = Visibility.Collapsed
+        };
+        returnHome.SetResourceReference(Button.BackgroundProperty, "SurfaceBrush");
+        returnHome.SetResourceReference(Button.ForegroundProperty, "TextPrimaryBrush");
+        returnHome.Click += async (_, _) =>
+        {
+            if (viewer is not null && await viewer.ReturnHomeAsync())
+            {
+                Title = "ExusiAI Viewer";
+                returnHome.Visibility = Visibility.Collapsed;
+            }
+        };
+        homeButton = returnHome;
+        railContent.Children.Add(returnHome);
         rail.Child = railContent;
         shell.Children.Add(rail);
 

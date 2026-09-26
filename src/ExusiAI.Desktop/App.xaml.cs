@@ -207,6 +207,7 @@ public partial class App : Application
         SetBrush("TextSecondaryBrush", palette.TextSecondary);
         SetBrush("BorderBrush", palette.Border);
         SetBrush("AccentBrush", palette.Accent);
+        SetBrush("AccentForegroundBrush", GetContrastingForeground(palette.Accent));
         SetBrush("AccentSoftBrush", palette.AccentSoft);
         SetBrush("SuccessBrush", palette.Success);
         SetBrush("WarningBrush", palette.Warning);
@@ -217,4 +218,11 @@ public partial class App : Application
     }
 
     private static void SetBrush(string key, string color) => Current.Resources[key] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
+
+    private static string GetContrastingForeground(string color)
+    {
+        var value = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color);
+        var luminance = (0.2126 * value.R + 0.7152 * value.G + 0.0722 * value.B) / 255d;
+        return luminance > 0.58 ? "#161922" : "#FFFFFF";
+    }
 }

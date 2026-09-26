@@ -35,7 +35,7 @@
                             </Border>
                             <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding ProductName}" FontSize="15" FontWeight="SemiBold" />
-                                <TextBlock Text="Exusiai-inspired preview channel" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="Classroom preview channel" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </StackPanel>
                         </StackPanel>
                         <TextBlock Text="{Binding Version}" FontSize="42" FontWeight="SemiBold" Margin="0,24,0,0" />
@@ -55,33 +55,33 @@
                 <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                         CommandParameter="workspace" Margin="0,0,6,0" Padding="16" HorizontalContentAlignment="Stretch">
                     <StackPanel>
-                        <TextBlock Text="插件工作台" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="插件工作台" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         <TextBlock Text="打开 Misha、文件查看器等插件" Margin="0,5,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" />
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Opacity="0.76" TextWrapping="Wrap" FontSize="11" />
                     </StackPanel>
                 </Button>
                 <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                         CommandParameter="extensions" Margin="2,0,4,0" Padding="16" HorizontalContentAlignment="Stretch">
                     <StackPanel>
-                        <TextBlock Text="扩展管理" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="扩展管理" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         <TextBlock Text="查看加载状态、启用与故障信息" Margin="0,5,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" />
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Opacity="0.76" TextWrapping="Wrap" FontSize="11" />
                     </StackPanel>
                 </Button>
                 <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                         CommandParameter="theme" Margin="4,0,2,0" Padding="16" HorizontalContentAlignment="Stretch">
                     <StackPanel>
-                        <TextBlock Text="主题与外观" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="主题与外观" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         <TextBlock Text="调整主程序主题与窗口材质" Margin="0,5,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" />
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Opacity="0.76" TextWrapping="Wrap" FontSize="11" />
                     </StackPanel>
                 </Button>
                 <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                         CommandParameter="settings" Margin="6,0,0,0" Padding="16" HorizontalContentAlignment="Stretch">
                     <StackPanel>
-                        <TextBlock Text="软件设置" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="软件设置" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                         <TextBlock Text="版本、目录与运行环境" Margin="0,5,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" />
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Opacity="0.76" TextWrapping="Wrap" FontSize="11" />
                     </StackPanel>
                 </Button>
             </UniformGrid>

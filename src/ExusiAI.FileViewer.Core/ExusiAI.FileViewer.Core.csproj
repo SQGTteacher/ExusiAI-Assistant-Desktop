@@ -3,4 +3,8 @@
     <AssemblyName>ExusiAI.FileViewer.Core</AssemblyName>
     <Description>Safe, streaming document provider contracts for the ExusiAI file viewer.</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Docnet.Core" />
+    <PackageReference Include="ScratchPad.NPOI.HWPF" />
+  </ItemGroup>
 </Project>

@@ -18,6 +18,26 @@ public sealed class FileViewerTests : IDisposable
         Assert.Equal(20, window.Count);
     }
 
+    [Fact]
+    public async Task Pdf_provider_rejects_extension_spoofing_before_native_rendering()
+    {
+        var path = Path.Combine(directory, "spoofed.pdf");
+        await File.WriteAllTextAsync(path, "not a PDF");
+
+        await Assert.ThrowsAsync<FileRejectedException>(async () =>
+            await new PdfFileViewerProvider().OpenAsync(path, ViewerOpenOptions.Default, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Legacy_doc_provider_rejects_non_compound_file()
+    {
+        var path = Path.Combine(directory, "spoofed.doc");
+        await File.WriteAllTextAsync(path, "not an OLE document");
+
+        await Assert.ThrowsAsync<FileRejectedException>(async () =>
+            await new LegacyDocFileViewerProvider().OpenAsync(path, ViewerOpenOptions.Default, CancellationToken.None));
+    }
+
     [Theory]
     [InlineData(10_000, 5_000, 4_990, 5_010)]
     [InlineData(10_000, 1, 1, 21)]
@@ -466,6 +486,8 @@ public sealed class FileViewerTests : IDisposable
     {
         new TextFileViewerProvider(),
         new RtfFileViewerProvider(),
+        new PdfFileViewerProvider(),
+        new LegacyDocFileViewerProvider(),
         new CsvFileViewerProvider(),
         new DocxFileViewerProvider(),
         new XlsxFileViewerProvider(),
