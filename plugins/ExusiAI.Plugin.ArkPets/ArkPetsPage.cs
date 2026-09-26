@@ -43,6 +43,21 @@ internal sealed class ArkPetsPage : UserControl
     {
         this.controller = controller;
         MinWidth = 720;
+
+        // ArkPets 在宿主内仍保持上游的浅色蓝白工作台。
+        // 在插件作用域内覆盖宿主的深色动态资源，避免 TextBox、ComboBox、
+        // ListBox、Slider、CheckBox 与 ScrollBar 在白色页面上继续套用深色配色。
+        Resources["TextPrimaryBrush"] = Ink;
+        Resources["TextSecondaryBrush"] = Brush("#5E6B7A");
+        Resources["SurfaceBrush"] = Paper;
+        Resources["SurfaceAltBrush"] = Brush("#F2F6FC");
+        Resources["BorderBrush"] = Brush("#B9C8DC");
+        Resources["AccentBrush"] = Theme;
+        Resources["AccentForegroundBrush"] = Brushes.White;
+        Resources["AccentSoftBrush"] = Brush("#DCE8F8");
+        Background = Paper;
+        Foreground = Ink;
+
         modelsButton = MenuButton("模型");
         behaviorButton = MenuButton("行为");
         optionsButton = MenuButton("选项");
@@ -190,7 +205,10 @@ internal sealed class ArkPetsPage : UserControl
         searchBox = new TextBox
         {
             MinWidth = 180,
-            Height = 30,
+            Height = 34,
+            Foreground = Ink,
+            Background = Paper,
+            BorderBrush = Brush("#B9C8DC"),
             Margin = new Thickness(12, 0, 0, 0),
             VerticalContentAlignment = VerticalAlignment.Center,
             ToolTip = "搜索名称 / 代号 / 资源键 / 时装"
@@ -217,7 +235,15 @@ internal sealed class ArkPetsPage : UserControl
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center
         });
-        typeFilter = new ComboBox { Width = 150, Height = 28, HorizontalAlignment = HorizontalAlignment.Right };
+        typeFilter = new ComboBox
+        {
+            Width = 150,
+            Height = 34,
+            Foreground = Ink,
+            Background = Paper,
+            BorderBrush = Brush("#B9C8DC"),
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
         typeFilter.SelectionChanged += (_, _) => RefreshModelList();
         DockPanel.SetDock(typeFilter, Dock.Right);
         filterRow.Children.Add(typeFilter);
@@ -231,7 +257,9 @@ internal sealed class ArkPetsPage : UserControl
         modelList = new ListView
         {
             Margin = new Thickness(0, 0, 8, 0),
-            BorderBrush = Brush("#C8D2E2"),
+            Background = Paper,
+            Foreground = Ink,
+            BorderBrush = Brush("#B9C8DC"),
             BorderThickness = new Thickness(1),
             DisplayMemberPath = nameof(ArkPetModel.DisplayName)
         };
@@ -1375,7 +1403,9 @@ internal sealed class ArkPetsPage : UserControl
             BorderBrush = Theme,
             BorderThickness = new Thickness(1),
             Padding = new Thickness(10, 5, 10, 5),
-            Margin = new Thickness(3, 0, 3, 0)
+            Margin = new Thickness(3),
+            MinHeight = 32,
+            FontSize = 13
         };
 
     private static SolidColorBrush Brush(string hex) =>
