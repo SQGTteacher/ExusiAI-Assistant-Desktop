@@ -82,7 +82,10 @@ internal sealed class LegacyDocDocument : ViewerDocument, ITextPreviewDocument
         try
         {
             using var stream = SafeFileAccess.OpenSequentialRead(file);
-            using var document = new HWPFDocument(stream);
+            // ScratchPad.NPOI.HWPF 2.5.7's HWPFDocument does not implement
+            // IDisposable. The backing stream owns the native file handle and
+            // is disposed after extraction completes.
+            var document = new HWPFDocument(stream);
             var extractor = new WordExtractor(document);
             var text = extractor.Text ?? string.Empty;
             if (text.Length > options.MaximumLegacyWordCharacters)
