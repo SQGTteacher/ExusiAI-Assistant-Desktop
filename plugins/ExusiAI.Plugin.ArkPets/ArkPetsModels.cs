@@ -27,6 +27,11 @@ public sealed record ArkPetModel(
     public bool IsAvailable =>
         Directory.Exists(AssetDirectory) &&
         AssetFiles.Values.SelectMany(x => x).All(file => File.Exists(Path.Combine(AssetDirectory, file)));
+
+    public string? PreviewImagePath =>
+        AssetFiles.TryGetValue(".png", out var images)
+            ? images.Select(file => Path.Combine(AssetDirectory, file)).FirstOrDefault(File.Exists)
+            : null;
 }
 
 public sealed record ArkModelsCatalog(
@@ -46,7 +51,7 @@ public static class ArkModelsDataset
     public static async Task<ArkModelsCatalog> LoadAsync(string rootDirectory, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
-        var root = Path.GetFullPath(rootDirectory);
+        var root = DiscoverRoot(rootDirectory);
         var datasetPath = Path.Combine(root, "models_data.json");
         if (!File.Exists(datasetPath))
             throw new FileNotFoundException("所选目录中没有 Ark-Models 的 models_data.json。", datasetPath);
@@ -119,6 +124,38 @@ public static class ArkModelsDataset
                 .ThenBy(x => x.SkinGroupName, StringComparer.CurrentCultureIgnoreCase)
                 .ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
                 .ToArray());
+    }
+
+    internal static string DiscoverRoot(string selectedPath)
+    {
+        var selected = Path.GetFullPath(selectedPath);
+        if (File.Exists(selected))
+        {
+            if (string.Equals(Path.GetFileName(selected), "models_data.json", StringComparison.OrdinalIgnoreCase))
+                return Path.GetDirectoryName(selected)!;
+            throw new FileNotFoundException("所选文件不是 Ark-Models 的 models_data.json。", selected);
+        }
+
+        if (!Directory.Exists(selected))
+            throw new DirectoryNotFoundException($"模型库目录不存在：{selected}");
+
+        if (File.Exists(Path.Combine(selected, "models_data.json")))
+            return selected;
+
+        var conventional = Path.Combine(selected, "ArkModels");
+        if (File.Exists(Path.Combine(conventional, "models_data.json")))
+            return conventional;
+
+        var candidates = Directory.EnumerateDirectories(selected)
+            .Where(directory => File.Exists(Path.Combine(directory, "models_data.json")))
+            .Take(2)
+            .ToArray();
+        return candidates.Length switch
+        {
+            1 => candidates[0],
+            > 1 => throw new InvalidDataException("所选目录中包含多个 Ark-Models 模型库，请选择具体模型库目录。"),
+            _ => throw new FileNotFoundException("所选目录及其直接子目录中没有 Ark-Models 的 models_data.json。", Path.Combine(selected, "models_data.json"))
+        };
     }
 
     private static Dictionary<string, string> ReadStringMap(JsonElement parent, string property)

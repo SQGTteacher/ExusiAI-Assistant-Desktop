@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 
 namespace ExusiAI.Plugin.ArkPets;
@@ -25,6 +26,8 @@ internal sealed class ArkPetsPage : UserControl
     private TextBlock? modelStatus;
     private TextBlock? modelName;
     private TextBlock? modelDetails;
+    private Image? modelPreview;
+    private TextBlock? modelPreviewPlaceholder;
     private TextBlock? integrationStatus;
     private Button? favoriteFilterButton;
     private Button? selectedFavoriteButton;
@@ -300,6 +303,37 @@ internal sealed class ArkPetsPage : UserControl
         };
         infoStack.Children.Add(modelName);
         infoStack.Children.Add(modelDetails);
+
+        var previewFrame = new Border
+        {
+            Height = 220,
+            Margin = new Thickness(0, 0, 0, 10),
+            Background = Brush("#F2F6FC"),
+            BorderBrush = Brush("#C8D2E2"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4)
+        };
+        var previewGrid = new Grid();
+        modelPreview = new Image
+        {
+            Stretch = Stretch.Uniform,
+            Margin = new Thickness(10),
+            SnapsToDevicePixels = true
+        };
+        modelPreviewPlaceholder = new TextBlock
+        {
+            Text = "选择模型后显示贴图预览",
+            Foreground = Brushes.DimGray,
+            TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(20)
+        };
+        previewGrid.Children.Add(modelPreview);
+        previewGrid.Children.Add(modelPreviewPlaceholder);
+        previewFrame.Child = previewGrid;
+        infoStack.Children.Add(previewFrame);
 
         selectedFavoriteButton = SecondaryButton("☆  收藏");
         selectedFavoriteButton.HorizontalAlignment = HorizontalAlignment.Left;
@@ -1012,6 +1046,7 @@ internal sealed class ArkPetsPage : UserControl
         {
             modelName.Text = "请选择模型";
             modelDetails.Text = "";
+            SetModelPreview(null);
             if (selectedFavoriteButton is not null)
             {
                 selectedFavoriteButton.Content = "☆  收藏";
@@ -1030,6 +1065,42 @@ internal sealed class ArkPetsPage : UserControl
         var tags = model.SortTags.Count == 0 ? "—" : string.Join(" / ", model.SortTags);
         modelDetails.Text =
             $"{model.Subtitle}\n\n资源键：{model.Key}\n时装系列：{(string.IsNullOrWhiteSpace(model.SkinGroupName) ? "—" : model.SkinGroupName)}\n标签：{tags}\n状态：{(model.IsAvailable ? "资源完整" : "缺少资源文件")}";
+        SetModelPreview(model);
+    }
+
+    private void SetModelPreview(ArkPetModel? model)
+    {
+        if (modelPreview is null || modelPreviewPlaceholder is null) return;
+        modelPreview.Source = null;
+        var path = model?.PreviewImagePath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            modelPreviewPlaceholder.Text = model is null
+                ? "选择模型后显示贴图预览"
+                : "该模型尚未下载完整贴图";
+            modelPreviewPlaceholder.Visibility = Visibility.Visible;
+            return;
+        }
+
+        try
+        {
+            // 仅为当前选中项生成低分辨率预览，并立即释放源文件句柄。
+            // 这样加载数千模型的完整库时不会预解码所有大贴图或长期锁定文件。
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.DecodePixelHeight = 260;
+            bitmap.UriSource = new Uri(path, UriKind.Absolute);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            modelPreview.Source = bitmap;
+            modelPreviewPlaceholder.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception exception) when (exception is System.IO.IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException or FormatException)
+        {
+            modelPreviewPlaceholder.Text = "贴图预览不可用，但不影响启动模型";
+            modelPreviewPlaceholder.Visibility = Visibility.Visible;
+        }
     }
 
     private void PopulateTypeFilter()

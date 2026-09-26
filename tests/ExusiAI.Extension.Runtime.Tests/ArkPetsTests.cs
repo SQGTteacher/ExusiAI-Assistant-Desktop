@@ -49,6 +49,32 @@ public sealed class ArkPetsTests
         Assert.Equal("Exusiai", model.Appellation);
         Assert.True(model.IsAvailable);
         Assert.Equal("2.2.0", catalog.Compatibility);
+        Assert.Equal(Path.Combine(root.Path, "models", "103_angel", "angel.png"), model.PreviewImagePath);
+    }
+
+    [Fact]
+    public async Task DatasetDiscoversArkModelsInsideCompletePackage()
+    {
+        using var root = new TestDirectory();
+        var library = Path.Combine(root.Path, "ArkModels");
+        Directory.CreateDirectory(library);
+        await File.WriteAllTextAsync(Path.Combine(library, "models_data.json"), """
+        {
+          "storageDirectory": { "Operator": "models" },
+          "data": {
+            "103_angel": {
+              "type": "Operator",
+              "name": "能天使",
+              "assetList": { ".png": "angel.png" }
+            }
+          }
+        }
+        """);
+
+        var catalog = await ArkModelsDataset.LoadAsync(root.Path);
+
+        Assert.Equal(Path.GetFullPath(library), catalog.RootDirectory);
+        Assert.Equal("能天使", Assert.Single(catalog.Models).Name);
     }
 
     [Fact]
