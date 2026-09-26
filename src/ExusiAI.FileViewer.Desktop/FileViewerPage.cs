@@ -22,9 +22,11 @@ namespace ExusiAI.FileViewer.Desktop;
 
 internal sealed class FileViewerPage : UserControl, IDisposable
 {
-    private const int MaximumTextPreviewCharacters = 8 * 1024 * 1024;
+    private const int InitialDocumentPages = 20;
+    private const int ApproximateTextCharactersPerPage = 3_000;
+    private const int MaximumTextPreviewCharacters = InitialDocumentPages * ApproximateTextCharactersPerPage;
     private const int MaximumPrintCharacters = 2 * 1024 * 1024;
-    private const int MaximumPagePreviewCharacters = 2 * 1024 * 1024;
+    private const int MaximumPagePreviewCharacters = MaximumTextPreviewCharacters;
     private const int SlideThumbnailBatchSize = 16;
 
     private FileViewerProviderRegistry? providers;
@@ -243,6 +245,25 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         TickFrequency = 1,
         IsSnapToTickEnabled = true
     };
+    private readonly Slider pageJumpSlider = new()
+    {
+        Minimum = 1,
+        Maximum = InitialDocumentPages,
+        Value = 1,
+        Width = 180,
+        TickFrequency = 1,
+        IsSnapToTickEnabled = true,
+        Visibility = Visibility.Collapsed,
+        ToolTip = "跳转到当前分页工作集中的页面"
+    };
+    private readonly TextBlock pageJumpLabel = new()
+    {
+        Text = "1 / 1",
+        FontSize = 11,
+        VerticalAlignment = VerticalAlignment.Center,
+        Visibility = Visibility.Collapsed
+    };
+    private bool changingPageJump;
 
     private CancellationTokenSource? loadCancellation;
     private CancellationTokenSource? operationCancellation;
@@ -347,16 +368,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             NavigateMarkdownHeading(option);
         };
 
-        welcomePanel = new Border
-        {
-            Child = new ScrollViewer
-            {
-                Padding = new Thickness(48),
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Content = welcomeContent
-            }
-        };
+        welcomePanel = new Border { Child = BuildWelcomeShell() };
         welcomePanel.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
 
         recentFilesBox.DisplayMemberPath = nameof(RecentFileEntry.DisplayName);
@@ -437,6 +449,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         pageViewButton.Visibility = Visibility.Collapsed;
         pageOrientationButton.Visibility = Visibility.Collapsed;
         pageSpreadButton.Visibility = Visibility.Collapsed;
+        pageJumpSlider.Visibility = Visibility.Collapsed;
+        pageJumpLabel.Visibility = Visibility.Collapsed;
 
         statisticsTimer.Tick += (_, _) =>
         {
@@ -504,6 +518,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         };
 
         zoom.ValueChanged += (_, _) => ApplyZoom();
+        pageJumpSlider.ValueChanged += (_, _) =>
+        {
+            if (changingPageJump || !pagePreviewMode) return;
+            var target = Math.Max(1, (int)Math.Round(pageJumpSlider.Value));
+            pagePreview.GoToPage(target);
+            pageJumpLabel.Text = $"{target:N0} / {pageJumpSlider.Maximum:N0}";
+        };
         ApplyZoom();
 
         Content = BuildLayout();
@@ -619,6 +640,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         AddCommand(viewCommands, pageViewButton);
         AddCommand(viewCommands, pageOrientationButton);
         AddCommand(viewCommands, pageSpreadButton);
+        AddCommand(viewCommands, pageJumpSlider);
+        AddCommand(viewCommands, pageJumpLabel);
 
         var commandHost = new Grid { MinHeight = 36 };
         commandHost.Children.Add(fileCommands);
@@ -777,6 +800,84 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         return root;
     }
 
+    private FrameworkElement BuildWelcomeShell()
+    {
+        var shell = new Grid();
+        shell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(196) });
+        shell.ColumnDefinitions.Add(new ColumnDefinition());
+
+        var navigation = new Grid();
+        navigation.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        navigation.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        navigation.RowDefinitions.Add(new RowDefinition());
+        navigation.Children.Add(new TextBlock
+        {
+            Text = "ExusiAI Viewer",
+            FontSize = 21,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(8, 0, 0, 26)
+        });
+
+        var home = CreateWelcomeNavigationButton("⌂", "主页", true);
+        Grid.SetRow(home, 1);
+        navigation.Children.Add(home);
+
+        var open = CreateWelcomeNavigationButton("▱", "打开", false);
+        open.Click += async (_, _) => await PickFileAsync();
+        open.VerticalAlignment = VerticalAlignment.Top;
+        Grid.SetRow(open, 2);
+        navigation.Children.Add(open);
+
+        var navigationSurface = new Border
+        {
+            Padding = new Thickness(18, 28, 18, 22),
+            Child = navigation
+        };
+        navigationSurface.SetResourceReference(Border.BackgroundProperty, "SurfaceAltBrush");
+        shell.Children.Add(navigationSurface);
+
+        var scroll = new ScrollViewer
+        {
+            Padding = new Thickness(50, 32, 50, 42),
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = welcomeContent
+        };
+        Grid.SetColumn(scroll, 1);
+        shell.Children.Add(scroll);
+        return shell;
+    }
+
+    private static Button CreateWelcomeNavigationButton(string glyph, string label, bool selected)
+    {
+        var content = new StackPanel { Margin = new Thickness(4, 12, 4, 12) };
+        content.Children.Add(new TextBlock
+        {
+            Text = glyph,
+            FontSize = 30,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 15,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+
+        var button = new Button
+        {
+            Content = content,
+            MinHeight = 94,
+            Margin = new Thickness(0, 0, 0, 10),
+            BorderThickness = new Thickness(selected ? 2 : 1),
+            Cursor = Cursors.Hand
+        };
+        button.SetResourceReference(Control.BackgroundProperty, selected ? "AccentSoftBrush" : "SurfaceBrush");
+        button.SetResourceReference(Control.BorderBrushProperty, selected ? "AccentBrush" : "BorderBrush");
+        return button;
+    }
+
     private async void OpenButton_OnClick(object sender, RoutedEventArgs e) => await PickFileAsync();
 
     internal async Task PickFileAsync()
@@ -890,6 +991,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         pageViewButton.Visibility = Visibility.Collapsed;
         pageOrientationButton.Visibility = Visibility.Collapsed;
         pageSpreadButton.Visibility = Visibility.Collapsed;
+        pageJumpSlider.Visibility = Visibility.Collapsed;
+        pageJumpLabel.Visibility = Visibility.Collapsed;
         tablePreview.Visibility = Visibility.Collapsed;
         slideScroll.Visibility = Visibility.Collapsed;
         searchPane.Visibility = Visibility.Collapsed;
@@ -906,6 +1009,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         currentSlideNumber = 0;
         welcomePanel.Visibility = Visibility.Collapsed;
+        SetWelcomeChrome(false);
         loadCancellation = new CancellationTokenSource();
         cancelButton.IsEnabled = true;
         title.Text = Path.GetFileName(filePath);
@@ -965,7 +1069,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     if (document is IEditableTextDocument && textPreviewFullyLoaded)
                         status.Text = "TXT/Markdown 可编辑 · Ctrl+S 保存 · 保存采用同目录临时文件与原子替换";
                     else if (document is IEditableTextDocument)
-                        status.Text = "文件超过 8 MiB 界面缓存，已保持只读以防止截断保存。";
+                        status.Text = "超长文档仅保留开头约 20 页工作集；全文搜索与导出仍采用流式读取。";
                     var extension = Path.GetExtension(document.Info.FilePath);
                     isMarkdownDocument = extension.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
                                          extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase);
@@ -1022,11 +1126,13 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             status.Text = "此格式尚未启用可靠 Provider。DOC、XLS、PPT、PDF 当前明确为未实现。";
             welcomePanel.Visibility = Visibility.Visible;
+            SetWelcomeChrome(true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or XmlException)
         {
             status.Text = $"文件被安全拒绝：{exception.Message}";
             welcomePanel.Visibility = Visibility.Visible;
+            SetWelcomeChrome(true);
         }
         finally
         {
@@ -1051,14 +1157,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             var remaining = MaximumTextPreviewCharacters - textPreview.Text.Length;
             if (remaining <= 0)
             {
-                status.Text = "已达到 8 MiB 界面缓存上限，剩余内容未载入。";
+                status.Text = "已载入开头约 20 页；剩余内容不驻留内存。";
                 break;
             }
 
             textPreview.AppendText(chunk.Text.Length <= remaining ? chunk.Text : chunk.Text[..remaining]);
             if (chunk.Text.Length > remaining)
             {
-                status.Text = "已达到 8 MiB 界面缓存上限，剩余内容未载入。";
+                status.Text = "已载入开头约 20 页；剩余内容不驻留内存。";
                 break;
             }
 
@@ -1675,7 +1781,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         if (document is not (ITextPreviewDocument or IRichTextPreviewDocument) || !textPreviewFullyLoaded) return;
         if (textPreview.Text.Length > MaximumPagePreviewCharacters)
         {
-            status.Text = "文档超过 2 Mi 字符页面排版预算；继续使用流式连续视图以避免课堂设备卡顿。";
+            status.Text = "文档超过首 20 页页面工作集；继续使用流式连续视图以避免课堂设备卡顿。";
             return;
         }
         SetPagePreviewMode(!pagePreviewMode);
@@ -1721,6 +1827,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         pageViewButton.Content = pagePreviewMode ? "连续视图" : "页面视图";
         pageOrientationButton.Visibility = pagePreviewMode ? Visibility.Visible : Visibility.Collapsed;
         pageSpreadButton.Visibility = pagePreviewMode ? Visibility.Visible : Visibility.Collapsed;
+        pageJumpSlider.Visibility = pagePreviewMode ? Visibility.Visible : Visibility.Collapsed;
+        pageJumpLabel.Visibility = pagePreviewMode ? Visibility.Visible : Visibility.Collapsed;
         if (document is not null) UpdateEditingUi();
     }
 
@@ -1750,6 +1858,17 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         pagePreview.Visibility = Visibility.Visible;
         ApplyPageSpread();
         ApplyZoom();
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (!pagePreviewMode || pagePreview.Document is null) return;
+            var paginator = ((IDocumentPaginatorSource)flow).DocumentPaginator;
+            paginator.ComputePageCount();
+            changingPageJump = true;
+            pageJumpSlider.Maximum = Math.Max(1, paginator.PageCount);
+            pageJumpSlider.Value = 1;
+            pageJumpLabel.Text = $"1 / {paginator.PageCount:N0}";
+            changingPageJump = false;
+        }, System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private FlowDocument CreateRichTextFlowDocument()
@@ -2544,47 +2663,116 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
     private Task RefreshWelcomeAsync()
     {
+        SetWelcomeChrome(true);
         welcomeContent.Children.Clear();
         welcomeContent.Children.Add(new TextBlock
         {
-            Text = "打开课堂文档",
-            FontSize = 30,
+            Text = "欢迎使用",
+            FontSize = 28,
             FontWeight = FontWeights.SemiBold
         });
         welcomeContent.Children.Add(new TextBlock
         {
-            Text = "拖入文件，或按 Ctrl+O。TXT/Markdown 支持安全编辑与保存；Office 文档继续以可靠查看和演示为优先。",
-            FontSize = 14,
-            Margin = new Thickness(0, 8, 0, 24),
+            Text = "打开文档并开始阅读",
+            FontSize = 13,
+            Margin = new Thickness(0, 5, 0, 24),
             Opacity = 0.72
         });
 
-        var open = CreatePrimaryButton("选择文件");
-        open.HorizontalAlignment = HorizontalAlignment.Left;
-        open.Click += async (_, _) => await PickFileAsync();
-        welcomeContent.Children.Add(open);
+        welcomeContent.Children.Add(new TextBlock
+        {
+            Text = "开始",
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
 
-        if (!settings.RememberRecentFiles) return Task.CompletedTask;
-        var recent = recentEntries;
-        if (recent.Count == 0) return Task.CompletedTask;
+        var openTile = new Button
+        {
+            Width = 154,
+            Height = 138,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(18),
+            Cursor = Cursors.Hand,
+            Content = new StackPanel
+            {
+                Children =
+                {
+                    new TextBlock { Text = "▱", FontSize = 42, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 13) },
+                    new TextBlock { Text = "打开文件", FontSize = 15, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center }
+                }
+            }
+        };
+        openTile.SetResourceReference(Control.BackgroundProperty, "SurfaceAltBrush");
+        openTile.SetResourceReference(Control.BorderBrushProperty, "BorderBrush");
+        openTile.Click += async (_, _) => await PickFileAsync();
+        welcomeContent.Children.Add(openTile);
+
+        var divider = new Border { Height = 1, Margin = new Thickness(0, 28, 0, 22) };
+        divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush");
+        welcomeContent.Children.Add(divider);
         welcomeContent.Children.Add(new TextBlock
         {
             Text = "最近使用",
             FontSize = 16,
             FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 30, 0, 10)
+            Margin = new Thickness(0, 0, 0, 10)
         });
-        foreach (var item in recent.Take(6))
+
+        if (!settings.RememberRecentFiles)
         {
-            var button = CreateSecondaryButton(item.DisplayName);
+            welcomeContent.Children.Add(CreateWelcomeHint("最近文件记录已关闭。"));
+            return Task.CompletedTask;
+        }
+        var recent = recentEntries;
+        if (recent.Count == 0)
+        {
+            welcomeContent.Children.Add(CreateWelcomeHint("尚未打开文件。也可以将文件直接拖到窗口中。"));
+            return Task.CompletedTask;
+        }
+
+        foreach (var item in recent.Take(10))
+        {
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.Children.Add(new TextBlock { Text = "▤", FontSize = 20, Opacity = 0.8, VerticalAlignment = VerticalAlignment.Center });
+            var identity = new StackPanel();
+            identity.Children.Add(new TextBlock { Text = item.DisplayName, FontSize = 14, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+            identity.Children.Add(new TextBlock { Text = item.Path, FontSize = 11, Opacity = 0.62, TextTrimming = TextTrimming.CharacterEllipsis });
+            Grid.SetColumn(identity, 1);
+            row.Children.Add(identity);
+
+            var button = new Button { Content = row, Padding = new Thickness(12, 9, 12, 9) };
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
             button.ToolTip = item.Path;
-            button.Margin = new Thickness(0, 0, 0, 6);
+            button.Margin = new Thickness(0, 0, 0, 2);
+            button.Background = Brushes.Transparent;
+            button.BorderThickness = new Thickness(0, 0, 0, 1);
+            button.SetResourceReference(Control.BorderBrushProperty, "BorderBrush");
             button.Click += async (_, _) => await OpenAsync(item.Path);
             welcomeContent.Children.Add(button);
         }
 
         return Task.CompletedTask;
+    }
+
+    private static TextBlock CreateWelcomeHint(string text) => new()
+    {
+        Text = text,
+        FontSize = 13,
+        Opacity = 0.68,
+        Margin = new Thickness(0, 6, 0, 0)
+    };
+
+    private void SetWelcomeChrome(bool visible)
+    {
+        if (topBar is not null) topBar.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;
+        if (bottomBar is not null) bottomBar.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;
+        if (documentCanvas is null) return;
+        documentCanvas.Margin = visible ? new Thickness(0) : new Thickness(16);
+        documentCanvas.CornerRadius = visible ? new CornerRadius(0) : new CornerRadius(10);
+        documentCanvas.BorderThickness = visible ? new Thickness(0) : new Thickness(1);
     }
 
     private async Task CloseDocumentAsync()
@@ -2601,6 +2789,14 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
         if (document is not null) await document.DisposeAsync();
         document = null;
+        loadingTextPreview = true;
+        textPreview.Clear();
+        loadingTextPreview = false;
+        tableRows.Clear();
+        searchResults.Clear();
+        slideVisualCanvas.Children.Clear();
+        slideBody.Text = string.Empty;
+        slideTitle.Text = string.Empty;
         textPreview.IsReadOnly = true;
         textStatistics.Visibility = Visibility.Collapsed;
         textPreviewFullyLoaded = false;
@@ -2623,6 +2819,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         pageViewButton.Visibility = Visibility.Collapsed;
         pageOrientationButton.Visibility = Visibility.Collapsed;
         pageSpreadButton.Visibility = Visibility.Collapsed;
+        pageJumpSlider.Visibility = Visibility.Collapsed;
+        pageJumpLabel.Visibility = Visibility.Collapsed;
         reloadButton.SetResourceReference(Button.BackgroundProperty, "SurfaceAltBrush");
         UpdateEditingUi();
         UpdateDocumentCommandState();
