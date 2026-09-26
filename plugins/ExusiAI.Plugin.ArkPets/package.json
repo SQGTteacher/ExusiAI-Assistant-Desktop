@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "exusiai.ark-pets",
+  "type": "plugin",
+  "name": "ArkPets 桌宠",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "publisher": "SQGTteacher",
+  "description": "独立的 ArkPets 兼容桌宠插件。沿用 ArkPets 模型库与配置语义，并为 ExusiAI 提供可选课堂联动。",
+  "minimumHostVersion": "0.2.0-preview.4",
+  "entryPoint": {
+    "assembly": "ExusiAI.Plugin.ArkPets.dll",
+    "type": "ExusiAI.Plugin.ArkPets.ArkPetsPlugin"
+  },
+  "permissions": ["local-storage", "file-import-export", "process-launch"],
+  "assets": {
+    "files": ["README.md", "THIRD_PARTY_NOTICES.md"]
+  }
+}

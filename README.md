@@ -23,6 +23,7 @@ ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市
 - 可搜索的本地资源库、统一插件目录和扩展管理页面；
 - 支持 ZIP 插件安全导入、导出、卸载，也可直接将插件文件夹放入本地目录；
 - 内置 ClassIsland 2.2 Misha 功能移植插件，覆盖课表/时间表、组件、提醒与自动化、内置扩展、原生 Profile JSON 迁移及完整开源署名；
+- ArkPets 桌宠：保持 ArkPets 的模型 / 行为 / 选项界面结构，兼容 Ark-Models 全角色模型库和 ArkPets direct-start 配置；与 ClassIsland Misha 保持独立并预留可选课堂联动；
 - 文件查看器：TXT/Markdown 异步增量预览、CSV 分页解析、DOCX 安全结构化文本预览、XLSX 首工作表分页预览、PPTX 逐页结构化文本预览，默认只读并设资源安全上限；
 - Windows GitHub Actions 构建及单元测试。
 
@@ -37,7 +38,7 @@ dotnet test ExusiAI.sln --no-build --configuration Release
 dotnet run --project src/ExusiAI.Desktop
 ```
 
-构建或发布 Desktop 时，ClassIsland Misha、文件查看器和课堂点名器会复制到输出目录的 `packages` 安装源。首次运行或内置插件升级时，它们会安全同步到与外部插件相同的本地插件目录；用户卸载内置插件后不会在下次启动时自动恢复。
+构建或发布 Desktop 时，ClassIsland Misha、文件查看器、课堂点名器和 ArkPets 桌宠会复制到输出目录的 `packages` 安装源。首次运行或内置插件升级时，它们会安全同步到与外部插件相同的本地插件目录；用户卸载内置插件后不会在下次启动时自动恢复。
 
 创建可分发的 Windows x64 目录：
 
@@ -50,7 +51,7 @@ dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
   --output artifacts/ExusiAI-win-x64
 ```
 
-发布目标会自动带上三个内置插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户可在“扩展管理”中导入或导出 ZIP、卸载插件、打开统一插件目录；手动安装时将含 `package.json` 的插件文件夹放入该目录并重启。
+发布目标会自动带上四个内置插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户可在“扩展管理”中导入或导出 ZIP、卸载插件、打开统一插件目录；手动安装时将含 `package.json` 的插件文件夹放入该目录并重启。
 
 ## 代码边界
 

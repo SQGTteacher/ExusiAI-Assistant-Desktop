@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ArkPets\ExusiAI.Plugin.ArkPets.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\ExusiAI.FileViewer.Desktop\ExusiAI.FileViewer.Desktop.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
@@ -52,6 +53,13 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.RollCall\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.RollCall\README.md" DestinationFolder="$(RollCallPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(RollCallPackageDir)" />
   </Target>
+  <Target Name="CopyArkPetsPackage" AfterTargets="Build">
+    <PropertyGroup><ArkPetsPackageDir>$(TargetDir)packages\exusiai.ark-pets</ArkPetsPackageDir></PropertyGroup>
+    <MakeDir Directories="$(ArkPetsPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.ArkPets.dll" DestinationFolder="$(ArkPetsPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ArkPetsPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ArkPetsPackageDir)" />
+  </Target>
   <Target Name="CopyMishaShowcasePackageToPublish" AfterTargets="Publish">
     <PropertyGroup><MishaPublishPackageDir>$(PublishDir)packages\exusiai.misha-showcase</MishaPublishPackageDir></PropertyGroup>
     <MakeDir Directories="$(MishaPublishPackageDir)" />
@@ -67,6 +75,13 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(FileViewerPublishPackageDir)" SkipUnchangedFiles="true" />
     <ItemGroup><FileViewerDesktopPublishFiles Include="$(MSBuildProjectDirectory)\..\ExusiAI.FileViewer.Desktop\bin\$(Configuration)\net8.0-windows\**\*" /></ItemGroup>
     <Copy SourceFiles="@(FileViewerDesktopPublishFiles)" DestinationFolder="$(PublishDir)viewer\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyArkPetsPackageToPublish" AfterTargets="Publish">
+    <PropertyGroup><ArkPetsPublishPackageDir>$(PublishDir)packages\exusiai.ark-pets</ArkPetsPublishPackageDir></PropertyGroup>
+    <MakeDir Directories="$(ArkPetsPublishPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.ArkPets.dll" DestinationFolder="$(ArkPetsPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ArkPetsPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ArkPetsPublishPackageDir)" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyRollCallPackageToPublish" AfterTargets="Publish">
     <PropertyGroup><RollCallPublishPackageDir>$(PublishDir)packages\exusiai.roll-call</RollCallPublishPackageDir></PropertyGroup>
