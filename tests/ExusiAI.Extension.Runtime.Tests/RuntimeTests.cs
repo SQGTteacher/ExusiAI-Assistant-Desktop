@@ -66,6 +66,21 @@ public sealed class RuntimeTests
             tracker.Evaluate(finished, true, true, true, 60)!.Kind);
     }
 
+    [Theory]
+    [InlineData("classisland.lessons.onClass", ClassIslandSchedulePhase.OnClass, true)]
+    [InlineData("classisland.lessons.onClass", ClassIslandSchedulePhase.Breaking, false)]
+    [InlineData("classisland.lessons.onBreakingTime", ClassIslandSchedulePhase.Breaking, true)]
+    [InlineData("classisland.lessons.onAfterSchool", ClassIslandSchedulePhase.AfterSchool, true)]
+    [InlineData("classisland.lessons.currentTimeStateChanged", ClassIslandSchedulePhase.BeforeClass, true)]
+    [InlineData("classisland.os.run", ClassIslandSchedulePhase.OnClass, false)]
+    public void MishaAutomationOnlyMatchesSafeScheduleTriggers(
+        string triggerId,
+        ClassIslandSchedulePhase phase,
+        bool expected)
+    {
+        Assert.Equal(expected, MishaAutomationRuntime.Matches(triggerId, phase));
+    }
+
     [Fact]
     public void MishaRefreshQueueCoalescesChangesWithoutDroppingLatestRequest()
     {

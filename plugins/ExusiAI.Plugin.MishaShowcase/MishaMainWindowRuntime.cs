@@ -25,6 +25,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     private readonly CoalescingRefreshQueue refreshQueue = new();
     private readonly ClassIslandScheduleNotificationTracker notificationTracker = new();
     private readonly MishaScheduleNotificationPresenter notificationPresenter = new();
+    private readonly MishaAutomationRuntime automationRuntime;
     private MishaMainWindow? window;
     private bool started;
 
@@ -37,6 +38,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
             Interval = TimeSpan.FromSeconds(1)
         };
         timer.Tick += (_, _) => Tick();
+        automationRuntime = new MishaAutomationRuntime(logger);
     }
 
     public void Start()
@@ -60,6 +62,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         refreshQueue.Reset();
         notificationTracker.Reset();
         notificationPresenter.Dispose();
+        automationRuntime.Dispose();
     }
 
     private void Store_OnChanged(object? sender, EventArgs e)
@@ -157,6 +160,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
             if (notification is not null)
                 notificationPresenter.Show(notification, workspace);
         }
+        _ = automationRuntime.ProcessAsync(scheduleState, workspace, notificationPresenter);
 
         if (window is null) return;
         var shouldShow = workspace.GetBool("IsMainWindowVisible", true)
