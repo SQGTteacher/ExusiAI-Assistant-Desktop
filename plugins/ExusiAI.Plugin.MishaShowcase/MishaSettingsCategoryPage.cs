@@ -63,7 +63,7 @@ internal static class MishaSettingsCatalog
     private static readonly IReadOnlyDictionary<string, MishaSettingDescriptor> Descriptors =
         new Dictionary<string, MishaSettingDescriptor>(StringComparer.OrdinalIgnoreCase)
         {
-            ["AnimationLevel"] = new("动画级别", "控制界面动画数量；与 ClassIsland Misha 的 0–2 级一致。", "2",
+            ["AnimationLevel"] = new("动画级别", "控制界面动画数量；与 ClassIsland Misha 的 0–2 级一致。", "1",
                 new Dictionary<int, string> { [0] = "关闭动画", [1] = "减少动画", [2] = "完整动画" }),
             ["CriticalSafeModeMethod"] = new("严重错误恢复方式", "ClassIsland 检测到连续启动错误时采用的恢复方式。", "0",
                 new Dictionary<int, string> { [0] = "询问后处理", [1] = "自动进入安全模式", [2] = "继续启动" }),
@@ -95,7 +95,78 @@ internal static class MishaSettingsCatalog
             ["BackupFilesSize"] = new("备份占用空间", "由 ClassIsland 运行时计算的展示值。", "\"计算中...\"", IsReadOnly: true),
             ["LastAutoBackupTime"] = new("上次自动备份", "由 ClassIsland 运行时维护。", IsReadOnly: true),
             ["IsReportingEnabled"] = new("发送诊断信息", "允许发送匿名崩溃与诊断信息。", "true"),
-            ["TrustedProfileIds"] = new("受信任档案", "ClassIsland 信任的档案 GUID 列表；保留原生 JSON 结构。", "[]")
+            ["TrustedProfileIds"] = new("受信任档案", "ClassIsland 信任的档案 GUID 列表；保留原生 JSON 结构。", "[]"),
+            ["IsRefreshingToastEnabled"] = new("启用翻新提醒", "长时间未启动后显示 ClassIsland 翻新提醒。", "true"),
+            ["RefreshingToastThresholdDays"] = new("提醒间隔", "连续多少天未启动后显示翻新提醒。", "20"),
+            ["ShowRefreshingToastOnNextStart"] = new("下次启动显示提醒", "在下一次启动时强制显示一次翻新提醒。", "false"),
+            ["MaxRefreshingToastCounts"] = new("最多显示次数", "一次翻新周期内允许显示的最大次数。", "5"),
+            ["LeftRefreshingToastCounts"] = new("剩余显示次数", "由 ClassIsland 运行时维护的剩余提醒次数。", "0", IsReadOnly: true),
+            ["RefreshingToastIsOnboardingGuide"] = new("迎新引导模式", "把下一次提醒作为迎新引导显示。", "false"),
+            ["OnboardingToastTitle"] = new("迎新标题", "迎新提醒标题；空值由 ClassIsland 使用本地化默认文案。", "\"\""),
+            ["OnboardingToastBody"] = new("迎新内容", "迎新提醒正文；空值由 ClassIsland 使用本地化默认文案。", "\"\""),
+            ["RefreshingScopes"] = new("翻新范围", "ClassIsland 翻新服务的原生范围对象。", "{}"),
+            ["AutoDisableCorruptPlugins"] = new("自动禁用损坏插件", "插件导致启动失败时自动隔离对应 ClassIsland 插件。", "true"),
+            ["IsDebugEnabled"] = new("调试模式", "启用 ClassIsland 调试行为和额外日志。", "false"),
+            ["IsDebugOptionsEnabled"] = new("显示调试选项", "在界面中显示实验性和调试入口。", "false"),
+            ["CurrentComponentConfig"] = new("当前组件配置", "正在使用的 ClassIsland 组件配置名称。", "\"Default\""),
+            ["ShowComponentsMigrateTip"] = new("显示组件迁移提示", "显示旧组件配置迁移提示。", "false"),
+            ["IsNotificationEnabled"] = new("启用提醒", "ClassIsland 提醒系统总开关。", "true"),
+            ["IsNotificationEffectEnabled"] = new("启用提醒特效", "允许提醒提供方显示视觉特效。", "true"),
+            ["IsNotificationSoundEnabled"] = new("启用提醒声音", "允许提醒提供方播放声音。", "true"),
+            ["IsNotificationTopmostEnabled"] = new("提醒窗口置顶", "提醒显示期间将提醒窗口保持在最上层。", "true"),
+            ["IsSpeechEnabled"] = new("启用语音", "启用提醒语音播报。", "true"),
+            ["AllowNotificationSpeech"] = new("允许提供方请求语音", "允许提醒提供方启用语音播报。", "false"),
+            ["AllowNotificationEffect"] = new("允许提供方请求特效", "允许提醒提供方启用视觉特效。", "true"),
+            ["AllowNotificationSound"] = new("允许提供方请求声音", "允许提醒提供方播放声音。", "false"),
+            ["AllowNotificationTopmost"] = new("允许提供方请求置顶", "允许提醒提供方将提醒窗口置顶。", "true"),
+            ["NotificationSoundPath"] = new("自定义提醒声音", "自定义提醒音频文件路径；留空使用默认声音。", "\"\""),
+            ["NotificationSoundVolume"] = new("提醒音量", "提醒声音音量，范围 0–1。", "1.0"),
+            ["SpeechVolume"] = new("语音音量", "语音播报音量，范围 0–1。", "1.0"),
+            ["SpeechSource"] = new("语音来源", "选择系统语音或 ClassIsland 语音提供方。", "0",
+                new Dictionary<int, string> { [0] = "系统语音", [1] = "语音提供方" }),
+            ["SelectedSpeechProvider"] = new("语音提供方", "当前 ClassIsland 语音提供方 ID。", "\"classisland.speech.edgeTts\""),
+            ["EdgeTtsVoiceName"] = new("Edge TTS 音色", "Edge TTS 使用的音色名称。", "\"zh-CN-XiaoxiaoNeural\""),
+            ["NotificationEffectRenderingScale"] = new("特效渲染比例", "提醒特效的渲染缩放。", "1.0"),
+            ["NotificationProvidersEnableStates"] = new("提醒提供方开关", "各提醒提供方的原生启用状态。", "{}"),
+            ["NotificationProvidersPriority"] = new("提醒提供方顺序", "各提醒提供方的原生优先级列表。", "[]"),
+            ["NotificationProvidersSettings"] = new("提醒提供方设置", "各提醒提供方的原生设置对象。", "{}"),
+            ["NotificationProvidersNotifySettings"] = new("提醒方式设置", "各提醒提供方的语音、声音、特效与置顶设置。", "{}"),
+            ["WeatherLongitude"] = new("经度", "天气位置经度。", "0.0"),
+            ["WeatherLatitude"] = new("纬度", "天气位置纬度。", "0.0"),
+            ["WeatherLocationSource"] = new("位置来源", "天气位置的来源。", "0",
+                new Dictionary<int, string> { [0] = "手动选择", [1] = "自动定位" }),
+            ["AutoRefreshWeatherLocation"] = new("自动更新位置", "自动刷新天气位置。", "false"),
+            ["NoTLSWeatherRequests"] = new("兼容性天气请求", "仅在旧网络环境无法使用 TLS 时启用非加密天气请求。", "false"),
+            ["CityId"] = new("城市 ID", "ClassIsland 天气提供方使用的城市标识。", "\"weathercn:101010100\""),
+            ["CityName"] = new("城市名称", "设置页显示的城市名称。", "\"北京 (北京, 中国)\""),
+            ["WeatherIconId"] = new("天气图标包", "当前天气图标提供方 ID。", "\"classisland.weatherIcons.lucide\""),
+            ["ExcludedWeatherAlerts"] = new("忽略的气象预警", "不显示的气象预警类型列表。", "[]"),
+            ["LastWeatherInfo"] = new("上次天气数据", "由天气服务维护的缓存。", "{}", IsReadOnly: true),
+            ["CurrentAutomationConfig"] = new("当前自动化配置", "正在使用的 ClassIsland 自动化配置名称。", "\"Default\""),
+            ["IsAutomationEnabled"] = new("启用自动化", "启用 ClassIsland 自动化触发器与动作。", "false"),
+            ["IsAutomationWarningVisible"] = new("显示自动化安全提示", "首次使用自动化时显示安全提示。", "true"),
+            ["AutoInstallUpdateNextStartup"] = new("下次启动安装更新", "已下载更新时在下次启动自动安装。", "true"),
+            ["IsAutoSelectUpgradeMirror"] = new("自动选择更新镜像", "根据可用性自动选择更新下载镜像。", "true"),
+            ["SelectedUpdateChannelV2"] = new("更新通道", "ClassIsland v2 更新通道。", "\"stable\""),
+            ["SelectedUpdateChannelV3"] = new("新更新通道 ID", "ClassIsland v3 更新通道 GUID。", "\"00000000-0000-0000-0000-000000000000\""),
+            ["SelectedUpdateMirrorV2"] = new("更新镜像", "当前更新镜像 ID。", "\"main\""),
+            ["UpdateMode"] = new("更新方式", "ClassIsland 更新检查与安装方式。", "3",
+                new Dictionary<int, string> { [0] = "关闭更新", [1] = "仅检查", [2] = "询问下载", [3] = "自动下载" }),
+            ["LastCheckUpdateTime"] = new("上次检查时间", "由更新服务维护。", IsReadOnly: true),
+            ["LastUpdateStatus"] = new("上次更新状态", "由更新服务维护。", IsReadOnly: true),
+            ["IsPluginsAutoUpdateEnabled"] = new("自动更新插件", "自动更新已安装的 ClassIsland 插件。", "true"),
+            ["IsPluginsUpdateNotificationEnabled"] = new("插件更新提醒", "插件更新完成后显示提醒。", "true"),
+            ["IgnoreSslForPluginMirrors"] = new("忽略插件镜像证书错误", "仅用于旧网络环境；启用会降低连接安全性。", "false"),
+            ["IsPluginMarketWarningVisible"] = new("显示插件市场安全提示", "进入插件市场时显示第三方插件风险提示。", "true"),
+            ["OfficialSelectedMirror"] = new("官方插件源镜像", "当前官方插件索引镜像 ID。", "\"github\""),
+            ["PluginIndexSelectedMirrors"] = new("插件源镜像选择", "每个插件索引当前选中的镜像。", "{}"),
+            ["UserPluginIndexes"] = new("用户插件源", "用户添加的 ClassIsland 插件源列表。", "[]"),
+            ["AdditionalPluginIndexes"] = new("附加插件源", "由其他组件注册的插件源。", "{}"),
+            ["PluginIndexes"] = new("插件索引缓存", "由插件市场服务维护的索引缓存。", "[]", IsReadOnly: true),
+            ["OfficialIndexMirrors"] = new("官方镜像列表", "ClassIsland 官方插件索引镜像表。", "{}"),
+            ["IsTransientDisabled"] = new("临时禁用", "集控策略要求 ClassIsland 临时停止运行。", "false", IsReadOnly: true),
+            ["SettingsOverlay"] = new("集控设置覆盖", "ClassIsland 1.x 兼容字段名；保持原生对象结构。", "{}"),
+            ["SettingsOverlays"] = new("集控设置覆盖集合", "ClassIsland 集控下发的设置覆盖集合。", "{}")
         };
 
     public static string DisplayName(string key) => DisplayNames.TryGetValue(key, out var value) ? value : key;
@@ -251,12 +322,12 @@ internal sealed class MishaSettingsCategoryPage : UserControl
         foreach (var key in keys)
         {
             var descriptor = MishaSettingsCatalog.Describe(key);
-            workspace.Settings.TryGetPropertyValue(key, out var node);
+            var exists = workspace.Settings.TryGetPropertyValue(key, out var node);
             var effectiveNode = node?.DeepClone();
-            if (effectiveNode is null && descriptor.DefaultJson is not null)
+            if (!exists && descriptor.DefaultJson is not null)
                 effectiveNode = JsonNode.Parse(descriptor.DefaultJson);
 
-            if (effectiveNode is null)
+            if (!exists && effectiveNode is null)
             {
                 fields.Children.Add(MishaUi.SettingRow(
                     descriptor.Title,

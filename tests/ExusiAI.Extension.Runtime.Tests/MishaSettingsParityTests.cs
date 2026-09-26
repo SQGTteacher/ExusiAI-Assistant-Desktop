@@ -69,7 +69,7 @@ public sealed class MishaSettingsParityTests
     public void NativeSettingDescriptorsExposeUpstreamDefaultsAndChoices()
     {
         var animation = MishaSettingsCatalog.Describe("AnimationLevel");
-        Assert.Equal("2", animation.DefaultJson);
+        Assert.Equal("1", animation.DefaultJson);
         Assert.Equal("完整动画", animation.Choices![2]);
 
         var clock = MishaSettingsCatalog.Describe("ExactTimeServer");
@@ -77,6 +77,11 @@ public sealed class MishaSettingsParityTests
 
         var backupSize = MishaSettingsCatalog.Describe("BackupFilesSize");
         Assert.True(backupSize.IsReadOnly);
+
+        Assert.Equal("true", MishaSettingsCatalog.Describe("IsNotificationEnabled").DefaultJson);
+        Assert.Equal("false", MishaSettingsCatalog.Describe("IsAutomationEnabled").DefaultJson);
+        Assert.Equal("stable", JsonNode.Parse(MishaSettingsCatalog.Describe("SelectedUpdateChannelV2").DefaultJson!)!.GetValue<string>());
+        Assert.True(MishaSettingsCatalog.Describe("PluginIndexes").IsReadOnly);
 
         var unknown = MishaSettingsCatalog.Describe("FutureMishaField");
         Assert.Null(unknown.DefaultJson);
