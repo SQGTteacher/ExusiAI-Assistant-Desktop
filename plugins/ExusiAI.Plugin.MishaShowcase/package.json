@@ -3,17 +3,23 @@
   "id": "exusiai.misha-showcase",
   "type": "plugin",
   "name": "ClassIsland 2.2 Misha",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "apiVersion": "1",
   "publisher": "SQGTteacher",
-  "description": "ClassIsland 2.2 Misha 的 ExusiAI 移植工作线；保持原生 Settings/Profile/Config 数据，提供主信息岛、备份同步与安全 XAML 主题兼容层并持续补齐完整功能。原项目作者 HelloWRC，移植者 SQGTteacher。",
+  "description": "基于 ClassIsland 2.2 Misha 源码的 ExusiAI 进程内插件移植；保持原生 Settings/Profile/Config 数据结构，并以统一插件生命周期逐步迁移全部上游模块。原项目作者 HelloWRC，移植者 SQGTteacher。",
   "minimumHostVersion": "0.1.0",
   "entryPoint": {
     "assembly": "ExusiAI.Plugin.MishaShowcase.dll",
-    "type": "ExusiAI.Plugin.MishaShowcase.MishaShowcasePlugin"
+    "type": "ExusiAI.Plugin.MishaShowcase.ClassIslandMishaPlugin"
   },
-  "permissions": ["local-storage", "file-import-export"],
+  "permissions": [
+    "local-storage",
+    "file-import-export"
+  ],
   "assets": {
-    "files": ["README.md", "THIRD_PARTY_NOTICES.md"]
+    "files": [
+      "README.md",
+      "THIRD_PARTY_NOTICES.md"
+    ]
   }
 }

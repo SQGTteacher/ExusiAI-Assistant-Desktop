@@ -4,55 +4,32 @@ using ExusiAI.Extension.Wpf;
 
 namespace ExusiAI.Plugin.MishaShowcase;
 
-public sealed class MishaShowcasePlugin : ExtensionPluginBase, IWpfNavigationExtension
+public class ClassIslandMishaPlugin : ExtensionPluginBase, IWpfNavigationExtension
 {
-    private MishaPlatformStore store = null!;
-    private MishaMainWindowRuntime? mainWindowRuntime;
+    private ClassIslandEmbeddedHost embeddedHost = null!;
 
     public override async Task InitializeAsync(IExtensionContext context, CancellationToken cancellationToken)
     {
         await base.InitializeAsync(context, cancellationToken);
-        store = new MishaPlatformStore();
-        if (await store.RestoreLastWorkspaceAsync())
-            context.Logger.Information("Restored the last imported ClassIsland workspace from the ExusiAI data copy.");
-        else
-            context.Logger.Information("No reusable ClassIsland workspace binding was found; import is required once.");
-        context.Logger.Information("ClassIsland 2.2 Misha feature port initialized; porter: SQGTteacher.");
+        embeddedHost = new ClassIslandEmbeddedHost();
+        await embeddedHost.InitializeAsync(context, cancellationToken);
+        context.Logger.Information("ClassIsland 2.2 Misha source modules are hosted as an ExusiAI plugin; porter: SQGTteacher.");
     }
 
-    public override async Task StartAsync(CancellationToken cancellationToken)
-    {
-        Context.Logger.Information("ClassIsland 2.2 Misha port started.");
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher is null)
-        {
-            Context.Logger.Warning("WPF Application is unavailable; ClassIsland main-window runtime was not started.");
-            return;
-        }
+    public override Task StartAsync(CancellationToken cancellationToken) =>
+        embeddedHost.StartAsync(cancellationToken);
 
-        await dispatcher.InvokeAsync(() =>
-        {
-            mainWindowRuntime = new MishaMainWindowRuntime(store, Context.Logger);
-            mainWindowRuntime.Start();
-        });
-    }
-
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        Task shutdown = Task.CompletedTask;
-        if (dispatcher is not null)
-            await dispatcher.InvokeAsync(() =>
-            {
-                shutdown = mainWindowRuntime?.DisposeAsync().AsTask() ?? Task.CompletedTask;
-                mainWindowRuntime = null;
-            });
-        await shutdown.WaitAsync(cancellationToken);
-        Context.Logger.Information("ClassIsland 2.2 Misha port stopped.");
-    }
+    public override Task StopAsync(CancellationToken cancellationToken) =>
+        embeddedHost.StopAsync(cancellationToken);
 
     public IReadOnlyCollection<WpfNavigationPage> GetNavigationPages() =>
     [
-        new("misha.settings", "ClassIsland 2.2 Misha", "◫", () => new MishaSettingsHostPage(store))
+        new("misha.settings", "ClassIsland 2.2 Misha", "◫", () => new MishaSettingsHostPage(embeddedHost.Store))
     ];
+}
+
+// Retained for binary/package compatibility with earlier preview manifests. New packages use
+// ClassIslandMishaPlugin as the entry point.
+public sealed class MishaShowcasePlugin : ClassIslandMishaPlugin
+{
 }
