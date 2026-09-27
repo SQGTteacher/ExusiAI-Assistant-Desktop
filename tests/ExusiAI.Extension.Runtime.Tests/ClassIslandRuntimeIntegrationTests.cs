@@ -8,6 +8,74 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class ClassIslandRuntimeIntegrationTests
 {
     [Fact]
+    public async Task ProfileRoundTripPreservesUnknownFieldsAndGuidMaps()
+    {
+        using var root = new TemporaryDirectory();
+        var service = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await service.InitializeAsync();
+        var subjectId = Guid.NewGuid();
+        var layoutId = Guid.NewGuid();
+        var planId = Guid.NewGuid();
+        var json = $$"""
+        {
+          "Id": "{{Guid.NewGuid()}}",
+          "Name": "一班",
+          "FutureProfileField": { "Enabled": true },
+          "Subjects": { "{{subjectId}}": { "Name": "语文", "FutureSubjectField": 42 } },
+          "TimeLayouts": { "{{layoutId}}": { "Name": "默认", "Layouts": [{ "StartTime": "08:00:00", "EndTime": "08:40:00", "TimeType": 0, "FutureTimeField": "keep" }] } },
+          "ClassPlans": { "{{planId}}": { "Name": "周一", "TimeLayoutId": "{{layoutId}}", "Classes": [{ "SubjectId": "{{subjectId}}" }], "TimeRule": { "WeekDay": 1, "WeekCountDiv": 1, "WeekCountDivTotal": 2, "FutureRule": [1,2] } } }
+        }
+        """;
+
+        await using var input = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        var profile = await service.ImportAsync(input, "profile.json");
+        Assert.True(profile.Subjects.ContainsKey(subjectId));
+        Assert.True(profile.TimeLayouts.ContainsKey(layoutId));
+        Assert.True(profile.ClassPlans.ContainsKey(planId));
+
+        await using var output = new MemoryStream();
+        await service.ExportAsync(profile, output);
+        var roundTrip = Encoding.UTF8.GetString(output.ToArray());
+        Assert.Contains("FutureProfileField", roundTrip);
+        Assert.Contains("FutureSubjectField", roundTrip);
+        Assert.Contains("FutureTimeField", roundTrip);
+        Assert.Contains("FutureRule", roundTrip);
+    }
+
+    [Fact]
+    public async Task TimetableResolvesSubjectsLayoutsPlansAndRotatingWeekRules()
+    {
+        using var root = new TemporaryDirectory();
+        var profiles = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await profiles.InitializeAsync();
+        var subjectId = Guid.NewGuid();
+        var layoutId = Guid.NewGuid();
+        var profile = new ClassIslandProfile
+        {
+            Name = "测试",
+            Subjects = { [subjectId] = new() { Name = "数学" } },
+            TimeLayouts = { [layoutId] = new() { Layouts = { new() { StartTime = TimeSpan.FromHours(8), EndTime = TimeSpan.FromHours(9) } } } },
+            ClassPlans =
+            {
+                [Guid.NewGuid()] = new()
+                {
+                    TimeLayoutId = layoutId,
+                    Classes = { new() { SubjectId = subjectId } },
+                    TimeRule = new() { WeekDay = 1, WeekCountDiv = 2, WeekCountDivTotal = 2 }
+                }
+            }
+        };
+        await profiles.SaveAsync(profile);
+        var timetable = new ClassIslandTimetableService(profiles);
+        var anchor = new DateOnly(2026, 9, 21);
+
+        Assert.Empty(timetable.GetLessons(new DateTime(2026, 9, 21, 8, 10, 0), anchor));
+        var lessons = timetable.GetLessons(new DateTime(2026, 9, 28, 8, 10, 0), anchor);
+        Assert.Single(lessons);
+        Assert.Equal("数学", lessons[0].Subject.Name);
+    }
+
+    [Fact]
     public void RuntimeDescriptorPinsExactUpstreamBaselines()
     {
         Assert.Equal("ClassIsland/ClassIsland", ClassIslandRuntimeDescriptor.UpstreamRepository);

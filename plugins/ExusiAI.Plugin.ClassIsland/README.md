@@ -1,33 +1,25 @@
-# ExusiAI ClassIsland integration
+# ExusiAI ClassIsland plugin
 
-This built-in plugin intentionally does **not** reimplement ClassIsland in WPF. It ships the upstream ClassIsland 2.1.0.1 Windows folder package and runs that native code under the ExusiAI lifecycle.
+ClassIsland 2.2 Misha is implemented as a native ExusiAI plugin. The normal execution path does not launch or download a separate ClassIsland process.
 
-## Runtime layout and data isolation
+## Core services
 
-The synchronized ExusiAI plugin contains a read-only seed:
+- `ClassIslandProfileService` reads and writes the upstream `Profile` JSON shape. GUID-keyed `Subjects`, `TimeLayouts` and `ClassPlans` remain compatible, and unknown fields are retained at every modeled level.
+- `ClassIslandTimetableService` resolves `TimeRule` weekly, rotating-week, date and loop rules and maps class entries to their subjects and time-layout items.
+- `ClassIslandComponentService` owns component configuration under `Config/Components` without imposing a replacement schema.
+- `ClassIslandNotificationService` provides the plugin-local notification channel used by imports and future timetable transitions.
+- `ClassIslandCoreService` creates, starts and stops these modules as one unit under the ExusiAI plugin lifecycle.
 
-- `Runtime/ClassIsland.exe`
-- `Runtime/app-2.1.0.1-0/**`
+## Data and transfer
 
-On first start the seed is verified and copied to:
+The plugin stores writable data in `%LocalAppData%/ExusiAI/ClassIsland` and remains portable as an ordinary ExusiAI package. It can import/export individual upstream-compatible Profile JSON files and import ClassIsland 2.x automatic-backup ZIP files. Backup extraction retains the existing traversal, size-limit and rollback protections.
 
-- `%LocalAppData%/ExusiAI/classisland/runtime/ClassIsland.exe`
-- `%LocalAppData%/ExusiAI/classisland/runtime/app-2.1.0.1-0/**`
-- `%LocalAppData%/ExusiAI/classisland/runtime/data/**`
+The earlier `ClassIslandRuntimeHost` implementation remains source-compatible for legacy callers during the transition, but it is no longer constructed by the plugin, included in package assets, or used for new features.
 
-This split is intentional. Upstream `folder` packaging writes `Settings.json`, `Profiles`, `Config`, logs and cache beside the launcher under `data`. Keeping that writable directory outside ExusiAI's synchronized plugin package prevents plugin upgrades from treating native ClassIsland user data as package drift and replacing it.
+## Upstream baseline
 
-ExusiAI starts the original `ClassIsland.exe` suspended, attaches it to a Windows Job Object, then resumes it. Its `ClassIsland.Desktop.exe` child inherits that job, so disabling the plugin or exiting the host cannot leave a detached ClassIsland runtime behind.
-
-## Sync
-
-The only feature retained from the former hand-written Misha port is ClassIsland backup synchronization. A ClassIsland 2.x backup ZIP is validated against traversal and size limits, then its native `Settings.json`, `Profiles/**` and `Config/**` are applied directly to the managed runtime's `data` directory. Existing unrelated `data` content is preserved. If synchronization fails, managed entries are restored from a rollback copy.
-
-## Upstream baselines
-
-- Bundled runtime: ClassIsland `2.1.0.1`
-- Release source commit: `15273f82c9d2d55929df83b5fb806e68ee4547c0`
-- Future migration source: `develop/v2/misha-alpha`
-- Misha baseline reviewed for this rewrite: `08808615899d1a4abb8e0ef576bf1e247adde10f`
+- Repository: `ClassIsland/ClassIsland`
+- Misha branch: `develop/v2/misha-alpha`
+- Reviewed baseline: `08808615899d1a4abb8e0ef576bf1e247adde10f`
 
 See `THIRD_PARTY_NOTICES.md` for attribution and source availability.

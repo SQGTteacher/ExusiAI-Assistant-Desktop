@@ -8,101 +8,71 @@ namespace ExusiAI.Plugin.ClassIsland;
 
 internal sealed class ClassIslandSyncPage : UserControl
 {
-    private readonly ClassIslandRuntimeHost runtime;
-    private readonly TextBlock runtimeStatus = new();
+    private readonly ClassIslandCoreService core;
+    private readonly TextBlock coreStatus = new();
     private readonly TextBlock syncStatus = new();
     private readonly TextBlock syncSummary = new();
 
-    public ClassIslandSyncPage(ClassIslandRuntimeHost runtime)
+    public ClassIslandSyncPage(ClassIslandCoreService core)
     {
-        this.runtime = runtime;
-        runtime.StatusChanged += RuntimeOnStatusChanged;
-        Unloaded += (_, _) => runtime.StatusChanged -= RuntimeOnStatusChanged;
+        this.core = core;
+        core.Profiles.ProfileChanged += ProfileChanged;
+        Unloaded += (_, _) => core.Profiles.ProfileChanged -= ProfileChanged;
 
         var root = new StackPanel { Margin = new Thickness(28) };
         root.Children.Add(new TextBlock { Text = "ClassIsland", FontSize = 28, FontWeight = FontWeights.SemiBold });
         root.Children.Add(new TextBlock
         {
-            Text = $"原生内置运行时 {ClassIslandRuntimeDescriptor.RuntimeVersion}。ExusiAI 不再复刻 ClassIsland 页面、组件或自动化逻辑；完整功能由上游运行核心直接提供。",
-            Margin = new Thickness(0, 8, 0, 18),
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.78
+            Text = "ClassIsland 核心现作为可独立分发的 ExusiAI 插件运行。档案、课表、组件和通知统一受 ExusiAI 插件生命周期管理，不需要启动外部 ClassIsland 程序。",
+            Margin = new Thickness(0, 8, 0, 18), TextWrapping = TextWrapping.Wrap, Opacity = 0.78
         });
-        runtimeStatus.Margin = new Thickness(0, 0, 0, 10);
-        root.Children.Add(runtimeStatus);
+        coreStatus.Margin = new Thickness(0, 0, 0, 10);
+        root.Children.Add(coreStatus);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
-        actions.Children.Add(ActionButton("启动", () => runtime.StartAsync()));
-        actions.Children.Add(ActionButton("重启", () => runtime.RestartAsync()));
-        actions.Children.Add(ActionButton("停止", () => runtime.StopAsync()));
         actions.Children.Add(ActionButton("打开数据目录", () =>
         {
-            Directory.CreateDirectory(runtime.DataDirectory);
-            Process.Start(new ProcessStartInfo(runtime.DataDirectory) { UseShellExecute = true });
+            Directory.CreateDirectory(core.DataDirectory);
+            Process.Start(new ProcessStartInfo(core.DataDirectory) { UseShellExecute = true });
             return Task.CompletedTask;
         }));
+        actions.Children.Add(ActionButton("导入档案 JSON", BrowseProfileAsync));
+        actions.Children.Add(ActionButton("导出当前档案", ExportProfileAsync));
         root.Children.Add(actions);
 
         root.Children.Add(new Separator { Margin = new Thickness(0, 22, 0, 22) });
         root.Children.Add(new TextBlock { Text = "同步 ClassIsland 备份", FontSize = 20, FontWeight = FontWeights.SemiBold });
         root.Children.Add(new TextBlock
         {
-            Text = "保留原同步功能：导入 ClassIsland 2.x 自动备份 ZIP，直接写入原生运行时的 Settings.json、Profiles 与 Config。同步时会停止 ClassIsland；失败自动回滚；日志、缓存和其他 data 内容不会被删除。",
-            Margin = new Thickness(0, 8, 0, 14),
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.78
+            Text = "导入 ClassIsland 2.x 自动备份 ZIP，并原样保留 Settings.json、Profiles、Config 以及模型中的未知字段。导入后由插件内 Profile、Timetable、Component 和 Notification 服务直接使用。",
+            Margin = new Thickness(0, 8, 0, 14), TextWrapping = TextWrapping.Wrap, Opacity = 0.78
         });
 
         var dropZone = new Border
         {
-            MinHeight = 140,
-            Padding = new Thickness(24),
-            CornerRadius = new CornerRadius(12),
-            BorderThickness = new Thickness(1),
-            AllowDrop = true,
+            MinHeight = 140, Padding = new Thickness(24), CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(1), AllowDrop = true,
             Child = new TextBlock
             {
-                Text = "拖入 ClassIsland 自动备份 ZIP，或点击下方按钮选择",
-                FontSize = 17,
-                FontWeight = FontWeights.SemiBold,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.Wrap
+                Text = "拖入 ClassIsland 自动备份 ZIP，或点击下方按钮选择", FontSize = 17,
+                FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap
             }
         };
         dropZone.SetResourceReference(Border.BackgroundProperty, "SurfaceAltBrush");
         dropZone.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        dropZone.PreviewDragOver += (sender, e) =>
-        {
-            e.Effects = TryGetZip(e.Data, out _) ? DragDropEffects.Copy : DragDropEffects.None;
-            e.Handled = true;
-        };
-        dropZone.Drop += async (_, e) =>
-        {
-            if (!TryGetZip(e.Data, out var path)) return;
-            e.Handled = true;
-            await SyncAsync(path);
-        };
+        dropZone.PreviewDragOver += (_, e) => { e.Effects = TryGetZip(e.Data, out _) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+        dropZone.Drop += async (_, e) => { if (TryGetZip(e.Data, out var path)) await SyncAsync(path); e.Handled = true; };
         root.Children.Add(dropZone);
 
         var select = ActionButton("选择备份 ZIP", BrowseAndSyncAsync);
         select.Margin = new Thickness(0, 12, 0, 0);
         root.Children.Add(select);
-        syncStatus.Margin = new Thickness(0, 12, 0, 0);
-        syncStatus.TextWrapping = TextWrapping.Wrap;
-        root.Children.Add(syncStatus);
-        syncSummary.Margin = new Thickness(0, 8, 0, 0);
-        syncSummary.TextWrapping = TextWrapping.Wrap;
-        syncSummary.Opacity = 0.78;
-        root.Children.Add(syncSummary);
-
-        RefreshRuntimeStatus();
-        Content = new ScrollViewer
-        {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Content = root
-        };
+        syncStatus.Margin = new Thickness(0, 12, 0, 0); syncStatus.TextWrapping = TextWrapping.Wrap;
+        syncSummary.Margin = new Thickness(0, 8, 0, 0); syncSummary.TextWrapping = TextWrapping.Wrap; syncSummary.Opacity = 0.78;
+        root.Children.Add(syncStatus); root.Children.Add(syncSummary);
+        RefreshStatus();
+        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = root };
     }
 
     private Button ActionButton(string text, Func<Task> action)
@@ -111,65 +81,64 @@ internal sealed class ClassIslandSyncPage : UserControl
         button.Click += async (_, _) =>
         {
             button.IsEnabled = false;
-            try { await action(); RefreshRuntimeStatus(); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or System.ComponentModel.Win32Exception)
-            {
-                syncStatus.Text = $"操作失败：{ex.Message}";
-            }
+            try { await action(); RefreshStatus(); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
+            { syncStatus.Text = $"操作失败：{ex.Message}"; }
             finally { button.IsEnabled = true; }
         };
         return button;
     }
 
+    private async Task BrowseProfileAsync()
+    {
+        var dialog = new OpenFileDialog { Title = "导入 ClassIsland Profile", Filter = "ClassIsland Profile (*.json)|*.json" };
+        if (dialog.ShowDialog() != true) return;
+        await using var stream = File.OpenRead(dialog.FileName);
+        var profile = await core.Profiles.ImportAsync(stream, Path.GetFileName(dialog.FileName));
+        syncStatus.Text = $"已导入档案：{profile.Name}";
+    }
+
+    private async Task ExportProfileAsync()
+    {
+        var profile = core.Profiles.Current ?? throw new InvalidOperationException("当前没有可导出的档案。");
+        var dialog = new SaveFileDialog { Title = "导出 ClassIsland Profile", Filter = "ClassIsland Profile (*.json)|*.json", FileName = $"{profile.Id:N}.json" };
+        if (dialog.ShowDialog() != true) return;
+        await using var stream = File.Create(dialog.FileName);
+        await core.Profiles.ExportAsync(profile, stream);
+        syncStatus.Text = $"已导出档案：{profile.Name}";
+    }
+
     private async Task BrowseAndSyncAsync()
     {
-        var dialog = new OpenFileDialog
-        {
-            Title = "选择 ClassIsland 自动备份",
-            Filter = "ClassIsland 自动备份 (*.zip)|*.zip|ZIP 文件 (*.zip)|*.zip"
-        };
+        var dialog = new OpenFileDialog { Title = "选择 ClassIsland 自动备份", Filter = "ClassIsland 自动备份 (*.zip)|*.zip|ZIP 文件 (*.zip)|*.zip" };
         if (dialog.ShowDialog() == true) await SyncAsync(dialog.FileName);
     }
 
     private async Task SyncAsync(string path)
     {
-        syncStatus.Text = "正在停止原生运行时并同步备份…";
-        syncSummary.Text = "";
-        try
-        {
-            var result = await runtime.SyncBackupAsync(path);
-            syncStatus.Text = "同步完成。ClassIsland 已直接使用该配置；同步前若正在运行，现已恢复运行。";
-            syncSummary.Text = $"保留 {result.TotalFileCount:N0} 个文件（Profiles {result.ProfileFileCount:N0}，Config {result.ConfigFileCount:N0}），解压后 {FormatBytes(result.TotalUncompressedBytes)}。";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            syncStatus.Text = $"同步失败：{ex.Message}";
-        }
-        RefreshRuntimeStatus();
+        syncStatus.Text = "正在导入并加载 ClassIsland 备份…"; syncSummary.Text = "";
+        var result = await core.ImportBackupAsync(path);
+        syncStatus.Text = "同步完成，插件内核心服务已重新加载配置。";
+        syncSummary.Text = $"导入 {result.TotalFileCount:N0} 个文件（Profiles {result.ProfileFileCount:N0}，Config {result.ConfigFileCount:N0}），共 {FormatBytes(result.TotalUncompressedBytes)}。";
+        RefreshStatus();
     }
 
-    private void RuntimeOnStatusChanged(object? sender, EventArgs e) => Dispatcher.Invoke(RefreshRuntimeStatus);
-    private void RefreshRuntimeStatus() => runtimeStatus.Text = runtime.IsRunning
-        ? $"状态：运行中 · ClassIsland {ClassIslandRuntimeDescriptor.RuntimeVersion}"
-        : $"状态：已停止 · ClassIsland {ClassIslandRuntimeDescriptor.RuntimeVersion}";
+    private void ProfileChanged(object? sender, EventArgs e) => Dispatcher.Invoke(RefreshStatus);
+    private void RefreshStatus() => coreStatus.Text = core.Profiles.Current is { } profile
+        ? $"核心状态：{(core.IsRunning ? "运行中" : "已停止")} · 当前档案：{profile.Name} · 科目 {profile.Subjects.Count} · 时间表 {profile.TimeLayouts.Count} · 课表 {profile.ClassPlans.Count}"
+        : $"核心状态：{(core.IsRunning ? "运行中" : "已停止")} · 尚未载入档案";
 
     private static bool TryGetZip(IDataObject data, out string path)
     {
         path = "";
-        if (!data.GetDataPresent(DataFormats.FileDrop) ||
-            data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files ||
-            !File.Exists(files[0]) ||
-            !string.Equals(Path.GetExtension(files[0]), ".zip", StringComparison.OrdinalIgnoreCase))
-            return false;
-        path = files[0];
-        return true;
+        if (!data.GetDataPresent(DataFormats.FileDrop) || data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files ||
+            !File.Exists(files[0]) || !string.Equals(Path.GetExtension(files[0]), ".zip", StringComparison.OrdinalIgnoreCase)) return false;
+        path = files[0]; return true;
     }
 
     private static string FormatBytes(long bytes)
     {
-        string[] units = ["B", "KiB", "MiB", "GiB"];
-        var value = (double)bytes;
-        var unit = 0;
+        string[] units = ["B", "KiB", "MiB", "GiB"]; var value = (double)bytes; var unit = 0;
         while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
         return $"{value:0.##} {units[unit]}";
     }

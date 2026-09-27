@@ -42,13 +42,11 @@
   <Target Name="CopyClassIslandPackage" AfterTargets="Build">
     <PropertyGroup>
       <ClassIslandPackageDir>$(TargetDir)packages\exusiai.classisland</ClassIslandPackageDir>
-      <ClassIslandSeedDir>$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\RuntimeSeed</ClassIslandSeedDir>
     </PropertyGroup>
     <MakeDir Directories="$(ClassIslandPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.ClassIsland.dll" DestinationFolder="$(ClassIslandPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ClassIslandPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ClassIslandPackageDir)" />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\eng\Prepare-ClassIslandRuntime.ps1&quot; -SeedRoot &quot;$(ClassIslandSeedDir)&quot; -OutputRoot &quot;$(ClassIslandPackageDir)\Runtime&quot; -AllowDownload" />
   </Target>
   <Target Name="CopyRollCallPackage" AfterTargets="Build">
     <PropertyGroup><RollCallPackageDir>$(TargetDir)packages\exusiai.roll-call</RollCallPackageDir></PropertyGroup>
@@ -70,8 +68,6 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.ClassIsland.dll" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
-    <ItemGroup><ClassIslandRuntimePublishFiles Include="$(TargetDir)packages\exusiai.classisland\Runtime\**\*" /></ItemGroup>
-    <Copy SourceFiles="@(ClassIslandRuntimePublishFiles)" DestinationFolder="$(ClassIslandPublishPackageDir)\Runtime\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyFileViewerPackageToPublish" AfterTargets="Publish">
     <PropertyGroup><FileViewerPublishPackageDir>$(PublishDir)packages\exusiai.file-viewer</FileViewerPublishPackageDir></PropertyGroup>

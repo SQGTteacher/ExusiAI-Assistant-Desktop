@@ -4,7 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <Description>Native ClassIsland runtime integration for ExusiAI.</Description>
+    <Description>Native ClassIsland profile, timetable, component and notification services for ExusiAI.</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
