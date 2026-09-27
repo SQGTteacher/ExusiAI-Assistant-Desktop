@@ -20,10 +20,14 @@ internal static class ClassIslandRuntimeDescriptor
     public const string DesktopSha256 = "9854f9bced74f7213f16345b434a15b1771c9780483364e196fcb3fb64da0ecc";
     public const string SeedArchiveSha256 = "d0bb33c1e1b79edc147b75f4a79d6c3acc7b6a6965f1b45ee7854626ea351c94";
 
-    public static string RuntimeRoot => Path.Combine(
+    public static string BundledRuntimeRoot => Path.Combine(
         Path.GetDirectoryName(typeof(ClassIslandPlugin).Assembly.Location)
         ?? throw new InvalidOperationException("无法确定 ClassIsland 插件目录。"),
         "Runtime");
+
+    public static string ManagedRuntimeRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ExusiAI", "classisland", "runtime");
 
     public static string LauncherPath(string runtimeRoot) => Path.Combine(runtimeRoot, LauncherFileName);
     public static string AppDirectory(string runtimeRoot) => Path.Combine(runtimeRoot, AppFolderName);
@@ -37,12 +41,9 @@ internal static class ClassIslandRuntimeDescriptor
         var desktop = DesktopPath(runtimeRoot);
         var packageType = Path.Combine(appDirectory, PackageTypeFileName);
 
-        if (!File.Exists(launcher))
-            throw new FileNotFoundException("ClassIsland 内置启动器不存在。", launcher);
-        if (!Directory.Exists(appDirectory))
-            throw new DirectoryNotFoundException($"ClassIsland 版本目录不存在：{appDirectory}");
-        if (!File.Exists(desktop))
-            throw new FileNotFoundException("ClassIsland.Desktop.exe 不存在，内置运行时不完整。", desktop);
+        if (!File.Exists(launcher)) throw new FileNotFoundException("ClassIsland 内置启动器不存在。", launcher);
+        if (!Directory.Exists(appDirectory)) throw new DirectoryNotFoundException($"ClassIsland 版本目录不存在：{appDirectory}");
+        if (!File.Exists(desktop)) throw new FileNotFoundException("ClassIsland.Desktop.exe 不存在，内置运行时不完整。", desktop);
         if (!File.Exists(packageType) || !string.Equals(File.ReadAllText(packageType).Trim(), "folder", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("ClassIsland 运行时必须保持上游 folder 包结构。");
 
@@ -51,14 +52,12 @@ internal static class ClassIslandRuntimeDescriptor
         if (!VersionMatches(launcherVersion) || !VersionMatches(desktopVersion))
             throw new InvalidDataException($"ClassIsland 内置运行时版本不匹配。期望 {RuntimeVersion}，实际 launcher={launcherVersion ?? "?"}, desktop={desktopVersion ?? "?"}。");
 
-        if (!verifyHashes)
-            return;
-
+        if (!verifyHashes) return;
         VerifySha256(launcher, LauncherSha256, "ClassIsland.exe");
         VerifySha256(desktop, DesktopSha256, "ClassIsland.Desktop.exe");
     }
 
-    internal static void VerifySha256(string path, string expected, string displayName)
+    private static void VerifySha256(string path, string expected, string displayName)
     {
         using var stream = File.OpenRead(path);
         var actual = Convert.ToHexString(SHA256.HashData(stream));
@@ -66,10 +65,8 @@ internal static class ClassIslandRuntimeDescriptor
             throw new InvalidDataException($"{displayName} SHA-256 校验失败；拒绝启动被替换的内置运行时。");
     }
 
-    private static bool VersionMatches(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return false;
-        return value.Equals(RuntimeVersion, StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith(RuntimeVersion + "+", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool VersionMatches(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        (value.Equals(RuntimeVersion, StringComparison.OrdinalIgnoreCase) ||
+         value.StartsWith(RuntimeVersion + "+", StringComparison.OrdinalIgnoreCase));
 }
