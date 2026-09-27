@@ -3,7 +3,6 @@ using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 
 namespace ExusiAI.Plugin.MishaShowcase;
 
@@ -27,7 +26,6 @@ internal sealed class MishaSyncPage : UserControl
             Padding = new Thickness(24),
             CornerRadius = new CornerRadius(12),
             BorderThickness = new Thickness(1),
-            BorderBrush = Brushes.Gray,
             AllowDrop = true
         };
         dropZone.SetResourceReference(Border.BackgroundProperty, "SurfaceAltBrush");

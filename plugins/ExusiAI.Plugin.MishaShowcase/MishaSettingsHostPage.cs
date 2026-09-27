@@ -10,6 +10,7 @@ internal sealed class MishaSettingsHostPage : UserControl
     private readonly Dictionary<string, FrameworkElement> pageCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ContentControl content = new();
     private readonly TextBlock sectionTitle = new() { FontSize = 20, FontWeight = FontWeights.SemiBold };
+    private readonly TextBlock sectionContext = new() { FontSize = 12, Margin = new Thickness(0, 3, 0, 0) };
 
     public MishaSettingsHostPage(MishaPlatformStore store)
     {
@@ -100,11 +101,15 @@ internal sealed class MishaSettingsHostPage : UserControl
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         right.RowDefinitions.Add(new RowDefinition());
 
+        sectionContext.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        var headerText = new StackPanel();
+        headerText.Children.Add(sectionTitle);
+        headerText.Children.Add(sectionContext);
         var header = new Border
         {
             Padding = new Thickness(22, 16, 22, 12),
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = sectionTitle
+            Child = headerText
         };
         header.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
         header.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
@@ -137,6 +142,7 @@ internal sealed class MishaSettingsHostPage : UserControl
         {
             if (navigation.SelectedItem is not MishaSection section) return;
             sectionTitle.Text = section.Title;
+            sectionContext.Text = ResolveSectionContext(section);
             if (!pageCache.TryGetValue(section.Id, out var page))
             {
                 page = section.CreateView();
@@ -147,6 +153,15 @@ internal sealed class MishaSettingsHostPage : UserControl
 
         navigation.SelectedIndex = 0;
     }
+
+    private static string ResolveSectionContext(MishaSection section) => section.Group switch
+    {
+        "档案与课表" => "ClassIsland 档案编辑 · 保留 GUID、课表关系与原生 JSON 结构",
+        "应用设置" => "ClassIsland 应用设置 · 修改会写入 ExusiAI 托管副本",
+        "扩展功能" => "组件、自动化与信息岛运行配置",
+        "数据" => "工作区、导入导出与兼容同步",
+        _ => "ClassIsland 2.1 / Misha 兼容层"
+    };
 
     private static void ApplyRoundedClip(FrameworkElement element, double radius)
     {
