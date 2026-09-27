@@ -61,7 +61,7 @@ internal sealed class ClassIslandSyncPage : UserControl
         };
         dropZone.SetResourceReference(Border.BackgroundProperty, "SurfaceAltBrush");
         dropZone.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        dropZone.PreviewDragOver += (_, e) => { e.Effects = TryGetZip(e.Data, out _) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+        dropZone.PreviewDragOver += (sender, e) => { e.Effects = TryGetZip(e.Data, out _) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
         dropZone.Drop += async (_, e) => { if (TryGetZip(e.Data, out var path)) await SyncAsync(path); e.Handled = true; };
         root.Children.Add(dropZone);
 
