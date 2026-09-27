@@ -20,7 +20,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Theme", "src\ExusiA
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Desktop", "src\ExusiAI.Desktop\ExusiAI.Desktop.csproj", "{99999999-9999-4999-8999-999999999999}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Plugin.MishaShowcase", "plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj", "{EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Plugin.ClassIsland", "plugins\ExusiAI.Plugin.ClassIsland\ExusiAI.Plugin.ClassIsland.csproj", "{EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.Core.Tests", "tests\ExusiAI.Core.Tests\ExusiAI.Core.Tests.csproj", "{BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB}"
 EndProject

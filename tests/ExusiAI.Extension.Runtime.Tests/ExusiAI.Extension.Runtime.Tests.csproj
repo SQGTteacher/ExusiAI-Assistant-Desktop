@@ -16,7 +16,7 @@
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.SDK\ExusiAI.Extension.SDK.csproj" />
     <ProjectReference Include="..\ExusiAI.Extension.TestPlugin\ExusiAI.Extension.TestPlugin.csproj" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ClassIsland\ExusiAI.Plugin.ClassIsland.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ArkPets\ExusiAI.Plugin.ArkPets.csproj" />

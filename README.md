@@ -22,8 +22,8 @@ ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市
 - 插件可在运行时启用、禁用和重试，偏好会跨启动保留；
 - 可搜索的本地资源库、统一插件目录和扩展管理页面；
 - 支持 ZIP 插件安全导入、导出、卸载，也可直接将插件文件夹放入本地目录；
-- 内置 ClassIsland 2.2 Misha 功能移植插件，覆盖课表/时间表、组件、提醒与自动化、内置扩展、原生 Profile JSON 迁移及完整开源署名；
-- ArkPets 桌宠：保持 ArkPets 的模型 / 行为 / 选项结构，兼容 Ark-Models 全角色模型库与 direct-start 配置；ExusiAI 可自动管理上游便携运行核心、模型下载、localhost IPC 实时控制和随宿主启动，桌宠不会作为独立开机程序常驻；与 ClassIsland Misha 保持独立并提供可选课堂联动；
+- 内置 ClassIsland 原生运行集成：随 ExusiAI 离线分发完整 ClassIsland 2.1.0.1 folder 运行时，由 ExusiAI 统一管理进程生命周期；不再仿写 ClassIsland 页面/组件/自动化逻辑，保留 ClassIsland 2.x 备份同步，并跟踪 2.2 Misha 开源分支作为后续原生升级基线；
+- ArkPets 桌宠：保持 ArkPets 的模型 / 行为 / 选项结构，兼容 Ark-Models 全角色模型库与 direct-start 配置；ExusiAI 可自动管理上游便携运行核心、模型下载、localhost IPC 实时控制和随宿主启动，桌宠不会作为独立开机程序常驻；与 ClassIsland 原生运行集成保持独立并提供可选课堂联动；
 - 文件查看器：TXT/Markdown 异步增量预览、CSV 分页解析、DOCX 安全结构化文本预览、XLSX 首工作表分页预览、PPTX 逐页结构化文本预览，默认只读并设资源安全上限；
 - Windows GitHub Actions 构建及单元测试。
 
@@ -38,7 +38,7 @@ dotnet test ExusiAI.sln --no-build --configuration Release
 dotnet run --project src/ExusiAI.Desktop
 ```
 
-构建或发布 Desktop 时，ClassIsland Misha、文件查看器、课堂点名器和 ArkPets 桌宠会复制到输出目录的 `packages` 安装源。首次运行或内置插件升级时，它们会安全同步到与外部插件相同的本地插件目录；用户卸载内置插件后不会在下次启动时自动恢复。
+构建或发布 Desktop 时，ClassIsland、文件查看器、课堂点名器和 ArkPets 桌宠会复制到输出目录的 `packages` 安装源。ClassIsland 最终发布物包含完整 2.1.0.1 原生运行核心；若本地提供 `RuntimeSeed/ClassIsland.exe` 与 `app-2.1.0.1-0.zip` 则直接使用并校验哈希，CI 缺少本地 seed 时仅在构建阶段从固定上游 2.1.0.1 Release 获取并校验，终端用户首次运行不需要再下载运行核心。首次运行或内置插件升级时，它们会安全同步到与外部插件相同的本地插件目录；用户卸载内置插件后不会在下次启动时自动恢复。
 
 创建可分发的 Windows x64 目录：
 
@@ -75,4 +75,4 @@ dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
 
 ## 开源许可证
 
-本项目整体以 [GNU General Public License v3.0 only](LICENSE)（SPDX: `GPL-3.0-only`）发布。ClassIsland 相关移植保留其原作者、贡献者及许可证声明；详情见插件内的 `THIRD_PARTY_NOTICES.md`。参与开发前请阅读 [贡献指南](CONTRIBUTING.md)。
+本项目整体以 [GNU General Public License v3.0 only](LICENSE)（SPDX: `GPL-3.0-only`）发布。ClassIsland 原生运行时及集成保留其原作者、贡献者及许可证声明；详情见插件内的 `THIRD_PARTY_NOTICES.md`。参与开发前请阅读 [贡献指南](CONTRIBUTING.md)。

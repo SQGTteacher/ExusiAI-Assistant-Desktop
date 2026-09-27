@@ -69,7 +69,7 @@ internal sealed class ArkPetsController : IAsyncDisposable
     public bool WindowsStartupEnabled => ExusiAIStartupBinding.IsEnabled();
 
     public bool ClassIslandAvailable =>
-        File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "packages", "exusiai.misha-showcase", "package.json")) ||
+        File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "packages", "exusiai.classisland", "package.json")) ||
         File.Exists(ClassIslandStateFile.DefaultPath);
 
     public event EventHandler? Changed;

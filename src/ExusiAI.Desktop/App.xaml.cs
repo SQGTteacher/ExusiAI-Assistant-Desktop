@@ -43,7 +43,7 @@ public partial class App : Application
             backdrop.Apply(backdropSelection);
             runtime = host.Services.GetRequiredService<ExtensionRuntime>();
             var paths = host.Services.GetRequiredService<IAppPaths>();
-            RemoveLegacyBundledSample(paths.ApplicationDirectory);
+            RemoveLegacyBundledPackages(paths);
             await host.Services.GetRequiredService<BundledPackageSynchronizer>().SynchronizeAsync();
 
             var window = host.Services.GetRequiredService<MainWindow>();
@@ -68,18 +68,25 @@ public partial class App : Application
         }
     }
 
-    private static void RemoveLegacyBundledSample(string applicationDirectory)
+    private static void RemoveLegacyBundledPackages(IAppPaths paths)
     {
-        var samplePath = Path.Combine(applicationDirectory, "packages", "exusiai.sample");
-        try
+        foreach (var path in new[]
+                 {
+                     Path.Combine(paths.ApplicationDirectory, "packages", "exusiai.sample"),
+                     Path.Combine(paths.ApplicationDirectory, "packages", "exusiai.misha-showcase"),
+                     Path.Combine(paths.PackagesDirectory, "exusiai.misha-showcase")
+                 })
         {
-            if (Directory.Exists(samplePath))
-                Directory.Delete(samplePath, recursive: true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // A locked legacy package must not prevent the host from starting. It is no longer
-            // produced or registered and will be removed by the next clean install/build.
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, recursive: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // A locked obsolete bundled package must not block host startup. It will be retried
+                // on the next clean startup before extension discovery.
+            }
         }
     }
 

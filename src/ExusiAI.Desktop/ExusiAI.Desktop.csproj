@@ -16,7 +16,7 @@
     <ProjectReference Include="..\ExusiAI.Infrastructure\ExusiAI.Infrastructure.csproj" />
     <ProjectReference Include="..\ExusiAI.Marketplace\ExusiAI.Marketplace.csproj" />
     <ProjectReference Include="..\ExusiAI.Theme\ExusiAI.Theme.csproj" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.MishaShowcase\ExusiAI.Plugin.MishaShowcase.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ClassIsland\ExusiAI.Plugin.ClassIsland.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ArkPets\ExusiAI.Plugin.ArkPets.csproj" ReferenceOutputAssembly="false" />
@@ -28,7 +28,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" />
   </ItemGroup>
   <Target Name="RemoveLegacySamplePackage" BeforeTargets="Build;Publish">
-    <RemoveDir Directories="$(TargetDir)packages\exusiai.sample;$(PublishDir)packages\exusiai.sample" />
+    <RemoveDir Directories="$(TargetDir)packages\exusiai.sample;$(PublishDir)packages\exusiai.sample;$(TargetDir)packages\exusiai.misha-showcase;$(PublishDir)packages\exusiai.misha-showcase" />
   </Target>
   <Target Name="CopyFileViewerPackage" AfterTargets="Build">
     <PropertyGroup><FileViewerPackageDir>$(TargetDir)packages\exusiai.file-viewer</FileViewerPackageDir></PropertyGroup>
@@ -39,12 +39,16 @@
     <ItemGroup><FileViewerDesktopFiles Include="$(MSBuildProjectDirectory)\..\ExusiAI.FileViewer.Desktop\bin\$(Configuration)\net8.0-windows\**\*" /></ItemGroup>
     <Copy SourceFiles="@(FileViewerDesktopFiles)" DestinationFolder="$(TargetDir)viewer\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
-  <Target Name="CopyMishaShowcasePackage" AfterTargets="Build">
-    <PropertyGroup><MishaPackageDir>$(TargetDir)packages\exusiai.misha-showcase</MishaPackageDir></PropertyGroup>
-    <MakeDir Directories="$(MishaPackageDir)" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.MishaShowcase.dll" DestinationFolder="$(MishaPackageDir)" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\THIRD_PARTY_NOTICES.md" DestinationFolder="$(MishaPackageDir)" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(MishaPackageDir)" />
+  <Target Name="CopyClassIslandPackage" AfterTargets="Build">
+    <PropertyGroup>
+      <ClassIslandPackageDir>$(TargetDir)packages\exusiai.classisland</ClassIslandPackageDir>
+      <ClassIslandSeedDir>$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\RuntimeSeed</ClassIslandSeedDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(ClassIslandPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.ClassIsland.dll" DestinationFolder="$(ClassIslandPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ClassIslandPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ClassIslandPackageDir)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\eng\Prepare-ClassIslandRuntime.ps1&quot; -SeedRoot &quot;$(ClassIslandSeedDir)&quot; -OutputRoot &quot;$(ClassIslandPackageDir)\Runtime&quot; -AllowDownload" />
   </Target>
   <Target Name="CopyRollCallPackage" AfterTargets="Build">
     <PropertyGroup><RollCallPackageDir>$(TargetDir)packages\exusiai.roll-call</RollCallPackageDir></PropertyGroup>
@@ -60,12 +64,14 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ArkPets\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ArkPetsPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ArkPetsPackageDir)" />
   </Target>
-  <Target Name="CopyMishaShowcasePackageToPublish" AfterTargets="Publish">
-    <PropertyGroup><MishaPublishPackageDir>$(PublishDir)packages\exusiai.misha-showcase</MishaPublishPackageDir></PropertyGroup>
-    <MakeDir Directories="$(MishaPublishPackageDir)" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.MishaShowcase.dll" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.MishaShowcase\THIRD_PARTY_NOTICES.md" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(MishaPublishPackageDir)" SkipUnchangedFiles="true" />
+  <Target Name="CopyClassIslandPackageToPublish" AfterTargets="Publish">
+    <PropertyGroup><ClassIslandPublishPackageDir>$(PublishDir)packages\exusiai.classisland</ClassIslandPublishPackageDir></PropertyGroup>
+    <MakeDir Directories="$(ClassIslandPublishPackageDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.ClassIsland.dll" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
+    <ItemGroup><ClassIslandRuntimePublishFiles Include="$(TargetDir)packages\exusiai.classisland\Runtime\**\*" /></ItemGroup>
+    <Copy SourceFiles="@(ClassIslandRuntimePublishFiles)" DestinationFolder="$(ClassIslandPublishPackageDir)\Runtime\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyFileViewerPackageToPublish" AfterTargets="Publish">
     <PropertyGroup><FileViewerPublishPackageDir>$(PublishDir)packages\exusiai.file-viewer</FileViewerPublishPackageDir></PropertyGroup>
