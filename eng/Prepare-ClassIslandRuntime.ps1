@@ -5,7 +5,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Version = '2.1.0.1'
 $AppFolderName = 'app-2.1.0.1-0'
 $LauncherSha256 = '06e69ff08538c3f2c1e650914d3edfd3960f7fdda887e2d654551861f14757a8'
 $DesktopSha256 = '9854f9bced74f7213f16345b434a15b1771c9780483364e196fcb3fb64da0ecc'
@@ -15,18 +14,25 @@ $OfficialArchiveUrl = 'https://github.com/ClassIsland/ClassIsland/releases/downl
 
 function Get-Sha256([string]$Path) {
     $stream = [System.IO.File]::OpenRead($Path)
-    try { return ([BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($stream)) -replace '-', '').ToLowerInvariant() }
+    try {
+        return ([BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($stream)) -replace '-', '').ToLowerInvariant()
+    }
     finally { $stream.Dispose() }
 }
+
 function Assert-Sha256([string]$Path, [string]$Expected, [string]$Name) {
     $actual = Get-Sha256 $Path
-    if ($actual -ne $Expected.ToLowerInvariant()) { throw "$Name SHA-256 mismatch. Expected $Expected, got $actual." }
+    if ($actual -ne $Expected.ToLowerInvariant()) { throw "$Name SHA-256 mismatch." }
 }
+
 function Test-PreparedRuntime([string]$Root) {
-    return (Test-Path (Join-Path $Root 'ClassIsland.exe')) -and (Test-Path (Join-Path $Root "$AppFolderName\ClassIsland.Desktop.exe")) -and (Test-Path (Join-Path $Root "$AppFolderName\PackageType"))
+    return ((Test-Path (Join-Path $Root 'ClassIsland.exe')) -and
+            (Test-Path (Join-Path $Root "$AppFolderName\ClassIsland.Desktop.exe")) -and
+            (Test-Path (Join-Path $Root "$AppFolderName\PackageType")))
 }
+
 function Validate-PreparedRuntime([string]$Root) {
-    if (-not (Test-PreparedRuntime $Root)) { throw "Prepared ClassIsland runtime is incomplete: $Root" }
+    if (-not (Test-PreparedRuntime $Root)) { throw "Prepared runtime missing." }
     if ((Get-Content (Join-Path $Root "$AppFolderName\PackageType") -Raw).Trim() -ne 'folder') { throw 'PackageType must be folder.' }
     Assert-Sha256 (Join-Path $Root 'ClassIsland.exe') $LauncherSha256 'ClassIsland.exe'
     Assert-Sha256 (Join-Path $Root "$AppFolderName\ClassIsland.Desktop.exe") $DesktopSha256 'ClassIsland.Desktop.exe'
@@ -35,13 +41,14 @@ function Validate-PreparedRuntime([string]$Root) {
 $SeedRoot = [IO.Path]::GetFullPath($SeedRoot)
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
-$archive = Join-Path $SeedRoot "$AppFolderName.zip"
+$seedLauncher = Join-Path $SeedRoot 'ClassIsland.exe'
+$seedArchive = Join-Path $SeedRoot "$AppFolderName.zip"
 
-if (Test-Path (Join-Path $SeedRoot 'ClassIsland.exe') -and (Test-Path $archive)) {
-    Assert-Sha256 (Join-Path $SeedRoot 'ClassIsland.exe') $LauncherSha256 'seed ClassIsland.exe'
-    Assert-Sha256 $archive $SeedArchiveSha256 'seed archive'
-    Copy-Item (Join-Path $SeedRoot 'ClassIsland.exe') (Join-Path $OutputRoot 'ClassIsland.exe') -Force
-    Expand-Archive $archive (Join-Path $OutputRoot $AppFolderName) -Force
+if ((Test-Path $seedLauncher) -and (Test-Path $seedArchive)) {
+    Assert-Sha256 $seedLauncher $LauncherSha256 'seed launcher'
+    Assert-Sha256 $seedArchive $SeedArchiveSha256 'seed archive'
+    Copy-Item $seedLauncher (Join-Path $OutputRoot 'ClassIsland.exe') -Force
+    Expand-Archive $seedArchive (Join-Path $OutputRoot $AppFolderName) -Force
 }
 elseif ($AllowDownload) {
     $temp = Join-Path ([IO.Path]::GetTempPath()) ("classisland-$([guid]::NewGuid())")
@@ -57,6 +64,8 @@ elseif ($AllowDownload) {
         Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
-else { throw 'ClassIsland runtime seed missing.' }
+else {
+    throw 'ClassIsland runtime seed missing.'
+}
 
 Validate-PreparedRuntime $OutputRoot
