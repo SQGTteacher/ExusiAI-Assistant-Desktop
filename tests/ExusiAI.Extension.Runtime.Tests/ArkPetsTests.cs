@@ -10,6 +10,36 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class ArkPetsTests
 {
     [Fact]
+    public void SettingsPageUsesSharedPluginWorkspaceGeometry()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var page = new ArkPetsPage(new ArkPetsController(new TestExtensionLogger()));
+                page.Measure(new System.Windows.Size(1280, 800));
+                page.Arrange(new System.Windows.Rect(0, 0, 1280, 800));
+                page.UpdateLayout();
+
+                var frame = Assert.IsType<System.Windows.Controls.Border>(page.Content);
+                Assert.Equal(12d, frame.CornerRadius.TopLeft);
+                var root = Assert.IsType<System.Windows.Controls.Grid>(frame.Child);
+                Assert.Equal(218d, root.ColumnDefinitions[0].Width.Value);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "ArkPets settings page smoke test timed out.");
+        Assert.Null(failure);
+    }
+
+    [Fact]
     public async Task DatasetReadsArkModelsSchema()
     {
         using var root = new TestDirectory();
@@ -455,5 +485,12 @@ public sealed class ArkPetsTests
             try { Directory.Delete(Path, true); }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    private sealed class TestExtensionLogger : ExusiAI.Extension.Abstractions.IExtensionLogger
+    {
+        public void Information(string message) { }
+        public void Warning(string message) { }
+        public void Error(string message, Exception? exception = null) { }
     }
 }

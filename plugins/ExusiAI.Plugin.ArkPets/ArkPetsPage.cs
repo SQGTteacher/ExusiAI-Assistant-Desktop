@@ -85,25 +85,27 @@ internal sealed class ArkPetsPage : UserControl
     {
         var frame = new Border
         {
-            Margin = new Thickness(16),
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(12),
             BorderThickness = new Thickness(1),
             BorderBrush = Hairline,
             Background = Paper,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
+        frame.SizeChanged += (_, _) => ApplyRoundedClip(frame, 12);
 
         var root = new Grid();
-        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(218) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         frame.Child = root;
 
         var sidebar = new Border
         {
-            Background = ThemeLight,
-            CornerRadius = new CornerRadius(8, 0, 0, 8),
-            Padding = new Thickness(10, 18, 10, 14)
+            Background = PaperAlt,
+            CornerRadius = new CornerRadius(12, 0, 0, 12),
+            Padding = new Thickness(7, 16, 7, 12),
+            BorderBrush = Hairline,
+            BorderThickness = new Thickness(0, 0, 1, 0)
         };
         var sidebarGrid = new Grid();
         sidebarGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -114,16 +116,21 @@ internal sealed class ArkPetsPage : UserControl
         var title = new TextBlock
         {
             Text = "ArkPets",
-            Foreground = Theme,
-            FontSize = 25,
-            FontWeight = FontWeights.Bold,
-            TextAlignment = TextAlignment.Center,
-            Margin = new Thickness(0, 4, 0, 12)
+            Foreground = Ink,
+            FontSize = 20,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(12, 0, 12, 3)
         };
         Grid.SetRow(title, 0);
         sidebarGrid.Children.Add(title);
 
-        var rule = new Border { Height = 1, Background = Hairline, Opacity = 0.7, Margin = new Thickness(2, 0, 2, 14) };
+        var rule = new TextBlock
+        {
+            Text = "桌宠与课堂联动",
+            Foreground = SecondaryInk,
+            FontSize = 12,
+            Margin = new Thickness(12, 0, 12, 14)
+        };
         Grid.SetRow(rule, 1);
         sidebarGrid.Children.Add(rule);
 
@@ -140,10 +147,19 @@ internal sealed class ArkPetsPage : UserControl
         Grid.SetColumn(sidebar, 0);
         root.Children.Add(sidebar);
 
-        contentHost.Margin = new Thickness(18);
+        contentHost.Margin = new Thickness(22, 18, 18, 18);
         Grid.SetColumn(contentHost, 1);
         root.Children.Add(contentHost);
         return frame;
+    }
+
+    private static void ApplyRoundedClip(FrameworkElement element, double radius)
+    {
+        var width = Math.Max(0, element.ActualWidth);
+        var height = Math.Max(0, element.ActualHeight);
+        if (width <= 0 || height <= 0) return;
+        var safeRadius = Math.Min(radius, Math.Min(width, height) / 2);
+        element.Clip = new RectangleGeometry(new Rect(0, 0, width, height), safeRadius, safeRadius);
     }
 
     private void ShowModels()
@@ -1400,8 +1416,8 @@ internal sealed class ArkPetsPage : UserControl
     {
         foreach (var button in new[] { modelsButton, behaviorButton, optionsButton })
         {
-            button.Background = ReferenceEquals(button, active) ? Theme : Paper;
-            button.Foreground = ReferenceEquals(button, active) ? AccentInk : Theme;
+            button.Background = ReferenceEquals(button, active) ? ThemeLight : Brushes.Transparent;
+            button.Foreground = ReferenceEquals(button, active) ? Ink : SecondaryInk;
         }
     }
 
@@ -1432,15 +1448,15 @@ internal sealed class ArkPetsPage : UserControl
         var button = new Button
         {
             Content = text,
-            Height = 42,
-            Margin = new Thickness(0, 5, 0, 5),
-            FontSize = 17,
-            Foreground = Theme,
-            Background = Paper,
-            BorderBrush = Theme,
-            BorderThickness = new Thickness(1.5),
+            Height = 40,
+            Margin = new Thickness(0, 2, 0, 2),
+            FontSize = 12.5,
+            FontWeight = FontWeights.Medium,
+            Foreground = Ink,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             HorizontalContentAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(24, 0, 0, 0)
+            Padding = new Thickness(14, 0, 0, 0)
         };
         return button;
     }
