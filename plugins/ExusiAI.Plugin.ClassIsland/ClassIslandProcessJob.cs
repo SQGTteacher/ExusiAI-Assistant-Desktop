@@ -52,7 +52,7 @@ internal sealed class ClassIslandProcessJob : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
 
         var startupInfo = new StartupInfo { Size = (uint)Marshal.SizeOf<StartupInfo>() };
-        var commandLine = new StringBuilder($""{launcherPath}"");
+        var commandLine = new StringBuilder().Append('"').Append(launcherPath).Append('"');
         if (!CreateProcessW(
                 launcherPath,
                 commandLine,
