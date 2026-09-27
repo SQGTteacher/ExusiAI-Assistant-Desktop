@@ -40,12 +40,14 @@ public sealed class MishaShowcasePlugin : ExtensionPluginBase, IWpfNavigationExt
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        Task shutdown = Task.CompletedTask;
         if (dispatcher is not null)
             await dispatcher.InvokeAsync(() =>
             {
-                mainWindowRuntime?.Dispose();
+                shutdown = mainWindowRuntime?.DisposeAsync().AsTask() ?? Task.CompletedTask;
                 mainWindowRuntime = null;
             });
+        await shutdown.WaitAsync(cancellationToken);
         Context.Logger.Information("ClassIsland 2.2 Misha port stopped.");
     }
 

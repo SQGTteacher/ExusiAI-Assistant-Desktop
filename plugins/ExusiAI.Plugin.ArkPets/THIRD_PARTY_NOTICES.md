@@ -8,7 +8,7 @@
 - License: GNU General Public License v3.0
 - ExusiAI integration: SQGTteacher
 
-This plugin intentionally keeps ArkPets-compatible model metadata, configuration names, localhost IPC protocol and direct-start behavior. ExusiAI may download the official portable ArkPets release from the upstream GitHub Releases page and run it as a managed child process. It does not relicense the upstream runtime or register ArkPets as an independent startup application.
+This plugin intentionally keeps ArkPets-compatible model metadata, configuration names, localhost IPC protocol and direct-start behavior. ExusiAI distributions include the unmodified official ArkPets v3.13.1 portable ZIP (stored as byte-contiguous repository parts and reconstructed as `ArkPets-v3.13.1.zip`, upstream SHA-256 `17728d6385309f453d1d36ae1e048324bc030d4d363895f17b165814781b69c9`) so classroom machines do not need a fast network connection for first launch. The archive remains GPL-3.0 third-party software and is extracted into the user's ExusiAI data directory before being run as a managed child process. ExusiAI does not relicense the upstream runtime or register ArkPets as an independent startup application.
 
 ## Ark-Models / Arknights assets
 

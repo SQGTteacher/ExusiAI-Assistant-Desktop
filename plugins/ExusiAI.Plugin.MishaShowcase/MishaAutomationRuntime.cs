@@ -67,6 +67,12 @@ internal sealed class MishaAutomationRuntime : IDisposable
         lastStateKey = null;
     }
 
+    public async Task DrainAsync()
+    {
+        await gate.WaitAsync();
+        gate.Release();
+    }
+
     internal static bool Matches(string triggerId, ClassIslandSchedulePhase phase) => triggerId switch
     {
         "classisland.lessons.onClass" => phase == ClassIslandSchedulePhase.OnClass,

@@ -22,6 +22,7 @@ internal sealed record ArkPetsDownloadProgress(string Stage, long ReceivedBytes,
 
 internal sealed class ArkPetsUpstreamManager : IDisposable
 {
+    private const string BundledRuntimeSha256 = "17728D6385309F453D1D36AE1E048324BC030D4D363895F17B165814781B69C9";
     private const string LatestReleaseApi = "https://api.github.com/repos/isHarryh/Ark-Pets/releases/latest";
     private const string ModelsArchiveUrl = "https://github.com/isHarryh/Ark-Models/archive/refs/heads/main.zip";
     private readonly Func<string?> proxyProvider;
@@ -88,6 +89,71 @@ internal sealed class ArkPetsUpstreamManager : IDisposable
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
             }
+            throw;
+        }
+    }
+
+    public async Task<(string RuntimePath, string Version)?> InstallBundledRuntimeAsync(
+        IProgress<ArkPetsDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var archiveParts = FindBundledRuntimeArchiveParts();
+        if (archiveParts.Count == 0)
+            return null;
+
+        var archivePath = Path.Combine(LocalRoot, "downloads", "ArkPets-v3.13.1.bundled.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(archivePath)!);
+        var temporaryArchive = archivePath + ".assembling";
+        if (File.Exists(temporaryArchive))
+            File.Delete(temporaryArchive);
+
+        await using (var output = new FileStream(
+            temporaryArchive,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            81920,
+            FileOptions.Asynchronous | FileOptions.SequentialScan))
+        {
+            foreach (var part in archiveParts)
+            {
+                await using var input = File.OpenRead(part);
+                await input.CopyToAsync(output, cancellationToken);
+            }
+        }
+        File.Move(temporaryArchive, archivePath, true);
+
+        await using (var stream = File.OpenRead(archivePath))
+        {
+            var digest = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
+            if (!digest.Equals(BundledRuntimeSha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("ExusiAI 随附的 ArkPets 运行核心校验失败，请重新安装 ExusiAI。");
+        }
+
+        const string version = "3.13.1";
+        var runtimeRoot = Path.Combine(LocalRoot, "runtime", version);
+        var existing = ArkPetsRuntimeLocator.FindRuntimeInDirectory(runtimeRoot);
+        if (!string.IsNullOrWhiteSpace(existing))
+            return (existing, version);
+
+        var temporaryRoot = runtimeRoot + ".installing-" + Guid.NewGuid().ToString("N");
+        Directory.CreateDirectory(temporaryRoot);
+        try
+        {
+            progress?.Report(new ArkPetsDownloadProgress("extract", 0, null));
+            await ExtractArchiveSafeAsync(archivePath, temporaryRoot, cancellationToken);
+            var executable = ArkPetsRuntimeLocator.FindRuntimeInDirectory(temporaryRoot)
+                ?? throw new InvalidDataException("ExusiAI 随附的 ArkPets 包中没有可启动的运行核心。");
+            var relativeExecutable = Path.GetRelativePath(temporaryRoot, executable);
+            if (Directory.Exists(runtimeRoot))
+                Directory.Delete(runtimeRoot, true);
+            Directory.Move(temporaryRoot, runtimeRoot);
+            return (Path.Combine(runtimeRoot, relativeExecutable), version);
+        }
+        catch
+        {
+            if (Directory.Exists(temporaryRoot))
+                Directory.Delete(temporaryRoot, true);
             throw;
         }
     }
@@ -192,6 +258,25 @@ internal sealed class ArkPetsUpstreamManager : IDisposable
 
     internal static string LocalRoot =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "arkpets");
+
+    private static IReadOnlyList<string> FindBundledRuntimeArchiveParts()
+    {
+        var assemblyDirectory = Path.GetDirectoryName(typeof(ArkPetsUpstreamManager).Assembly.Location);
+        var candidateDirectories = new[]
+        {
+            assemblyDirectory is null ? null : Path.Combine(assemblyDirectory, "Runtime"),
+            Path.Combine(AppContext.BaseDirectory, "arkpets", "runtime")
+        };
+        foreach (var directory in candidateDirectories.Where(path => !string.IsNullOrWhiteSpace(path)))
+        {
+            var parts = Directory.Exists(directory)
+                ? Directory.GetFiles(directory!, "ArkPets-v3.13.1.zip.part*").Order(StringComparer.Ordinal).ToArray()
+                : [];
+            if (parts.Length > 0)
+                return parts;
+        }
+        return [];
+    }
 
     private async Task DownloadFileAsync(
         Uri uri,

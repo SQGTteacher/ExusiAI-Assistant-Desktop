@@ -993,7 +993,7 @@ internal sealed class ArkPetsPage : UserControl
             if (string.IsNullOrWhiteSpace(controller.Settings.RuntimePath) ||
                 !File.Exists(controller.Settings.RuntimePath))
             {
-                SetStatus("正在获取 ArkPets 官方运行核心，首次启动可能需要一些时间…");
+                SetStatus("正在准备 ExusiAI 随附的 ArkPets 运行核心，首次启动可能需要一些时间…");
                 var progress = new Progress<ArkPetsDownloadProgress>(item =>
                 {
                     if (item.Ratio is double ratio)
