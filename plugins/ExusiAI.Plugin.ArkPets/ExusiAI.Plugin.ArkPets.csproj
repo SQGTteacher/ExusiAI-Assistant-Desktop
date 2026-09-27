@@ -16,5 +16,8 @@
     <None Include="package.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="README.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Runtime\ArkPets-v3.13.1.zip.part*"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="Runtime\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -15,7 +15,7 @@ using ExusiAI.Extension.Abstractions;
 
 namespace ExusiAI.Plugin.MishaShowcase;
 
-internal sealed class MishaMainWindowRuntime : IDisposable
+internal sealed class MishaMainWindowRuntime : IAsyncDisposable
 {
     private readonly MishaPlatformStore store;
     private readonly IExtensionLogger logger;
@@ -28,6 +28,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     private readonly MishaAutomationRuntime automationRuntime;
     private readonly ClassIslandIntegrationStatePublisher integrationStatePublisher = new();
     private MishaMainWindow? window;
+    private Task refreshLoopTask = Task.CompletedTask;
     private bool started;
 
     public MishaMainWindowRuntime(MishaPlatformStore store, IExtensionLogger logger)
@@ -51,7 +52,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         RequestRefresh();
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         if (!started) return;
         started = false;
@@ -59,6 +60,17 @@ internal sealed class MishaMainWindowRuntime : IDisposable
         store.Changed -= Store_OnChanged;
         window?.CloseForShutdown();
         window = null;
+
+        try
+        {
+            await refreshLoopTask;
+            await automationRuntime.DrainAsync();
+        }
+        catch (Exception exception)
+        {
+            logger.Error("ClassIsland runtime shutdown waited for a failed background operation.", exception);
+        }
+
         tickers.Clear();
         refreshQueue.Reset();
         notificationTracker.Reset();
@@ -78,7 +90,7 @@ internal sealed class MishaMainWindowRuntime : IDisposable
     private void RequestRefresh()
     {
         if (started && refreshQueue.Request())
-            _ = RunRefreshLoopAsync();
+            refreshLoopTask = RunRefreshLoopAsync();
     }
 
     private async Task RunRefreshLoopAsync()
@@ -203,12 +215,22 @@ internal sealed class MishaScheduleNotificationPresenter : IDisposable
         ((TextBlock)panel.Children[0]).Text = notification.Title;
         ((TextBlock)panel.Children[1]).Text = notification.Body;
         window.Topmost = workspace.GetBool("IsNotificationTopmostEnabled", true);
-        window.Left = SystemParameters.WorkArea.Right - window.Width - 20;
-        window.Top = SystemParameters.WorkArea.Top + 20;
-        if (!window.IsVisible) window.Show();
+        window.UpdateLayout();
+        var width = window.ActualWidth > 0 ? window.ActualWidth : window.Width;
+        var height = window.ActualHeight > 0 ? window.ActualHeight : window.Height;
+        var position = CalculatePosition(SystemParameters.WorkArea, new Size(width, height));
+        window.Left = position.X;
+        window.Top = position.Y;
+        if (!window.IsVisible)
+            window.Show();
         closeTimer.Stop();
         closeTimer.Start();
     }
+
+    internal static Point CalculatePosition(Rect workArea, Size windowSize) =>
+        new(
+            workArea.Right - Math.Max(0, windowSize.Width) - 20,
+            workArea.Bottom - Math.Max(0, windowSize.Height) - 20);
 
     public void Dispose()
     {

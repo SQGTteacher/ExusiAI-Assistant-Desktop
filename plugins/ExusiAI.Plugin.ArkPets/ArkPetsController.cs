@@ -19,6 +19,7 @@ public sealed record ArkPetProcessSnapshot(
 internal sealed record ArkPetProcessHandle(
     Guid Id,
     Process Process,
+    int ProcessId,
     string ModelKey,
     string ModelName,
     DateTimeOffset StartedAt);
@@ -28,6 +29,7 @@ internal sealed class ArkPetsController : IAsyncDisposable
     private readonly IExtensionLogger logger;
     private readonly ArkPetsSettingsStore store = new();
     private readonly List<ArkPetProcessHandle> processes = [];
+    private readonly List<Process> completedProcesses = [];
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ArkPetsIpcServer ipcServer = new();
     private readonly ArkPetsUpstreamManager upstreamManager;
@@ -50,10 +52,9 @@ internal sealed class ArkPetsController : IAsyncDisposable
             lock (processes)
             {
                 return processes
-                    .Where(handle => !handle.Process.HasExited)
                     .Select(handle => new ArkPetProcessSnapshot(
                         handle.Id,
-                        handle.Process.Id,
+                        handle.ProcessId,
                         handle.ModelKey,
                         handle.ModelName,
                         handle.StartedAt))
@@ -211,6 +212,19 @@ internal sealed class ArkPetsController : IAsyncDisposable
             return;
         }
 
+        var bundled = await upstreamManager.InstallBundledRuntimeAsync(progress, cancellationToken);
+        if (bundled is not null)
+        {
+            await UpdateSettingsAsync(
+                settings => settings with
+                {
+                    RuntimePath = bundled.Value.RuntimePath,
+                    RuntimeVersion = bundled.Value.Version
+                },
+                cancellationToken: cancellationToken);
+            return;
+        }
+
         await InstallLatestRuntimeAsync(progress, cancellationToken);
     }
 
@@ -326,6 +340,7 @@ internal sealed class ArkPetsController : IAsyncDisposable
         var handle = new ArkPetProcessHandle(
             Guid.NewGuid(),
             process,
+            process.Id,
             model.Key,
             model.DisplayName,
             DateTimeOffset.Now);
@@ -335,8 +350,8 @@ internal sealed class ArkPetsController : IAsyncDisposable
             lock (processes)
             {
                 processes.RemoveAll(item => item.Id == handle.Id);
+                completedProcesses.Add(process);
             }
-            process.Dispose();
             Changed?.Invoke(this, EventArgs.Empty);
         };
         lock (processes)
@@ -410,6 +425,12 @@ internal sealed class ArkPetsController : IAsyncDisposable
             classIslandBridge = null;
         }
         upstreamManager.Dispose();
+        lock (processes)
+        {
+            foreach (var process in completedProcesses)
+                process.Dispose();
+            completedProcesses.Clear();
+        }
         gate.Dispose();
     }
 

@@ -6,6 +6,17 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class MishaSettingsParityTests
 {
     [Fact]
+    public void NotificationPresenterPositionsFirstShowAtBottomRight()
+    {
+        var position = MishaScheduleNotificationPresenter.CalculatePosition(
+            new System.Windows.Rect(0, 0, 1920, 1040),
+            new System.Windows.Size(340, 92));
+
+        Assert.Equal(1560d, position.X);
+        Assert.Equal(928d, position.Y);
+    }
+
+    [Fact]
     public async Task ImportedWorkspaceBindingSurvivesRestartAndUsesOnlyExusiAICopy()
     {
         using var root = new TemporaryDirectory();
