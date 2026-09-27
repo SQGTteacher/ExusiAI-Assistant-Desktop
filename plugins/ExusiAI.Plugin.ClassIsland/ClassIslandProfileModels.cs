@@ -16,6 +16,21 @@ public sealed class ClassIslandProfile : ClassIslandJsonModel
     public Dictionary<Guid, ClassIslandSubject> Subjects { get; set; } = [];
     public Dictionary<Guid, ClassIslandTimeLayout> TimeLayouts { get; set; } = [];
     public Dictionary<Guid, ClassIslandClassPlan> ClassPlans { get; set; } = [];
+    public bool IsOverlayClassPlanEnabled { get; set; }
+    public Guid? OverlayClassPlanId { get; set; }
+    public Guid? TempClassPlanId { get; set; }
+    public DateTime TempClassPlanSetupTime { get; set; } = DateTime.Now;
+    public Dictionary<Guid, ClassIslandClassPlanGroup> ClassPlanGroups { get; set; } =
+        new() { [ClassIslandClassPlanGroup.DefaultGroupGuid] = new() { Name = "默认" }, [Guid.Empty] = new() { Name = "全局课表群", IsGlobal = true } };
+    public Guid SelectedClassPlanGroupId { get; set; } = ClassIslandClassPlanGroup.DefaultGroupGuid;
+    public Guid? TempClassPlanGroupId { get; set; }
+    public DateTime TempClassPlanGroupExpireTime { get; set; } = DateTime.Now;
+    public bool IsTempClassPlanGroupEnabled { get; set; }
+    public ClassIslandTempClassPlanGroupType TempClassPlanGroupType { get; set; } = ClassIslandTempClassPlanGroupType.Inherit;
+    public Dictionary<DateTime, ClassIslandOrderedSchedule> OrderedSchedules { get; set; } = [];
+    public Dictionary<Guid, ClassIslandScheduleItem> ScheduleItems { get; set; } = [];
+    public ClassIslandScheduleType ScheduleType { get; set; }
+    public List<ClassIslandProfileMigration> Migrations { get; set; } = [];
 }
 
 public sealed class ClassIslandSubject : ClassIslandJsonModel
@@ -58,8 +73,36 @@ public sealed class ClassIslandClassPlan : ClassIslandJsonModel
     public bool IsActivated { get; set; }
     public bool IsOverlay { get; set; }
     public Guid? OverlaySourceId { get; set; }
+    public DateTime OverlaySetupTime { get; set; } = DateTime.Now;
     public bool IsEnabled { get; set; } = true;
     public Guid AssociatedGroup { get; set; } = new("ACAF4EF0-E261-4262-B941-34EA93CB4369");
+}
+
+public sealed class ClassIslandClassPlanGroup : ClassIslandJsonModel
+{
+    public static Guid DefaultGroupGuid { get; } = new("ACAF4EF0-E261-4262-B941-34EA93CB4369");
+    public string Name { get; set; } = "新课表群";
+    public bool IsGlobal { get; set; }
+}
+
+public sealed class ClassIslandOrderedSchedule : ClassIslandJsonModel
+{
+    public Guid ClassPlanId { get; set; }
+}
+
+public sealed class ClassIslandScheduleItem : ClassIslandJsonModel
+{
+    public Guid SubjectId { get; set; }
+    public TimeSpan StartTime { get; set; }
+    public TimeSpan EndTime { get; set; }
+    public ClassIslandTimeRule EnableRule { get; set; } = new();
+}
+
+public sealed class ClassIslandProfileMigration : ClassIslandJsonModel
+{
+    public string Id { get; set; } = "";
+    public bool AllowDowngrade { get; set; } = true;
+    public bool RemoveOnDowngrade { get; set; }
 }
 
 public sealed class ClassIslandClassInfo : ClassIslandJsonModel
@@ -89,6 +132,9 @@ public enum ClassIslandTimeRuleType
     Date,
     Loop
 }
+
+public enum ClassIslandTempClassPlanGroupType { Override, Inherit }
+public enum ClassIslandScheduleType { Classic, Schedule }
 
 public readonly record struct ClassIslandWeekRule(int Day, int RotationWeek, int RotationLength)
 {

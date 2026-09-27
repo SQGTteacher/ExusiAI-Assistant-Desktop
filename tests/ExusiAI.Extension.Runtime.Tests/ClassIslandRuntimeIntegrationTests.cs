@@ -8,6 +8,15 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class ClassIslandRuntimeIntegrationTests
 {
     [Fact]
+    public void ProfileEnumsMatchMishaSerializedValues()
+    {
+        Assert.Equal(0, (int)ClassIslandTempClassPlanGroupType.Override);
+        Assert.Equal(1, (int)ClassIslandTempClassPlanGroupType.Inherit);
+        Assert.Equal(0, (int)ClassIslandScheduleType.Classic);
+        Assert.Equal(1, (int)ClassIslandScheduleType.Schedule);
+    }
+
+    [Fact]
     public async Task ProfileRoundTripPreservesUnknownFieldsAndGuidMaps()
     {
         using var root = new TemporaryDirectory();
@@ -73,6 +82,67 @@ public sealed class ClassIslandRuntimeIntegrationTests
         var lessons = timetable.GetLessons(new DateTime(2026, 9, 28, 8, 10, 0), anchor);
         Assert.Single(lessons);
         Assert.Equal("数学", lessons[0].Subject.Name);
+    }
+
+    [Fact]
+    public async Task ProfileServiceImplementsGroupsTemporaryOverlaysAndOrderedSchedules()
+    {
+        using var root = new TemporaryDirectory();
+        var profiles = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await profiles.InitializeAsync();
+        var layoutId = Guid.NewGuid();
+        var planId = Guid.NewGuid();
+        var profile = new ClassIslandProfile
+        {
+            TimeLayouts = { [layoutId] = new() },
+            ClassPlans = { [planId] = new() { Name = "原课表", TimeLayoutId = layoutId } }
+        };
+        await profiles.SaveAsync(profile);
+        var groupId = profiles.AddClassPlanGroup("测试组");
+        profile.ClassPlans[planId].AssociatedGroup = groupId;
+        profiles.DisbandClassPlanGroup(groupId);
+        Assert.Equal(ClassIslandClassPlanGroup.DefaultGroupGuid, profile.ClassPlans[planId].AssociatedGroup);
+
+        var overlayId = profiles.CreateTemporaryClassPlan(planId, setupTime: new DateTime(2026, 9, 27));
+        Assert.True(profile.IsOverlayClassPlanEnabled);
+        Assert.Equal(planId, profile.ClassPlans[overlayId].OverlaySourceId);
+        profiles.ClearTemporaryClassPlan();
+        Assert.False(profile.ClassPlans.ContainsKey(overlayId));
+        Assert.False(profile.IsOverlayClassPlanEnabled);
+    }
+
+    [Fact]
+    public async Task ComponentServiceUsesUpstreamProfileShapeAndCreatesBackup()
+    {
+        using var root = new TemporaryDirectory();
+        var service = new ClassIslandComponentService(Path.Combine(root.Path, "ComponentLayouts"));
+        await service.InitializeAsync();
+        Assert.Single(service.CurrentComponents.Lines);
+        Assert.Equal(2, service.CurrentComponents.Lines[0].Children.Count);
+        service.CurrentComponents.Lines[0].IsMainLine = true;
+        await service.SaveAsync();
+        await service.SaveAsync();
+        Assert.True(File.Exists(Path.Combine(root.Path, "ComponentLayouts", "Default.json.bak")));
+        Assert.Contains("Default", service.ComponentConfigs);
+    }
+
+    [Fact]
+    public async Task NotificationServiceRunsMaskAndOverlayLifecycle()
+    {
+        await using var service = new ClassIslandNotificationService();
+        var request = new ClassIslandNotificationRequest
+        {
+            MaskContent = new() { Content = "mask", Duration = TimeSpan.FromMilliseconds(10) },
+            OverlayContent = new() { Content = "overlay", Duration = TimeSpan.FromMilliseconds(10) }
+        };
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        request.Completed += (_, _) => completed.TrySetResult();
+        service.Start();
+        service.Enqueue(request);
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ClassIslandNotificationState.Completed, request.State);
+        Assert.True(request.MaskSession.IsCompleted);
+        Assert.True(request.OverlaySession.IsCompleted);
     }
 
     [Fact]

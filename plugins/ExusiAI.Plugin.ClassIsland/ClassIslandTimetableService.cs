@@ -15,27 +15,43 @@ public sealed class ClassIslandTimetableService
 
     public ClassIslandClassPlan? ResolvePlan(DateTime now, DateOnly? rotationAnchor = null)
     {
-        var profile = profiles.Current;
-        if (profile is null) return null;
-        return profile.ClassPlans.Values.FirstOrDefault(x => x.IsEnabled && Matches(x.TimeRule, now, rotationAnchor));
+        return ResolvePlanPair(now, rotationAnchor)?.Value;
     }
 
     public IReadOnlyList<ClassIslandLesson> GetLessons(DateTime now, DateOnly? rotationAnchor = null)
     {
         var profile = profiles.Current;
         if (profile is null) return [];
-        var planPair = profile.ClassPlans.FirstOrDefault(x => x.Value.IsEnabled && Matches(x.Value.TimeRule, now, rotationAnchor));
-        if (planPair.Value is null || !profile.TimeLayouts.TryGetValue(planPair.Value.TimeLayoutId, out var layout)) return [];
+        var planPair = ResolvePlanPair(now, rotationAnchor);
+        if (planPair is null || !profile.TimeLayouts.TryGetValue(planPair.Value.Value.TimeLayoutId, out var layout)) return [];
         var lessonTimes = layout.Layouts.Where(x => x.TimeType == 0).ToArray();
-        var count = Math.Min(lessonTimes.Length, planPair.Value.Classes.Count);
+        var count = Math.Min(lessonTimes.Length, planPair.Value.Value.Classes.Count);
         var result = new List<ClassIslandLesson>(count);
         for (var index = 0; index < count; index++)
         {
-            var info = planPair.Value.Classes[index];
+            var info = planPair.Value.Value.Classes[index];
             if (!info.IsEnabled || !profile.Subjects.TryGetValue(info.SubjectId, out var subject)) continue;
-            result.Add(new(planPair.Key, info.SubjectId, subject, lessonTimes[index], index));
+            result.Add(new(planPair.Value.Key, info.SubjectId, subject, lessonTimes[index], index));
         }
         return result;
+    }
+
+    public IReadOnlyList<ClassIslandScheduleItem> GetScheduleItems(DateTime now, DateOnly? rotationAnchor = null)
+    {
+        var profile = profiles.Current;
+        return profile?.ScheduleItems.Values.Where(x => Matches(x.EnableRule, now, rotationAnchor)).OrderBy(x => x.StartTime).ToArray() ?? [];
+    }
+
+    private KeyValuePair<Guid, ClassIslandClassPlan>? ResolvePlanPair(DateTime now, DateOnly? rotationAnchor)
+    {
+        var profile = profiles.Current;
+        if (profile is null) return null;
+        if (profile.IsOverlayClassPlanEnabled && profile.OverlayClassPlanId is { } overlay && profile.ClassPlans.TryGetValue(overlay, out var overlayPlan))
+            return new(overlay, overlayPlan);
+        if (profile.OrderedSchedules.TryGetValue(now.Date, out var ordered) && profile.ClassPlans.TryGetValue(ordered.ClassPlanId, out var orderedPlan))
+            return new(ordered.ClassPlanId, orderedPlan);
+        return profile.ClassPlans.FirstOrDefault(x => x.Value.IsEnabled && Matches(x.Value.TimeRule, now, rotationAnchor)) is var pair && pair.Value is not null
+            ? pair : null;
     }
 
     public static bool Matches(ClassIslandTimeRule rule, DateTime now, DateOnly? rotationAnchor = null)

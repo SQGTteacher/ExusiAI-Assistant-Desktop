@@ -16,7 +16,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "ClassIsland"));
         Profiles = new(Path.Combine(DataDirectory, "Profiles"));
         Timetable = new(Profiles);
-        Components = new(Path.Combine(DataDirectory, "Config", "Components"));
+        Components = new(Path.Combine(DataDirectory, "Config", "ComponentLayouts"));
         Notifications = new();
     }
 
@@ -51,6 +51,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             lifetime?.Dispose();
             cancellationToken.ThrowIfCancellationRequested();
             lifetime = new CancellationTokenSource();
+            Notifications.Start(cancellationToken);
             logger.Information("ClassIsland core services started under the ExusiAI plugin lifecycle.");
         }
         finally { lifecycleGate.Release(); }
@@ -63,6 +64,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
         {
             if (lifetime is null) return;
             await lifetime.CancelAsync().ConfigureAwait(false);
+            await Notifications.StopAsync().ConfigureAwait(false);
             lifetime.Dispose();
             lifetime = null;
             logger.Information("ClassIsland core services stopped.");

@@ -24,6 +24,65 @@ public sealed class ClassIslandProfileService
     public string? CurrentPath { get; private set; }
     public event EventHandler? ProfileChanged;
 
+    public Guid AddClassPlanGroup(string name)
+    {
+        var profile = RequireCurrent();
+        var id = Guid.NewGuid();
+        profile.ClassPlanGroups.Add(id, new() { Name = name });
+        ProfileChanged?.Invoke(this, EventArgs.Empty);
+        return id;
+    }
+
+    public void DisbandClassPlanGroup(Guid id)
+    {
+        var profile = RequireCurrent();
+        EnsureMutableGroup(id);
+        foreach (var plan in profile.ClassPlans.Values.Where(x => x.AssociatedGroup == id))
+            plan.AssociatedGroup = ClassIslandClassPlanGroup.DefaultGroupGuid;
+        profile.ClassPlanGroups.Remove(id);
+        ProfileChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void DeleteClassPlanGroup(Guid id)
+    {
+        var profile = RequireCurrent();
+        EnsureMutableGroup(id);
+        foreach (var key in profile.ClassPlans.Where(x => x.Value.AssociatedGroup == id).Select(x => x.Key).ToArray())
+            profile.ClassPlans.Remove(key);
+        profile.ClassPlanGroups.Remove(id);
+        ProfileChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public Guid CreateTemporaryClassPlan(Guid sourcePlanId, Guid? timeLayoutId = null, DateTime? setupTime = null)
+    {
+        var profile = RequireCurrent();
+        if (!profile.ClassPlans.TryGetValue(sourcePlanId, out var source)) throw new KeyNotFoundException("源课表不存在。");
+        var clone = Clone(source);
+        clone.IsOverlay = true;
+        clone.OverlaySourceId = sourcePlanId;
+        clone.OverlaySetupTime = setupTime ?? DateTime.Now;
+        clone.TimeLayoutId = timeLayoutId ?? source.TimeLayoutId;
+        clone.Name += "（临时层）";
+        var id = Guid.NewGuid();
+        profile.ClassPlans[id] = clone;
+        profile.TempClassPlanId = id;
+        profile.TempClassPlanSetupTime = clone.OverlaySetupTime;
+        profile.OverlayClassPlanId = id;
+        profile.IsOverlayClassPlanEnabled = true;
+        ProfileChanged?.Invoke(this, EventArgs.Empty);
+        return id;
+    }
+
+    public void ClearTemporaryClassPlan()
+    {
+        var profile = RequireCurrent();
+        if (profile.TempClassPlanId is { } id) profile.ClassPlans.Remove(id);
+        profile.TempClassPlanId = null;
+        profile.OverlayClassPlanId = null;
+        profile.IsOverlayClassPlanEnabled = false;
+        ProfileChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -78,6 +137,7 @@ public sealed class ClassIslandProfileService
             {
                 await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     await JsonSerializer.SerializeAsync(stream, profile, jsonOptions, cancellationToken).ConfigureAwait(false);
+                if (File.Exists(target)) File.Copy(target, target + ".bak", true);
                 File.Move(temporary, target, true);
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -118,11 +178,32 @@ public sealed class ClassIslandProfileService
         profile.Subjects ??= [];
         profile.TimeLayouts ??= [];
         profile.ClassPlans ??= [];
+        profile.ClassPlanGroups ??= [];
+        profile.OrderedSchedules ??= [];
+        profile.ScheduleItems ??= [];
+        profile.Migrations ??= [];
+        if (!profile.ClassPlanGroups.ContainsKey(ClassIslandClassPlanGroup.DefaultGroupGuid))
+            profile.ClassPlanGroups[ClassIslandClassPlanGroup.DefaultGroupGuid] = new() { Name = "默认" };
+        if (!profile.ClassPlanGroups.ContainsKey(Guid.Empty))
+            profile.ClassPlanGroups[Guid.Empty] = new() { Name = "全局课表群", IsGlobal = true };
         foreach (var (id, plan) in profile.ClassPlans)
         {
             if (id == Guid.Empty) throw new InvalidDataException("ClassPlans 包含空 GUID。");
             if (plan.TimeLayoutId != Guid.Empty && !profile.TimeLayouts.ContainsKey(plan.TimeLayoutId))
                 throw new InvalidDataException($"课表 {id} 引用了不存在的 TimeLayout {plan.TimeLayoutId}。");
         }
+    }
+
+    private ClassIslandProfile RequireCurrent() => Current ?? throw new InvalidOperationException("尚未加载 ClassIsland 档案。");
+    private static void EnsureMutableGroup(Guid id)
+    {
+        if (id == Guid.Empty || id == ClassIslandClassPlanGroup.DefaultGroupGuid)
+            throw new ArgumentException("不能删除或解散默认课表群和全局课表群。", nameof(id));
+    }
+
+    private ClassIslandClassPlan Clone(ClassIslandClassPlan source)
+    {
+        var json = JsonSerializer.Serialize(source, jsonOptions);
+        return JsonSerializer.Deserialize<ClassIslandClassPlan>(json, jsonOptions)!;
     }
 }

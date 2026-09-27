@@ -125,7 +125,7 @@ internal sealed class ClassIslandSyncPage : UserControl
 
     private void ProfileChanged(object? sender, EventArgs e) => Dispatcher.Invoke(RefreshStatus);
     private void RefreshStatus() => coreStatus.Text = core.Profiles.Current is { } profile
-        ? $"核心状态：{(core.IsRunning ? "运行中" : "已停止")} · 当前档案：{profile.Name} · 科目 {profile.Subjects.Count} · 时间表 {profile.TimeLayouts.Count} · 课表 {profile.ClassPlans.Count}"
+        ? $"核心状态：{(core.IsRunning ? "运行中" : "已停止")} · 当前档案：{profile.Name} · 科目 {profile.Subjects.Count} · 时间表 {profile.TimeLayouts.Count} · 课表 {profile.ClassPlans.Count} · 课表群 {profile.ClassPlanGroups.Count} · 组件方案 {core.Components.ComponentConfigs.Count}"
         : $"核心状态：{(core.IsRunning ? "运行中" : "已停止")} · 尚未载入档案";
 
     private static bool TryGetZip(IDataObject data, out string path)

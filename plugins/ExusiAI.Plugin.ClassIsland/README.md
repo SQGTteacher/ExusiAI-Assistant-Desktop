@@ -6,8 +6,10 @@ ClassIsland 2.2 Misha is implemented as a native ExusiAI plugin. The normal exec
 
 - `ClassIslandProfileService` reads and writes the upstream `Profile` JSON shape. GUID-keyed `Subjects`, `TimeLayouts` and `ClassPlans` remain compatible, and unknown fields are retained at every modeled level.
 - `ClassIslandTimetableService` resolves `TimeRule` weekly, rotating-week, date and loop rules and maps class entries to their subjects and time-layout items.
-- `ClassIslandComponentService` owns component configuration under `Config/Components` without imposing a replacement schema.
-- `ClassIslandNotificationService` provides the plugin-local notification channel used by imports and future timetable transitions.
+- `ClassIslandProfileService` also implements upstream class-plan groups, ordered schedules, temporary overlay plans and migration records, including the protected default/global groups.
+- `ClassIslandTimetableService` honors active overlay plans and date-specific `OrderedSchedules`, and exposes Schedule-mode items.
+- `ClassIslandComponentService` reads and writes the upstream `ComponentProfile -> Lines -> ComponentSettings` structure under `Config/ComponentLayouts`, including visual overrides, size/margin constraints, rules and unknown component settings.
+- `ClassIslandNotificationService` implements the v2 mask/overlay request lifecycle, queueing, timing, progress, cancellation, pause and completion states.
 - `ClassIslandCoreService` creates, starts and stops these modules as one unit under the ExusiAI plugin lifecycle.
 
 ## Data and transfer
