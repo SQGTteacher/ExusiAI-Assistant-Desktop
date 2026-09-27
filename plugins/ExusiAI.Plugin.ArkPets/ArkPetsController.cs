@@ -195,6 +195,25 @@ internal sealed class ArkPetsController : IAsyncDisposable
     public Task<ArkPetsRuntimeRelease> QueryLatestRuntimeAsync(CancellationToken cancellationToken = default) =>
         upstreamManager.QueryLatestRuntimeAsync(cancellationToken);
 
+    public async Task EnsureRuntimeAsync(
+        IProgress<ArkPetsDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrWhiteSpace(Settings.RuntimePath) && File.Exists(Settings.RuntimePath))
+            return;
+
+        var detected = ArkPetsRuntimeLocator.FindRuntime();
+        if (!string.IsNullOrWhiteSpace(detected))
+        {
+            await UpdateSettingsAsync(
+                settings => settings with { RuntimePath = detected },
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        await InstallLatestRuntimeAsync(progress, cancellationToken);
+    }
+
     public Task<bool> SendControlAsync(
         Guid remoteId,
         ArkPetsIpcOperation operation,
@@ -471,12 +490,45 @@ internal static class ArkPetsRuntimeLocator
         if (direct is not null)
             return direct;
 
+        foreach (var directory in new[]
+                 {
+                     Path.Combine(AppContext.BaseDirectory, "arkpets"),
+                     Path.Combine(local, "Programs", "ArkPets"),
+                     Path.Combine(local, "ArkPets"),
+                     Path.Combine(programFiles, "ArkPets")
+                 })
+        {
+            var discovered = FindRuntimeInDirectory(directory);
+            if (!string.IsNullOrWhiteSpace(discovered))
+                return discovered;
+        }
+
         var managedRoot = Path.Combine(local, "ExusiAI", "arkpets", "runtime");
-        return Directory.Exists(managedRoot)
-            ? Directory.EnumerateFiles(managedRoot, "ArkPets.exe", SearchOption.AllDirectories)
-                .OrderByDescending(path => File.GetLastWriteTimeUtc(path))
-                .FirstOrDefault()
-            : null;
+        return FindRuntimeInDirectory(managedRoot);
+    }
+
+    internal static string? FindRuntimeInDirectory(string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            return null;
+
+        return Directory.EnumerateFiles(directory, "*", new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = true
+            })
+            .Where(path =>
+            {
+                var name = Path.GetFileName(path);
+                var extension = Path.GetExtension(path);
+                return name.StartsWith("ArkPets", StringComparison.OrdinalIgnoreCase) &&
+                       !name.Contains("Setup", StringComparison.OrdinalIgnoreCase) &&
+                       (extension.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
+                        extension.Equals(".jar", StringComparison.OrdinalIgnoreCase));
+            })
+            .OrderBy(path => Path.GetExtension(path).Equals(".exe", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
     }
 
     public static string? FindModelRoot(string? nearRuntime)

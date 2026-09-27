@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -986,14 +987,31 @@ internal sealed class ArkPetsPage : UserControl
 
     private async Task LaunchAsync()
     {
+        launchButton.IsEnabled = false;
         try
         {
+            if (string.IsNullOrWhiteSpace(controller.Settings.RuntimePath) ||
+                !File.Exists(controller.Settings.RuntimePath))
+            {
+                SetStatus("正在获取 ArkPets 官方运行核心，首次启动可能需要一些时间…");
+                var progress = new Progress<ArkPetsDownloadProgress>(item =>
+                {
+                    if (item.Ratio is double ratio)
+                        SetStatus($"正在下载 ArkPets 运行核心… {ratio:P0}");
+                });
+                await controller.EnsureRuntimeAsync(progress);
+            }
+
             var process = await controller.LaunchSelectedAsync();
             SetStatus($"已启动 {controller.SelectedModel?.DisplayName ?? "桌宠"} · PID {process.Id}");
         }
         catch (Exception exception)
         {
             SetStatus($"启动失败：{exception.Message}");
+        }
+        finally
+        {
+            launchButton.IsEnabled = true;
         }
     }
 

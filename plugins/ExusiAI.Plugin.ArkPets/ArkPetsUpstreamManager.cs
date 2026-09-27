@@ -46,9 +46,7 @@ internal sealed class ArkPetsUpstreamManager : IDisposable
         var localRoot = LocalRoot;
         var runtimeRoot = Path.Combine(localRoot, "runtime", SanitizeDirectoryName(release.Version));
 
-        var existing = Directory.Exists(runtimeRoot)
-            ? Directory.EnumerateFiles(runtimeRoot, "ArkPets.exe", SearchOption.AllDirectories).FirstOrDefault()
-            : null;
+        var existing = ArkPetsRuntimeLocator.FindRuntimeInDirectory(runtimeRoot);
         if (!string.IsNullOrWhiteSpace(existing))
             return (existing, release.Version);
 
@@ -57,14 +55,22 @@ internal sealed class ArkPetsUpstreamManager : IDisposable
         var archivePath = Path.Combine(downloads, release.AssetName);
         await DownloadFileAsync(release.DownloadUri, archivePath, release.Sha256, progress, cancellationToken);
 
+        if (Path.GetExtension(release.AssetName).Equals(".jar", StringComparison.OrdinalIgnoreCase))
+        {
+            Directory.CreateDirectory(runtimeRoot);
+            var jarPath = Path.Combine(runtimeRoot, release.AssetName);
+            File.Move(archivePath, jarPath, true);
+            return (jarPath, release.Version);
+        }
+
         var temporaryRoot = runtimeRoot + ".installing-" + Guid.NewGuid().ToString("N");
         Directory.CreateDirectory(temporaryRoot);
         try
         {
             await ExtractArchiveSafeAsync(archivePath, temporaryRoot, cancellationToken);
-            var executable = Directory.EnumerateFiles(temporaryRoot, "ArkPets.exe", SearchOption.AllDirectories).FirstOrDefault();
+            var executable = ArkPetsRuntimeLocator.FindRuntimeInDirectory(temporaryRoot);
             if (executable is null)
-                throw new InvalidDataException("ArkPets 上游便携 ZIP 中没有 ArkPets.exe。");
+                throw new InvalidDataException("ArkPets 上游便携包中没有可启动的 ArkPets EXE 或 JAR。");
 
             var relativeExecutable = Path.GetRelativePath(temporaryRoot, executable);
             if (Directory.Exists(runtimeRoot))
@@ -116,12 +122,14 @@ internal sealed class ArkPetsUpstreamManager : IDisposable
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("ArkPets GitHub Release 缺少资产列表。");
 
+        var candidates = new List<ArkPetsRuntimeRelease>();
         foreach (var asset in assets.EnumerateArray())
         {
             var name = asset.TryGetProperty("name", out var nameNode) && nameNode.ValueKind == JsonValueKind.String
                 ? nameNode.GetString() ?? ""
                 : "";
-            if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
+                !name.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var url = asset.TryGetProperty("browser_download_url", out var urlNode) && urlNode.ValueKind == JsonValueKind.String
@@ -137,10 +145,13 @@ internal sealed class ArkPetsUpstreamManager : IDisposable
                 ? digest["sha256:".Length..]
                 : null;
 
-            return new ArkPetsRuntimeRelease(tag.TrimStart('v', 'V'), name, downloadUri, sha256);
+            candidates.Add(new ArkPetsRuntimeRelease(tag.TrimStart('v', 'V'), name, downloadUri, sha256));
         }
 
-        throw new InvalidDataException("ArkPets GitHub Release 中没有 ZIP 便携包。");
+        return candidates
+            .OrderBy(candidate => candidate.AssetName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .FirstOrDefault()
+            ?? throw new InvalidDataException("ArkPets GitHub Release 中没有 ZIP 或 JAR 运行核心。");
     }
 
     internal static async Task ExtractArchiveSafeAsync(
