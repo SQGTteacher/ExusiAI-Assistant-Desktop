@@ -43,8 +43,14 @@ $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 $seedLauncher = Join-Path $SeedRoot 'ClassIsland.exe'
 $seedArchive = Join-Path $SeedRoot "$AppFolderName.zip"
+$seedAppDir = Join-Path $SeedRoot $AppFolderName
 
-if ((Test-Path $seedLauncher) -and (Test-Path $seedArchive)) {
+if ((Test-Path $seedLauncher) -and (Test-Path $seedAppDir)) {
+    Assert-Sha256 $seedLauncher $LauncherSha256 'seed launcher'
+    Copy-Item $seedLauncher (Join-Path $OutputRoot 'ClassIsland.exe') -Force
+    Copy-Item $seedAppDir (Join-Path $OutputRoot $AppFolderName) -Recurse -Force
+}
+elseif ((Test-Path $seedLauncher) -and (Test-Path $seedArchive)) {
     Assert-Sha256 $seedLauncher $LauncherSha256 'seed launcher'
     Assert-Sha256 $seedArchive $SeedArchiveSha256 'seed archive'
     Copy-Item $seedLauncher (Join-Path $OutputRoot 'ClassIsland.exe') -Force
@@ -54,7 +60,7 @@ elseif ($AllowDownload) {
     $temp = Join-Path ([IO.Path]::GetTempPath()) ("classisland-$([guid]::NewGuid())")
     $zip = "$temp.zip"
     try {
-        Invoke-WebRequest -Uri $OfficialArchiveUrl -OutFile $zip
+        Invoke-WebRequest -Uri $OfficialArchiveUrl -OutFile $zip -TimeoutSec 30
         Assert-Sha256 $zip $OfficialArchiveSha256 'official archive'
         Expand-Archive $zip $temp -Force
         Copy-Item (Join-Path $temp '*') $OutputRoot -Recurse -Force

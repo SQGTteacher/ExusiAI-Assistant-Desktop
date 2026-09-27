@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Edge_tts_sharp</name>
+    </assembly>
+    <members>
+        <member name="F:Edge_tts_sharp.EdgeTts.Debug">
+            <summary>
+            调试模式
+            </summary>
+        </member>
+        <member name="F:Edge_tts_sharp.EdgeTts.Await">
+            <summary>
+            同步模式
+            </summary>
+        </member>
+        <member name="M:Edge_tts_sharp.EdgeTts.FromatPercentage(System.Double)">
+            <summary>
+            讲一个浮点型数值转换为百分比数值
+            </summary>
+            <param name="input"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Edge_tts_sharp.EdgeTts.ConvertToSsmlText(System.String,System.String,System.Int32,System.Int32,System.String)">
+            <summary>
+            
+            </summary>
+            <param name="lang">输出语言</param>
+            <param name="voice">音源名</param>
+            <param name="rate">语速，-100% - 100% 之间的值，无需传递百分号</param>
+            <param name="text"></param>
+            <returns></returns>
+        </member>
+        <member name="M:Edge_tts_sharp.EdgeTts.InvokeAsync(Edge_tts_sharp.Model.PlayOption,Edge_tts_sharp.Model.eVoice,System.Action{System.Collections.Generic.List{System.Byte}},System.IProgress{System.Collections.Generic.List{System.Byte}})">
+            <summary>
+            语言转文本，将结果返回到回调函数中
+            </summary>
+            <param name="option">播放参数</param>
+            <param name="voice">音源参数</param>
+        </member>
+        <member name="M:Edge_tts_sharp.EdgeTts.SaveAudioAsync(Edge_tts_sharp.Model.PlayOption,Edge_tts_sharp.Model.eVoice)">
+            <summary>
+            另存为mp3文件
+            </summary>
+            <param name="option">播放参数</param>
+            <param name="voice">音源参数</param>
+        </member>
+        <member name="M:Edge_tts_sharp.EdgeTts.GetVoice">
+            <summary>
+            获取支持的音频列表
+            </summary>
+            <returns></returns>
+        </member>
+        <member name="T:Edge_tts_sharp.Model.PlayOption">
+            <summary>
+            播放音频配置参数
+            </summary>
+        </member>
+        <member name="P:Edge_tts_sharp.Model.PlayOption.Text">
+            <summary>
+            播放内容
+            </summary>
+        </member>
+        <member name="P:Edge_tts_sharp.Model.PlayOption.Rate">
+            <summary>
+            语速，是一个-100 - 100的数值
+            </summary>
+        </member>
+        <member name="P:Edge_tts_sharp.Model.PlayOption.Volume">
+            <summary>
+            音量，是一个0 - 1的浮点数值
+            </summary>
+        </member>
+        <member name="P:Edge_tts_sharp.Model.PlayOption.SavePath">
+            <summary>
+            音频保存地址
+            </summary>
+        </member>
+        <member name="M:Edge_tts_sharp.Tools.GetEmbedText(System.String)">
+            <summary>
+            获取嵌入文本资源,程序集.目录名.文件名（而不是\）
+            </summary>
+            <param name="res"></param>
+            <returns></returns>
+        </member>
+    </members>
+</doc>

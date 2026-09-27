@@ -1,0 +1,358 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>PhainonDistributionCenter.Shared</name>
+    </assembly>
+    <members>
+        <member name="T:PhainonDistributionCenter.Shared.Enums.Api.StatusCodes">
+            <summary>
+            Api 接口的状态代码
+            </summary>
+        </member>
+        <member name="F:PhainonDistributionCenter.Shared.Enums.Api.StatusCodes.Unknown">
+            <summary>
+            未知错误
+            </summary>
+        </member>
+        <member name="F:PhainonDistributionCenter.Shared.Enums.Api.StatusCodes.Success">
+            <summary>
+            操作成功完成
+            </summary>
+        </member>
+        <member name="F:PhainonDistributionCenter.Shared.Enums.Api.StatusCodes.GpgSignatureVerifyFailed">
+            <summary>
+            无法验证 GPG 签名
+            </summary>
+        </member>
+        <member name="F:PhainonDistributionCenter.Shared.Enums.Api.StatusCodes.AddDistributionInvalidVersion">
+            <summary>
+            无效的版本信息
+            </summary>
+        </member>
+        <member name="F:PhainonDistributionCenter.Shared.Enums.Api.StatusCodes.AddDistributionPrimaryVersionNotFound">
+            <summary>
+            找不到请求的大版本
+            </summary>
+        </member>
+        <member name="F:PhainonDistributionCenter.Shared.Enums.Api.StatusCodes.NoDistributionsAvailable">
+            <summary>
+            对应的通道上没有符合要求的发行版信息
+            </summary>
+        </member>
+        <member name="F:PhainonDistributionCenter.Shared.Enums.Api.StatusCodes.DistributionNotFound">
+            <summary>
+            找不到符合要求的发行版信息
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Exceptions.PhainonApiException">
+            <summary>
+            PhainonDistributionCenter api 异常
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Exceptions.PhainonApiException.Code">
+            <summary>
+            错误状态码
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Helpers.VariableStringHelpers">
+            <summary>
+            含变量字符串辅助类
+            </summary>
+        </member>
+        <member name="M:PhainonDistributionCenter.Shared.Helpers.VariableStringHelpers.ExpandString(System.String,System.Collections.Generic.Dictionary{System.String,System.String})">
+            <summary>
+            包含变量的字符串中的变量模板替换为变量字典中的值。
+            </summary>
+            <param name="str">输入字符串</param>
+            <param name="variables">变量字典</param>
+            <returns>展开的字符串</returns>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest">
+            <summary>
+            代表添加发布信息的 api 请求体。
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.ChangeLog">
+            <summary>
+            发行日志
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.SubChannels">
+            <summary>
+            当前发行版包含的子频道
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel">
+            <summary>
+            代表请求体中的子频道信息
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel.Os">
+            <summary>
+            子频道的目标 OS，如 windows
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel.Arch">
+            <summary>
+            子频道的目标 CPU 架构，如 x64
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel.Package">
+            <summary>
+            子频道的目标打包方式，如 folder（文件夹打包）
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel.BuildType">
+            <summary>
+            子频道的目标构建方式，如 full（完整构建）
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel.FileMap">
+            <summary>
+            当前子频道的文件图
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel.ArchiveName">
+            <summary>
+            下载归档文件名，仅用于打包流程
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel.FileMapSignature">
+            <summary>
+            当前子频道的文件图签名
+            </summary>
+        </member>
+        <member name="M:PhainonDistributionCenter.Shared.Models.Api.Requests.AddDistributionInfoRequest.DistributionSubChannel.ToString">
+            <inheritdoc />
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.Api.Responses.Distribution.LatestDistributionInfoMinResponse">
+            <summary>
+            代表获取最新分发信息的小型响应
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Responses.Distribution.LatestDistributionInfoMinResponse.DistributionId">
+            <summary>
+            对应版本的 Id
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Responses.Distribution.LatestDistributionInfoMinResponse.Version">
+            <summary>
+            对应的版本
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.Api.Responses.Result">
+            <summary>
+            代表请求的结果
+            </summary>
+        </member>
+        <member name="M:PhainonDistributionCenter.Shared.Models.Api.Responses.Result.#ctor(PhainonDistributionCenter.Shared.Enums.Api.StatusCodes,System.String)">
+            <summary>
+            代表请求的结果
+            </summary>
+        </member>
+        <member name="M:PhainonDistributionCenter.Shared.Models.Api.Responses.Result.#ctor">
+            <summary>
+            代表请求的结果
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Responses.Result.Code">
+            <summary>
+            状态代码
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Responses.Result.Message">
+            <summary>
+            状态信息
+            </summary>
+        </member>
+        <member name="M:PhainonDistributionCenter.Shared.Models.Api.Responses.Result.VerifySuccess">
+            <summary>
+            核验请求是否成功。如果不成功，将抛出异常。
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.Api.Responses.Result`1">
+            <inheritdoc />
+        </member>
+        <member name="M:PhainonDistributionCenter.Shared.Models.Api.Responses.Result`1.#ctor(PhainonDistributionCenter.Shared.Enums.Api.StatusCodes,`0,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:PhainonDistributionCenter.Shared.Models.Api.Responses.Result`1.#ctor">
+            <inheritdoc />
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Api.Responses.Result`1.Content">
+            <summary>
+            返回的信息
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.Client.DistributionInfoClient">
+            <summary>
+            代表客户端侧获取的发行信息
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionInfoClient.FriendlyVersion">
+            <summary>
+            友好版本号，如 2.0-Khaslana Release 1
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionInfoClient.FriendlyVersionShort">
+            <summary>
+            友好短版本号，如 2.0-Khaslana R1
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionInfoClient.Version">
+            <summary>
+            具体版本，如 2.0.0.0
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionInfoClient.ChangeLog">
+            <summary>
+            更新日志
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionInfoClient.SubChannel">
+            <summary>
+            子频道 Id
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionInfoClient.FileMapJson">
+            <summary>
+            对应发行子频道的文件图
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionInfoClient.FileMapSignature">
+            <summary>
+            对应发行子频道的文件图签名
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.Client.DistributionMetadata">
+            <summary>
+            代表分发系统的基本信息。
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionMetadata.Channels">
+            <summary>
+            代表分发系统中启用的通道
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionMetadata.DefaultChannelId">
+            <summary>
+            默认通道 ID
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.Client.DistributionMetadata.DistributionChannel">
+            <summary>
+            代表一个分发通道。
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionMetadata.DistributionChannel.Name">
+            <summary>
+            名称
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.Client.DistributionMetadata.DistributionChannel.Description">
+            <summary>
+            描述
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.FileMap.FileMap">
+            <summary>
+            代表一个文件图
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMap.Components">
+            <summary>
+            文件图中包含的组件
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMap.Variables">
+            <summary>
+            文件图变量列表
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMap.ArchiveUrl">
+            <summary>
+            文件图包含的内容整体下载链接
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMap.ArchiveSha512">
+            <summary>
+            文件图包含的内容整体的压缩包的校验和
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.FileMap.FileMapComponent">
+            <summary>
+            代表一个文件图组件。
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMapComponent.Files">
+            <summary>
+            文件组件内包含的文件
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMapComponent.AllowDiffUpdate">
+            <summary>
+            此组件允许差分更新
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMapComponent.Root">
+            <summary>
+            组件部署根路径
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.FileMap.FileMapFile">
+            <summary>
+            代表文件图中的一个文件
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMapFile.ArchiveDownloadUrl">
+            <summary>
+            文件归档下载路径
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMapFile.FileSha512">
+            <summary>
+            文件本体的 SHA512 校验和
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileMap.FileMapFile.ArchiveSha512">
+            <summary>
+            文件归档的 SHA512 校验和
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.FileRepo">
+            <summary>
+            代表一个文件仓库
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileRepo.Items">
+            <summary>
+            文件仓库的内容，键为文件哈希（base64）
+            </summary>
+        </member>
+        <member name="T:PhainonDistributionCenter.Shared.Models.FileRepoItem">
+            <summary>
+            代表文件仓库的一个项目。
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileRepoItem.FileSha512">
+            <summary>
+            代表这个文件本身的 SHA512 校验值
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileRepoItem.ArchiveSha512">
+            <summary>
+            代表这个文件的压缩档的 SHA512 校验值
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileRepoItem.FileName">
+            <summary>
+            这个文件的文件名
+            </summary>
+        </member>
+        <member name="P:PhainonDistributionCenter.Shared.Models.FileRepoItem.ArchiveDownloadUrl">
+            <summary>
+            这个文件的下载链接
+            </summary>
+        </member>
+    </members>
+</doc>
