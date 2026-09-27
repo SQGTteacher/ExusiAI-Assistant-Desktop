@@ -18,6 +18,8 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
         Timetable = new(Profiles);
         Components = new(Path.Combine(DataDirectory, "Config", "ComponentLayouts"));
         Notifications = new();
+        Appearance = new(DataDirectory);
+        Presentation = new(Timetable, Appearance);
     }
 
     public string DataDirectory { get; }
@@ -25,6 +27,8 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
     public ClassIslandTimetableService Timetable { get; }
     public ClassIslandComponentService Components { get; }
     public ClassIslandNotificationService Notifications { get; }
+    public ClassIslandAppearanceService Appearance { get; }
+    public ClassIslandPresentationService Presentation { get; }
     public bool IsRunning => lifetime is { IsCancellationRequested: false };
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -35,6 +39,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             Directory.CreateDirectory(DataDirectory);
             await Profiles.InitializeAsync(cancellationToken).ConfigureAwait(false);
             await Components.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            await Appearance.LoadAsync(cancellationToken).ConfigureAwait(false);
             var profiles = await Profiles.ListAsync(cancellationToken).ConfigureAwait(false);
             if (profiles.Count > 0) await Profiles.LoadAsync(profiles[0], cancellationToken).ConfigureAwait(false);
             logger.Information($"ClassIsland core initialized at '{DataDirectory}' with {profiles.Count} profile(s).");
@@ -52,6 +57,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             lifetime = new CancellationTokenSource();
             Notifications.Start(cancellationToken);
+            Presentation.Start();
             logger.Information("ClassIsland core services started under the ExusiAI plugin lifecycle.");
         }
         finally { lifecycleGate.Release(); }
@@ -65,6 +71,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             if (lifetime is null) return;
             await lifetime.CancelAsync().ConfigureAwait(false);
             await Notifications.StopAsync().ConfigureAwait(false);
+            Presentation.Stop();
             lifetime.Dispose();
             lifetime = null;
             logger.Information("ClassIsland core services stopped.");

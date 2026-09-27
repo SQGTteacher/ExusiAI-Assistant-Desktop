@@ -146,6 +146,30 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task AppearanceSettingsClampRadiusAndPersistDockPosition()
+    {
+        using var root = new TemporaryDirectory();
+        var service = new ClassIslandAppearanceService(root.Path);
+        service.Settings.Height = 60;
+        service.Settings.CornerRadius = 100;
+        service.Settings.DockPosition = ClassIslandDockPosition.BottomRight;
+        await service.SaveAsync();
+        var reloaded = new ClassIslandAppearanceService(root.Path);
+        await reloaded.LoadAsync();
+        Assert.Equal(30, reloaded.Settings.CornerRadius);
+        Assert.Equal(ClassIslandDockPosition.BottomRight, reloaded.Settings.DockPosition);
+    }
+
+    [Fact]
+    public void ComponentCatalogUsesUpstreamMishaGuids()
+    {
+        Assert.Equal("日期", ClassIslandComponentCatalog.Find("DF3F8295-21F6-482E-BADA-FA0E5F14BB66")?.Name);
+        Assert.Equal("课程表", ClassIslandComponentCatalog.Find("1DB2017D-E374-4BC6-9D57-0B4ADF03A6B8")?.Name);
+        Assert.Equal("时钟", ClassIslandComponentCatalog.Find("9E1AF71D-8F77-4B21-A342-448787104DD9")?.Name);
+        Assert.Equal(11, ClassIslandComponentCatalog.BuiltIn.Count);
+    }
+
+    [Fact]
     public void RuntimeDescriptorPinsExactUpstreamBaselines()
     {
         Assert.Equal("ClassIsland/ClassIsland", ClassIslandRuntimeDescriptor.UpstreamRepository);
