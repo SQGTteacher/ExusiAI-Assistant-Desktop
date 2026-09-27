@@ -10,7 +10,7 @@
 - Documentation: <https://docs.classisland.tech/>
 - Full contributor list: <https://github.com/ClassIsland/ClassIsland#致谢>
 - Misha reference branch: `develop/v2/misha-alpha` (2.2 Misha early development)
-- Inspected commit: `b61a0353282cc061dc4f498d515bfd3b9a38ca58`
+- Inspected source baseline: `08808615899d1a4abb8e0ef576bf1e247adde10f`
 
 ClassIsland states that its application and other non-exempt projects are licensed under
 the GNU General Public License v3.0. It states that `ClassIsland.PluginSdk`,
@@ -25,7 +25,9 @@ authoritative license texts, copyright history and continuously updated contribu
 - Package: `exusiai.misha-showcase`
 - This package is not an official ClassIsland build and is not endorsed by its authors.
 
-The current plugin reimplements the documented feature model for ExusiAI and does not
-embed ClassIsland binaries or assets. Copyright in ClassIsland remains with HelloWRC and
-the respective ClassIsland contributors. Nothing in the port notice removes or replaces
-their attribution or license terms.
+The ExusiAI integration is a source-level port and compatibility implementation based on
+the upstream Misha source tree. It does not redistribute or launch `ClassIsland.exe` as
+an independent application runtime. Where upstream source, data formats, identifiers,
+assets, or behavior are adapted, their original copyright and license obligations remain
+with ClassIsland and its respective contributors. Nothing in this notice removes or
+replaces upstream attribution or license terms.

@@ -67,3 +67,22 @@ SQGTteacher。
 - `verticalSafeAreaPx` 会参与顶部信息岛布局，降低玻璃阴影/高光被窗口边界裁剪的风险；
 - Binding、ControlTemplate、Transition、复杂伪类/组合选择器、外部 URI 和主题脚本不会执行；兼容层记录诊断，避免把主题兼容变成任意代码执行入口；
 - “ClassIsland 主题”页可查看安全解析状态、启用/禁用主题并调整加载顺序；主题变化会刷新共享主题快照并通知信息岛重绘。
+
+
+## 0.8.0：Misha 源码模块内嵌宿主
+
+本阶段开始以 ClassIsland 2.2 `develop/v2/misha-alpha` 源码为模块边界重构插件，
+基线固定为 `08808615899d1a4abb8e0ef576bf1e247adde10f`，并以
+`ClassIsland/App.Services.xaml.cs` 的真实服务注册作为迁移清单。
+
+- 插件入口改由 `ClassIslandEmbeddedHost` 统一管理 ClassIsland 派生模块的初始化、启动、逆序停止和失败回滚；
+- 工作区与信息岛首先成为真正的插件生命周期模块，不再由插件入口零散持有运行时对象；
+- 服务、组件、提醒提供方、触发器、规则、行动、认证、语音、主题、档案迁移和教程等上游注册被纳入统一模块目录；
+- 已有 ExusiAI 原生实现继续标记为 Native；安全兼容层标记为 CompatibilityAdapter；由 ExusiAI 主程序负责的更新、托盘、日志、插件市场等能力标记为 HostMapped；
+- 尚未达到行为完全一致的上游能力标记为 SourceTracked，后续必须继续按源码迁移/适配，不能用启动独立 ClassIsland 程序作为替代；
+- 最终运行边界明确为 ExusiAI 插件进程：不查找、不启动、不托管 `ClassIsland.exe` 或独立 ClassIsland Desktop 子进程；
+- 原生 Settings/Profile/Config JSON 结构、GUID 和未知字段保留策略不变，避免破坏与 ClassIsland 的数据互通。
+
+上传的 ClassIsland 可执行程序和完整包体仅用于核对模块组成、依赖和行为，不作为 ExusiAI
+插件的运行时分发依赖。当前阶段建立的是“所有模块都必须进入插件生命周期”的源码迁移骨架；
+标记为 SourceTracked 的模块仍需在后续批次继续补齐实际行为。
