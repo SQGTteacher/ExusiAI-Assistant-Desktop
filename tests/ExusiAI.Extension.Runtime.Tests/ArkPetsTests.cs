@@ -332,6 +332,44 @@ public sealed class ArkPetsTests
     }
 
     [Fact]
+    public void UpstreamReleaseParserFallsBackToVersionedJar()
+    {
+        const string json = """
+        {
+          "tag_name": "v3.13.1",
+          "assets": [
+            {
+              "name": "ArkPets-v3.13.1-Setup.exe",
+              "browser_download_url": "https://example.invalid/setup.exe"
+            },
+            {
+              "name": "ArkPets-v3.13.1.jar",
+              "browser_download_url": "https://example.invalid/ArkPets-v3.13.1.jar"
+            }
+          ]
+        }
+        """;
+
+        var release = ArkPetsUpstreamManager.ParseRuntimeRelease(json);
+
+        Assert.Equal("ArkPets-v3.13.1.jar", release.AssetName);
+    }
+
+    [Fact]
+    public async Task RuntimeLocatorAcceptsVersionedExeAndJarAndPrefersExe()
+    {
+        using var root = new TestDirectory();
+        var jar = Path.Combine(root.Path, "ArkPets-v3.13.1.jar");
+        await File.WriteAllTextAsync(jar, "jar");
+        Assert.Equal(jar, ArkPetsRuntimeLocator.FindRuntimeInDirectory(root.Path));
+
+        var exe = Path.Combine(root.Path, "app", "ArkPets-v3.13.1.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(exe)!);
+        await File.WriteAllTextAsync(exe, "exe");
+        Assert.Equal(exe, ArkPetsRuntimeLocator.FindRuntimeInDirectory(root.Path));
+    }
+
+    [Fact]
     public async Task RuntimeArchiveExtractionRejectsPathTraversal()
     {
         using var root = new TestDirectory();
