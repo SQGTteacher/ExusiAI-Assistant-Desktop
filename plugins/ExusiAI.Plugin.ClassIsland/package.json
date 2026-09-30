@@ -6,14 +6,14 @@
   "version": "1.0.0",
   "apiVersion": "1",
   "publisher": "SQGTteacher",
-  "description": "ExusiAI 内置 ClassIsland 原生运行集成。完整捆绑 ClassIsland 2.1.0.1 folder 运行时，不再在 ExusiAI 内仿写 ClassIsland 页面或业务模块；保留原生配置同步能力，并跟踪 2.2 Misha 开源分支用于后续升级。",
+  "description": "ClassIsland 2.2 Misha 的 ExusiAI 原生插件实现，内置档案、课表、组件、通知与兼容导入导出服务。",
   "minimumHostVersion": "0.2.0-preview.4",
   "entryPoint": {
     "assembly": "ExusiAI.Plugin.ClassIsland.dll",
     "type": "ExusiAI.Plugin.ClassIsland.ClassIslandPlugin"
   },
-  "permissions": ["local-storage", "file-import-export", "process-launch"],
+  "permissions": ["local-storage", "file-import-export"],
   "assets": {
-    "files": ["README.md", "THIRD_PARTY_NOTICES.md", "Runtime"]
+    "files": ["README.md", "THIRD_PARTY_NOTICES.md"]
   }
 }

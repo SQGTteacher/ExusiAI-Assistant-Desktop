@@ -8,6 +8,168 @@ namespace ExusiAI.Extension.Runtime.Tests;
 public sealed class ClassIslandRuntimeIntegrationTests
 {
     [Fact]
+    public void ProfileEnumsMatchMishaSerializedValues()
+    {
+        Assert.Equal(0, (int)ClassIslandTempClassPlanGroupType.Override);
+        Assert.Equal(1, (int)ClassIslandTempClassPlanGroupType.Inherit);
+        Assert.Equal(0, (int)ClassIslandScheduleType.Classic);
+        Assert.Equal(1, (int)ClassIslandScheduleType.Schedule);
+    }
+
+    [Fact]
+    public async Task ProfileRoundTripPreservesUnknownFieldsAndGuidMaps()
+    {
+        using var root = new TemporaryDirectory();
+        var service = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await service.InitializeAsync();
+        var subjectId = Guid.NewGuid();
+        var layoutId = Guid.NewGuid();
+        var planId = Guid.NewGuid();
+        var json = $$"""
+        {
+          "Id": "{{Guid.NewGuid()}}",
+          "Name": "一班",
+          "FutureProfileField": { "Enabled": true },
+          "Subjects": { "{{subjectId}}": { "Name": "语文", "FutureSubjectField": 42 } },
+          "TimeLayouts": { "{{layoutId}}": { "Name": "默认", "Layouts": [{ "StartTime": "08:00:00", "EndTime": "08:40:00", "TimeType": 0, "FutureTimeField": "keep" }] } },
+          "ClassPlans": { "{{planId}}": { "Name": "周一", "TimeLayoutId": "{{layoutId}}", "Classes": [{ "SubjectId": "{{subjectId}}" }], "TimeRule": { "WeekDay": 1, "WeekCountDiv": 1, "WeekCountDivTotal": 2, "FutureRule": [1,2] } } }
+        }
+        """;
+
+        await using var input = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        var profile = await service.ImportAsync(input, "profile.json");
+        Assert.True(profile.Subjects.ContainsKey(subjectId));
+        Assert.True(profile.TimeLayouts.ContainsKey(layoutId));
+        Assert.True(profile.ClassPlans.ContainsKey(planId));
+
+        await using var output = new MemoryStream();
+        await service.ExportAsync(profile, output);
+        var roundTrip = Encoding.UTF8.GetString(output.ToArray());
+        Assert.Contains("FutureProfileField", roundTrip);
+        Assert.Contains("FutureSubjectField", roundTrip);
+        Assert.Contains("FutureTimeField", roundTrip);
+        Assert.Contains("FutureRule", roundTrip);
+    }
+
+    [Fact]
+    public async Task TimetableResolvesSubjectsLayoutsPlansAndRotatingWeekRules()
+    {
+        using var root = new TemporaryDirectory();
+        var profiles = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await profiles.InitializeAsync();
+        var subjectId = Guid.NewGuid();
+        var layoutId = Guid.NewGuid();
+        var profile = new ClassIslandProfile
+        {
+            Name = "测试",
+            Subjects = { [subjectId] = new() { Name = "数学" } },
+            TimeLayouts = { [layoutId] = new() { Layouts = { new() { StartTime = TimeSpan.FromHours(8), EndTime = TimeSpan.FromHours(9) } } } },
+            ClassPlans =
+            {
+                [Guid.NewGuid()] = new()
+                {
+                    TimeLayoutId = layoutId,
+                    Classes = { new() { SubjectId = subjectId } },
+                    TimeRule = new() { WeekDay = 1, WeekCountDiv = 2, WeekCountDivTotal = 2 }
+                }
+            }
+        };
+        await profiles.SaveAsync(profile);
+        var timetable = new ClassIslandTimetableService(profiles);
+        var anchor = new DateOnly(2026, 9, 21);
+
+        Assert.Empty(timetable.GetLessons(new DateTime(2026, 9, 21, 8, 10, 0), anchor));
+        var lessons = timetable.GetLessons(new DateTime(2026, 9, 28, 8, 10, 0), anchor);
+        Assert.Single(lessons);
+        Assert.Equal("数学", lessons[0].Subject.Name);
+    }
+
+    [Fact]
+    public async Task ProfileServiceImplementsGroupsTemporaryOverlaysAndOrderedSchedules()
+    {
+        using var root = new TemporaryDirectory();
+        var profiles = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await profiles.InitializeAsync();
+        var layoutId = Guid.NewGuid();
+        var planId = Guid.NewGuid();
+        var profile = new ClassIslandProfile
+        {
+            TimeLayouts = { [layoutId] = new() },
+            ClassPlans = { [planId] = new() { Name = "原课表", TimeLayoutId = layoutId } }
+        };
+        await profiles.SaveAsync(profile);
+        var groupId = profiles.AddClassPlanGroup("测试组");
+        profile.ClassPlans[planId].AssociatedGroup = groupId;
+        profiles.DisbandClassPlanGroup(groupId);
+        Assert.Equal(ClassIslandClassPlanGroup.DefaultGroupGuid, profile.ClassPlans[planId].AssociatedGroup);
+
+        var overlayId = profiles.CreateTemporaryClassPlan(planId, setupTime: new DateTime(2026, 9, 27));
+        Assert.True(profile.IsOverlayClassPlanEnabled);
+        Assert.Equal(planId, profile.ClassPlans[overlayId].OverlaySourceId);
+        profiles.ClearTemporaryClassPlan();
+        Assert.False(profile.ClassPlans.ContainsKey(overlayId));
+        Assert.False(profile.IsOverlayClassPlanEnabled);
+    }
+
+    [Fact]
+    public async Task ComponentServiceUsesUpstreamProfileShapeAndCreatesBackup()
+    {
+        using var root = new TemporaryDirectory();
+        var service = new ClassIslandComponentService(Path.Combine(root.Path, "ComponentLayouts"));
+        await service.InitializeAsync();
+        Assert.Single(service.CurrentComponents.Lines);
+        Assert.Equal(2, service.CurrentComponents.Lines[0].Children.Count);
+        service.CurrentComponents.Lines[0].IsMainLine = true;
+        await service.SaveAsync();
+        await service.SaveAsync();
+        Assert.True(File.Exists(Path.Combine(root.Path, "ComponentLayouts", "Default.json.bak")));
+        Assert.Contains("Default", service.ComponentConfigs);
+    }
+
+    [Fact]
+    public async Task NotificationServiceRunsMaskAndOverlayLifecycle()
+    {
+        await using var service = new ClassIslandNotificationService();
+        var request = new ClassIslandNotificationRequest
+        {
+            MaskContent = new() { Content = "mask", Duration = TimeSpan.FromMilliseconds(10) },
+            OverlayContent = new() { Content = "overlay", Duration = TimeSpan.FromMilliseconds(10) }
+        };
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        request.Completed += (_, _) => completed.TrySetResult();
+        service.Start();
+        service.Enqueue(request);
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ClassIslandNotificationState.Completed, request.State);
+        Assert.True(request.MaskSession.IsCompleted);
+        Assert.True(request.OverlaySession.IsCompleted);
+    }
+
+    [Fact]
+    public async Task AppearanceSettingsClampRadiusAndPersistDockPosition()
+    {
+        using var root = new TemporaryDirectory();
+        var service = new ClassIslandAppearanceService(root.Path);
+        service.Settings.Height = 60;
+        service.Settings.CornerRadius = 100;
+        service.Settings.DockPosition = ClassIslandDockPosition.BottomRight;
+        await service.SaveAsync();
+        var reloaded = new ClassIslandAppearanceService(root.Path);
+        await reloaded.LoadAsync();
+        Assert.Equal(30, reloaded.Settings.CornerRadius);
+        Assert.Equal(ClassIslandDockPosition.BottomRight, reloaded.Settings.DockPosition);
+    }
+
+    [Fact]
+    public void ComponentCatalogUsesUpstreamMishaGuids()
+    {
+        Assert.Equal("日期", ClassIslandComponentCatalog.Find("DF3F8295-21F6-482E-BADA-FA0E5F14BB66")?.Name);
+        Assert.Equal("课程表", ClassIslandComponentCatalog.Find("1DB2017D-E374-4BC6-9D57-0B4ADF03A6B8")?.Name);
+        Assert.Equal("时钟", ClassIslandComponentCatalog.Find("9E1AF71D-8F77-4B21-A342-448787104DD9")?.Name);
+        Assert.Equal(11, ClassIslandComponentCatalog.BuiltIn.Count);
+    }
+
+    [Fact]
     public void RuntimeDescriptorPinsExactUpstreamBaselines()
     {
         Assert.Equal("ClassIsland/ClassIsland", ClassIslandRuntimeDescriptor.UpstreamRepository);

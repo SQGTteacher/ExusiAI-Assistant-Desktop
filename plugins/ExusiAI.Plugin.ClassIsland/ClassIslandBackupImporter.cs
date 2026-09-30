@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
-internal sealed record ClassIslandBackupSummary(
+public sealed record ClassIslandBackupSummary(
     string ArchivePath,
     string RootPrefix,
     int ProfileFileCount,
