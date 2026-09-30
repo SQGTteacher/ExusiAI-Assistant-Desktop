@@ -91,7 +91,7 @@ public sealed class ClassIslandPresentationService
         await PersistDraggedPositionAsync();
     }
 
-    private void OnTouchDown(object sender, TouchEventArgs e)
+    private void OnTouchDown(object? sender, TouchEventArgs e)
     {
         if (window is null || dragTouch is not null) return;
         dragTouch = e.TouchDevice;
@@ -101,7 +101,7 @@ public sealed class ClassIslandPresentationService
         e.Handled = true;
     }
 
-    private void OnTouchMove(object sender, TouchEventArgs e)
+    private void OnTouchMove(object? sender, TouchEventArgs e)
     {
         if (window is null || e.TouchDevice != dragTouch) return;
         var current = window.PointToScreen(e.GetTouchPoint(window).Position);
@@ -110,7 +110,7 @@ public sealed class ClassIslandPresentationService
         e.Handled = true;
     }
 
-    private async void OnTouchUp(object sender, TouchEventArgs e)
+    private async void OnTouchUp(object? sender, TouchEventArgs e)
     {
         if (e.TouchDevice != dragTouch) return;
         e.TouchDevice.Capture(null);
