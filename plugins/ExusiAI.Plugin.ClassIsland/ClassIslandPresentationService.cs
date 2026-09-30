@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -15,6 +16,9 @@ public sealed class ClassIslandPresentationService
     private TextBlock? lessonText;
     private TextBlock? detailText;
     private DispatcherTimer? timer;
+    private TouchDevice? dragTouch;
+    private Point dragStartScreen;
+    private Point dragStartWindow;
 
     public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandAppearanceService appearance)
     { this.timetable = timetable; this.appearance = appearance; }
@@ -54,6 +58,11 @@ public sealed class ClassIslandPresentationService
             ShowInTaskbar = false, ResizeMode = ResizeMode.NoResize, SizeToContent = SizeToContent.Manual
         };
         island = new Border { Padding = new Thickness(22, 10, 22, 10), BorderThickness = new Thickness(1) };
+        island.Cursor = Cursors.SizeAll;
+        island.MouseLeftButtonDown += OnMouseLeftButtonDown;
+        island.PreviewTouchDown += OnTouchDown;
+        island.PreviewTouchMove += OnTouchMove;
+        island.PreviewTouchUp += OnTouchUp;
         island.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
         island.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         var grid = new Grid();
@@ -72,6 +81,61 @@ public sealed class ClassIslandPresentationService
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => Refresh();
         appearance.Changed += (_, _) => ApplyAppearance();
+    }
+
+    private async void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (window is null || e.StylusDevice is not null) return;
+        try { window.DragMove(); }
+        catch (InvalidOperationException) { return; }
+        await PersistDraggedPositionAsync();
+    }
+
+    private void OnTouchDown(object sender, TouchEventArgs e)
+    {
+        if (window is null || dragTouch is not null) return;
+        dragTouch = e.TouchDevice;
+        dragStartScreen = window.PointToScreen(e.GetTouchPoint(window).Position);
+        dragStartWindow = new Point(window.Left, window.Top);
+        e.TouchDevice.Capture(island);
+        e.Handled = true;
+    }
+
+    private void OnTouchMove(object sender, TouchEventArgs e)
+    {
+        if (window is null || e.TouchDevice != dragTouch) return;
+        var current = window.PointToScreen(e.GetTouchPoint(window).Position);
+        window.Left = dragStartWindow.X + current.X - dragStartScreen.X;
+        window.Top = dragStartWindow.Y + current.Y - dragStartScreen.Y;
+        e.Handled = true;
+    }
+
+    private async void OnTouchUp(object sender, TouchEventArgs e)
+    {
+        if (e.TouchDevice != dragTouch) return;
+        e.TouchDevice.Capture(null);
+        dragTouch = null;
+        e.Handled = true;
+        await PersistDraggedPositionAsync();
+    }
+
+    private async Task PersistDraggedPositionAsync()
+    {
+        if (window is null) return;
+        var s = appearance.Settings;
+        var area = SystemParameters.WorkArea;
+        s.OffsetX = s.DockPosition switch
+        {
+            ClassIslandDockPosition.TopLeft or ClassIslandDockPosition.BottomLeft => window.Left - area.Left,
+            ClassIslandDockPosition.TopRight or ClassIslandDockPosition.BottomRight => area.Right - window.Width - window.Left,
+            _ => window.Left - (area.Left + (area.Width - window.Width) / 2)
+        };
+        s.OffsetY = s.DockPosition switch
+        {
+            ClassIslandDockPosition.BottomLeft or ClassIslandDockPosition.BottomCenter or ClassIslandDockPosition.BottomRight => area.Bottom - window.Height - window.Top,
+            _ => window.Top - area.Top
+        };
+        await appearance.SaveAsync();
     }
 
     private void Refresh()

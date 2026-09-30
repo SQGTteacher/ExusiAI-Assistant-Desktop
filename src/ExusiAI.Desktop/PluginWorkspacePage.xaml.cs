@@ -11,6 +11,11 @@ public partial class PluginWorkspacePage : UserControl
     private PluginPageOption? previousPage;
     private System.Windows.Point dragStart;
     private PluginPageOption? dragCandidate;
+    private TouchDevice? reorderTouch;
+    private PluginPageOption? touchCandidate;
+    private System.Windows.Point touchStart;
+    private System.Windows.Point touchPosition;
+    private bool touchReordering;
 
     public PluginWorkspacePage()
     {
@@ -36,6 +41,41 @@ public partial class PluginWorkspacePage : UserControl
             Math.Abs(point.Y - dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         DragDrop.DoDragDrop(PluginList, dragCandidate, DragDropEffects.Move);
         dragCandidate = null;
+    }
+
+    private void PluginList_OnPreviewTouchDown(object sender, TouchEventArgs e)
+    {
+        if (reorderTouch is not null) return;
+        reorderTouch = e.TouchDevice;
+        touchStart = touchPosition = e.GetTouchPoint(PluginList).Position;
+        touchCandidate = FindItem(e.OriginalSource as DependencyObject)?.DataContext as PluginPageOption;
+        touchReordering = false;
+    }
+
+    private void PluginList_OnPreviewTouchMove(object sender, TouchEventArgs e)
+    {
+        if (e.TouchDevice != reorderTouch || touchCandidate is null) return;
+        touchPosition = e.GetTouchPoint(PluginList).Position;
+        var threshold = Application.Current.TryFindResource("TouchDragThreshold") is double value ? value : 8;
+        if (!touchReordering &&
+            Math.Abs(touchPosition.X - touchStart.X) < threshold &&
+            Math.Abs(touchPosition.Y - touchStart.Y) < threshold) return;
+        touchReordering = true;
+        e.TouchDevice.Capture(PluginList);
+        e.Handled = true;
+    }
+
+    private async void PluginList_OnPreviewTouchUp(object sender, TouchEventArgs e)
+    {
+        if (e.TouchDevice != reorderTouch) return;
+        e.TouchDevice.Capture(null);
+        reorderTouch = null;
+        var candidate = touchCandidate;
+        touchCandidate = null;
+        if (!touchReordering || candidate is null || DataContext is not PluginWorkspaceViewModel viewModel) return;
+        touchReordering = false;
+        await viewModel.MovePageAsync(candidate, GetDropInsertionIndex(touchPosition));
+        e.Handled = true;
     }
 
     private async void PluginList_OnPreviewKeyDown(object sender, KeyEventArgs e)

@@ -18,6 +18,14 @@
         <SolidColorBrush x:Key="SuccessBrush" Color="#58C39A" />
         <SolidColorBrush x:Key="WarningBrush" Color="#F2B36A" />
         <SolidColorBrush x:Key="DangerBrush" Color="#E15D6B" />
+        <x:Double x:Key="TouchTargetHeight">44</x:Double>
+        <x:Double x:Key="TouchCompactTargetHeight">40</x:Double>
+        <x:Double x:Key="TouchCardWidth">225</x:Double>
+        <x:Double x:Key="TouchCardHeight">70</x:Double>
+        <x:Double x:Key="TouchSidebarWidth">218</x:Double>
+        <x:Double x:Key="TouchTitleBarHeight">48</x:Double>
+        <x:Double x:Key="TouchDragThreshold">8</x:Double>
+        <x:Double x:Key="TouchScrollBarThickness">12</x:Double>
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -58,6 +66,7 @@
             <Setter Property="Padding" Value="14,8" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="{DynamicResource TouchTargetHeight}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -82,7 +91,7 @@
         <Style TargetType="ScrollBar">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-            <Setter Property="Width" Value="10" />
+            <Setter Property="Width" Value="{DynamicResource TouchScrollBarThickness}" />
             <Setter Property="MinHeight" Value="34" />
             <Setter Property="Margin" Value="2" />
             <Setter Property="Template">
@@ -230,7 +239,7 @@
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="9,6" />
-            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="MinHeight" Value="{DynamicResource TouchCompactTargetHeight}" />
             <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
         </Style>
@@ -241,7 +250,7 @@
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="9,6" />
-            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="MinHeight" Value="{DynamicResource TouchCompactTargetHeight}" />
             <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
         </Style>
 
@@ -279,7 +288,7 @@
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="10,6,34,6" />
-            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="MinHeight" Value="{DynamicResource TouchCompactTargetHeight}" />
             <Setter Property="ItemContainerStyle" Value="{StaticResource ThemedComboBoxItem}" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -383,6 +392,12 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="4" />
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+
+        <Style TargetType="ScrollViewer">
+            <Setter Property="PanningMode" Value="VerticalFirst" />
+            <Setter Property="PanningDeceleration" Value="0.001" />
+            <Setter Property="PanningRatio" Value="1" />
         </Style>
 
         <Style TargetType="ListBoxItem">

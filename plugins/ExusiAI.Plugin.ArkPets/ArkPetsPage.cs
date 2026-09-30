@@ -58,7 +58,7 @@ internal sealed class ArkPetsPage : UserControl
         behaviorButton = MenuButton("行为");
         optionsButton = MenuButton("选项");
         launchButton = PrimaryButton("▶  启动");
-        launchButton.Height = 42;
+        launchButton.MinHeight = Metric("TouchTargetHeight", 44);
         launchButton.FontSize = 17;
 
         Content = BuildShell();
@@ -96,7 +96,7 @@ internal sealed class ArkPetsPage : UserControl
         frame.SizeChanged += (_, _) => ApplyRoundedClip(frame, 12);
 
         var root = new Grid();
-        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(218) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Metric("TouchSidebarWidth", 218)) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         frame.Child = root;
 
@@ -217,7 +217,7 @@ internal sealed class ArkPetsPage : UserControl
         searchBox = new TextBox
         {
             MinWidth = 180,
-            Height = 34,
+            MinHeight = Metric("TouchCompactTargetHeight", 40),
             Foreground = Ink,
             Background = Paper,
             BorderBrush = Hairline,
@@ -250,7 +250,7 @@ internal sealed class ArkPetsPage : UserControl
         typeFilter = new ComboBox
         {
             Width = 150,
-            Height = 34,
+            MinHeight = Metric("TouchCompactTargetHeight", 40),
             Foreground = Ink,
             Background = Paper,
             BorderBrush = Hairline,
@@ -1466,7 +1466,7 @@ internal sealed class ArkPetsPage : UserControl
         var button = new Button
         {
             Content = text,
-            Height = 40,
+            MinHeight = Metric("TouchTargetHeight", 44),
             Margin = new Thickness(0, 2, 0, 2),
             FontSize = 12.5,
             FontWeight = FontWeights.Medium,
@@ -1501,7 +1501,7 @@ internal sealed class ArkPetsPage : UserControl
             BorderThickness = new Thickness(1),
             Padding = new Thickness(10, 5, 10, 5),
             Margin = new Thickness(3),
-            MinHeight = 32,
+            MinHeight = Metric("TouchTargetHeight", 44),
             FontSize = 13
         };
 
@@ -1510,4 +1510,7 @@ internal sealed class ArkPetsPage : UserControl
 
     private static Brush Resource(string key, string fallback) =>
         Application.Current?.TryFindResource(key) as Brush ?? Brush(fallback);
+
+    private static double Metric(string key, double fallback) =>
+        Application.Current?.TryFindResource(key) is double value ? value : fallback;
 }

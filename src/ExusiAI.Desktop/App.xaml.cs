@@ -49,6 +49,8 @@ public partial class App : Application
             var window = host.Services.GetRequiredService<MainWindow>();
             window.DataContext = host.Services.GetRequiredService<ShellViewModel>();
             MainWindow = window;
+            window.SourceInitialized += (_, _) => ApplyAdaptiveMetrics(window);
+            window.DpiChanged += (_, _) => ApplyAdaptiveMetrics(window);
             window.Show();
 
             extensionStartupCancellation = new CancellationTokenSource();
@@ -188,6 +190,25 @@ public partial class App : Application
         builder.Services.AddSingleton<ShellViewModel>();
         builder.Services.AddSingleton<MainWindow>();
         return builder.Build();
+    }
+
+    private static void ApplyAdaptiveMetrics(Window window)
+    {
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var pixelWidth = SystemParameters.PrimaryScreenWidth * dpi.DpiScaleX;
+        var pixelHeight = SystemParameters.PrimaryScreenHeight * dpi.DpiScaleY;
+        var scale = pixelWidth >= 3200 || pixelHeight >= 1800 ? 1.35
+            : pixelWidth >= 2200 || pixelHeight >= 1250 ? 1.18
+            : 1.0;
+
+        Current.Resources["TouchTargetHeight"] = Math.Round(44 * scale);
+        Current.Resources["TouchCompactTargetHeight"] = Math.Round(40 * scale);
+        Current.Resources["TouchCardWidth"] = Math.Round(225 * Math.Min(scale, 1.2));
+        Current.Resources["TouchCardHeight"] = Math.Round(70 * scale);
+        Current.Resources["TouchSidebarWidth"] = Math.Round(218 * Math.Min(scale, 1.2));
+        Current.Resources["TouchTitleBarHeight"] = Math.Round(48 * scale);
+        Current.Resources["TouchDragThreshold"] = Math.Round(8 * scale);
+        Current.Resources["TouchScrollBarThickness"] = Math.Round(12 * scale);
     }
 
     private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
