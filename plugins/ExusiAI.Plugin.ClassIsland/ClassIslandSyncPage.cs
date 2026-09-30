@@ -34,7 +34,7 @@ internal sealed class ClassIslandSyncPage : UserControl
     private FrameworkElement BuildShell()
     {
         var frame = new Border { CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), BorderBrush = BorderBrushValue, Background = Surface };
-        frame.SizeChanged += (_, _) => Clip(frame, 12);
+        frame.SizeChanged += (_, _) => ApplyRoundedClip(frame, 12);
         var root = new Grid(); root.ColumnDefinitions.Add(new() { Width = new GridLength(210) }); root.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         var side = new Border { Background = SurfaceAlt, CornerRadius = new CornerRadius(12, 0, 0, 12), BorderBrush = BorderBrushValue, BorderThickness = new Thickness(0, 0, 1, 0), Padding = new Thickness(8, 16, 8, 12) };
         var sideGrid = new Grid(); sideGrid.RowDefinitions.Add(new() { Height = GridLength.Auto }); sideGrid.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) }); sideGrid.RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -201,7 +201,7 @@ internal sealed class ClassIslandSyncPage : UserControl
     private static Button Danger(string text) => Button(text, Resource("DangerBrush", "#D86464"), Brushes.White);
     private static Button Button(string text, Brush background, Brush foreground) => new() { Content = text, Height = 34, MinWidth = 88, Padding = new Thickness(13, 0, 13, 0), Margin = new Thickness(0, 4, 8, 4), Background = background, Foreground = foreground, BorderBrush = BorderBrushValue };
     private static Brush Resource(string key, string fallback) => Application.Current?.TryFindResource(key) as Brush ?? new SolidColorBrush((Color)ColorConverter.ConvertFromString(fallback));
-    private static void Clip(FrameworkElement element, double radius) { if (element.ActualWidth <= 0 || element.ActualHeight <= 0) return; var r = Math.Min(radius, Math.Min(element.ActualWidth, element.ActualHeight) / 2); element.Clip = new RectangleGeometry(new Rect(0, 0, element.ActualWidth, element.ActualHeight), r, r); }
+    private static void ApplyRoundedClip(FrameworkElement element, double radius) { if (element.ActualWidth <= 0 || element.ActualHeight <= 0) return; var r = Math.Min(radius, Math.Min(element.ActualWidth, element.ActualHeight) / 2); element.Clip = new RectangleGeometry(new Rect(0, 0, element.ActualWidth, element.ActualHeight), r, r); }
     private (string title, string detail) CurrentLessonText() { var now = DateTime.Now; var lessons = core.Timetable.GetLessons(now); var current = lessons.FirstOrDefault(x => now.TimeOfDay >= x.Time.StartTime && now.TimeOfDay < x.Time.EndTime); if (current is not null) return (current.Subject.Name, $"{current.Time.StartTime:hh\\:mm}–{current.Time.EndTime:hh\\:mm}  {current.Subject.TeacherName}"); var next = lessons.FirstOrDefault(x => x.Time.StartTime > now.TimeOfDay); return next is null ? ("当前没有课程", "ClassIsland · ExusiAI") : ($"接下来 · {next.Subject.Name}", $"{next.Time.StartTime:hh\\:mm} 开始"); }
     private void SetStatus(string text) { if (operationStatus is not null) operationStatus.Text = text; }
     private sealed record Keyed<T>(Guid Id, T Value) where T : class { public string Display => Value switch { ClassIslandSubject s => s.Name, ClassIslandTimeLayout l => l.Name, ClassIslandClassPlan p => p.Name, _ => Id.ToString() }; }
