@@ -85,12 +85,15 @@ public partial class App : Application
         {
             var failedStage = startupStage;
             TraceStartup($"启动失败：{exception.GetType().Name}，阶段：{failedStage}");
+            TraceStartupException(exception);
             host?.Services.GetService<ILogger<App>>()?.LogCritical(exception, "Application startup failed at {Stage}.", failedStage);
             if (crashReporter is not null)
                 crashReporter.Report(exception, "应用启动失败", showDialog: false);
             if (startupWindow is { IsVisible: true })
             {
-                startupWindow.ShowFailure(failedStage, StartupLogPath);
+                var cause = exception;
+                while (cause.InnerException is { } inner) cause = inner;
+                startupWindow.ShowFailure(failedStage, cause.Message, StartupLogPath);
                 return;
             }
             else
@@ -168,6 +171,15 @@ public partial class App : Application
 
     private static string StartupLogPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "logs", "startup.log");
+
+    private static void TraceStartupException(Exception exception)
+    {
+        try
+        {
+            File.AppendAllText(StartupLogPath, $"{exception}{Environment.NewLine}");
+        }
+        catch (Exception) { /* Diagnostics must never prevent startup. */ }
+    }
 
     private async Task InitializeExtensionsAsync(
         IAppPaths paths,
@@ -252,7 +264,9 @@ public partial class App : Application
         Current.Resources["TouchCardWidth"] = Math.Round(225 * Math.Min(scale, 1.2));
         Current.Resources["TouchCardHeight"] = Math.Round(70 * scale);
         Current.Resources["TouchSidebarWidth"] = Math.Round(218 * Math.Min(scale, 1.2));
-        Current.Resources["TouchTitleBarHeight"] = Math.Round(48 * scale);
+        var titleBarHeight = Math.Round(48 * scale);
+        Current.Resources["TouchTitleBarHeight"] = titleBarHeight;
+        if (window is MainWindow mainWindow) mainWindow.SetTitleBarHeight(titleBarHeight);
         Current.Resources["TouchDragThreshold"] = Math.Round(8 * scale);
         Current.Resources["TouchScrollBarThickness"] = Math.Round(12 * scale);
     }

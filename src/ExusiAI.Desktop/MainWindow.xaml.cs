@@ -41,6 +41,8 @@ public partial class MainWindow : Window
         };
     }
 
+    internal void SetTitleBarHeight(double height) => TitleBarRow.Height = new GridLength(height);
+
     private void MainWindow_OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (e.OldValue is ShellViewModel oldViewModel) oldViewModel.PropertyChanged -= ShellViewModel_OnPropertyChanged;
