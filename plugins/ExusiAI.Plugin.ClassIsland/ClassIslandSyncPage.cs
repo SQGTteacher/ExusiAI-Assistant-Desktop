@@ -169,7 +169,7 @@ internal sealed class ClassIslandSyncPage : UserControl
         save.Click += async (_, _) =>
         {
             try { await core.Weather.SetCityAsync(city.Text); ShowWeather(); }
-            catch (Exception error) when (error is IOException or System.Text.Json.JsonException or HttpRequestException)
+            catch (Exception error) when (error is IOException or System.Text.Json.JsonException or System.Net.Http.HttpRequestException)
             { operationStatus!.Text = error.Message; }
         };
         var refresh = Secondary("立即刷新"); refresh.Click += async (_, _) => { await core.Weather.RefreshAsync(); ShowWeather(); };

@@ -133,6 +133,7 @@ public static class ClassIslandComponentText
         if (!ClassIslandWeatherService.TryProperty(current, field, out pair)) return null;
         if (kind == 2 && !ClassIslandWeatherService.TryProperty(pair, "speed", out pair)) return null;
         if (!ClassIslandWeatherService.TryProperty(pair, "value", out var value)) return null;
+        if (!ReadBool(settings, "ShowMainWeatherInfo", true) || string.IsNullOrWhiteSpace(value.ToString())) return null;
         ClassIslandWeatherService.TryProperty(pair, "unit", out var unit);
         var result = value.ToString() + (unit.ValueKind == JsonValueKind.String ? unit.GetString() : "");
         if (ReadBool(settings, "ShowAlerts", true) && ClassIslandWeatherService.TryProperty(info, "alerts", out var alerts) &&
