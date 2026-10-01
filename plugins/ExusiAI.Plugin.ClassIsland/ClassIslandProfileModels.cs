@@ -20,6 +20,24 @@ public abstract class ClassIslandAttachableModel : ClassIslandJsonModel
     public void SetAttachedObject<T>(Guid id, T value) => AttachedObjects[id] = JsonSerializer.SerializeToElement(value);
 }
 
+// ClassIsland 2.1 built-in class notification attached setting. Keep unknown keys intact.
+public sealed class ClassIslandClassNotificationAttachedSettings : ClassIslandJsonModel
+{
+    public static Guid Id { get; } = new("08F0D9C3-C770-4093-A3D0-02F3D90C24BC");
+    public bool IsAttachSettingsEnabled { get; set; }
+    public bool IsClassOnNotificationEnabled { get; set; } = true;
+    public bool IsClassOnPreparingNotificationEnabled { get; set; } = true;
+    public bool IsClassOffNotificationEnabled { get; set; } = true;
+    public int ClassPreparingDeltaTime { get; set; } = 60;
+    public string ClassOnPreparingText { get; set; } = "准备上课，请回到座位并保持安静，做好上课准备。";
+    public string OutdoorClassOnPreparingText { get; set; } = "下节课程为户外课程，请合理规划时间，做好上课准备。";
+    public string ClassOnPreparingMaskText { get; set; } = "即将上课";
+    public string OutdoorClassOnPreparingMaskText { get; set; } = "即将上课";
+    public string ClassOnMaskText { get; set; } = "上课";
+    public string ClassOffMaskText { get; set; } = "课间休息";
+    public string ClassOffOverlayText { get; set; } = "";
+}
+
 public sealed class ClassIslandProfile : ClassIslandJsonModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();

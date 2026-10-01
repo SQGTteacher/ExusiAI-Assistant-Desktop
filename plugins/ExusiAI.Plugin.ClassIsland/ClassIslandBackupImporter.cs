@@ -37,10 +37,12 @@ internal static class ClassIslandBackupImporter
         long total = 0;
         var profiles = 0;
         var configs = 0;
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in archive.Entries)
         {
             var relative = NormalizeEntry(entry.FullName, prefix);
             if (relative is null || string.IsNullOrEmpty(entry.Name) || !ShouldPreserve(relative)) continue;
+            ValidateEntry(entry, relative, paths);
             ValidateSize(entry, ref total);
             preserved.Add(relative);
             if (relative.StartsWith("Profiles/", StringComparison.OrdinalIgnoreCase)) profiles++;
@@ -105,11 +107,13 @@ internal static class ClassIslandBackupImporter
     {
         using var archive = ZipFile.OpenRead(summary.ArchivePath);
         long total = 0;
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in archive.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relative = NormalizeEntry(entry.FullName, summary.RootPrefix);
             if (relative is null || string.IsNullOrEmpty(entry.Name) || !ShouldPreserve(relative)) continue;
+            ValidateEntry(entry, relative, paths);
             ValidateSize(entry, ref total);
             var target = ResolveInsideRoot(staging, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
@@ -207,6 +211,14 @@ internal static class ClassIslandBackupImporter
     }
 
     private static string NormalizeSlashes(string path) => path.Replace('\\', '/').TrimStart();
+    private static void ValidateEntry(ZipArchiveEntry entry, string relative, HashSet<string> paths)
+    {
+        // ZIP external attributes encode Unix file types in the upper 16 bits.
+        if (((entry.ExternalAttributes >> 16) & 0xF000) == 0xA000)
+            throw new InvalidDataException($"备份包含符号链接：{entry.FullName}");
+        if (!paths.Add(relative))
+            throw new InvalidDataException($"备份包含重复路径：{entry.FullName}");
+    }
     private static bool ShouldPreserve(string relative) =>
         relative.Equals("Settings.json", StringComparison.OrdinalIgnoreCase) ||
         relative.StartsWith("Profiles/", StringComparison.OrdinalIgnoreCase) ||

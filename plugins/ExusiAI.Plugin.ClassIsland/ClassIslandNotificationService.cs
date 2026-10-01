@@ -137,6 +137,13 @@ public sealed class ClassIslandNotificationService : IAsyncDisposable
         {
             await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
             if (!queue.TryDequeue(out var request)) continue;
+            // A queued request may have been cancelled before the worker gets to it.
+            if (request.CancellationToken.IsCancellationRequested)
+            {
+                request.State = ClassIslandNotificationState.Cancelled;
+                RequestCompleted?.Invoke(this, request);
+                continue;
+            }
             Current = request;
             try
             {
@@ -145,6 +152,8 @@ public sealed class ClassIslandNotificationService : IAsyncDisposable
                     await PlayAsync(request.MaskContent, request.MaskSession, request, cancellationToken).ConfigureAwait(false);
                 if (request.OverlayContent is { } overlay && !request.OverlaySession.IsCompleted)
                     await PlayAsync(overlay, request.OverlaySession, request, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                request.CancellationToken.ThrowIfCancellationRequested();
                 request.State = ClassIslandNotificationState.Completed; request.LeftProgress = 0; request.MarkCompleted();
             }
             catch (OperationCanceledException)

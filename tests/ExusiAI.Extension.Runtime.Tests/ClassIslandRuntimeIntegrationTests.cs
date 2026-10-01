@@ -80,6 +80,26 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public void ClassNotificationAttachmentUsesUpstreamGuidAndPreservesUnknownSettings()
+    {
+        var subject = new ClassIslandSubject();
+        var id = ClassIslandClassNotificationAttachedSettings.Id;
+        Assert.Equal(new Guid("08F0D9C3-C770-4093-A3D0-02F3D90C24BC"), id);
+        subject.AttachedObjects[id] = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            IsAttachSettingsEnabled = true, ClassPreparingDeltaTime = 90, FutureOption = "keep"
+        });
+        var settings = subject.GetAttachedObject<ClassIslandClassNotificationAttachedSettings>(id)!;
+        Assert.True(settings.IsAttachSettingsEnabled);
+        Assert.Equal(90, settings.ClassPreparingDeltaTime);
+        settings.ClassOnMaskText = "开课";
+        subject.SetAttachedObject(id, settings);
+        var saved = subject.AttachedObjects[id];
+        Assert.Equal("keep", saved.GetProperty("FutureOption").GetString());
+        Assert.Equal("开课", saved.GetProperty("ClassOnMaskText").GetString());
+    }
+
+    [Fact]
     public async Task ComponentServiceLoadsSelectedConfiguration()
     {
         using var root = new TemporaryDirectory();
@@ -256,6 +276,27 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task NotificationCancelledWhileQueuedNeverStarts()
+    {
+        await using var service = new ClassIslandNotificationService();
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = false;
+        var request = new ClassIslandNotificationRequest();
+        service.RequestStarted += (_, _) => started = true;
+        service.RequestCompleted += (_, completed) =>
+        {
+            if (ReferenceEquals(completed, request)) finished.TrySetResult();
+        };
+        service.Enqueue(request);
+        request.Cancel();
+        service.Start();
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(started);
+        Assert.Equal(ClassIslandNotificationState.Cancelled, request.State);
+        Assert.False(request.CompletedToken.IsCancellationRequested);
+    }
+
+    [Fact]
     public async Task HostStopAndRestartResumesNotification()
     {
         await using var service = new ClassIslandNotificationService();
@@ -352,6 +393,38 @@ public sealed class ClassIslandRuntimeIntegrationTests
         }
         Assert.Throws<InvalidDataException>(() => ClassIslandBackupImporter.Inspect(archivePath));
         Assert.False(File.Exists(Path.Combine(root.Path, "outside.txt")));
+    }
+
+    [Fact]
+    public void SyncRejectsDuplicatePathsIgnoringCase()
+    {
+        using var root = new TemporaryDirectory();
+        var archivePath = Path.Combine(root.Path, "duplicate.zip");
+        using (var file = File.Create(archivePath))
+        using (var archive = new ZipArchive(file, ZipArchiveMode.Create))
+        {
+            Write(archive, "Settings.json", "{}");
+            Write(archive, "Profiles/class.json", "{}");
+            Write(archive, "profiles/CLASS.json", "{}");
+        }
+        Assert.Throws<InvalidDataException>(() => ClassIslandBackupImporter.Inspect(archivePath));
+    }
+
+    [Fact]
+    public void SyncRejectsUnixSymbolicLinks()
+    {
+        using var root = new TemporaryDirectory();
+        var archivePath = Path.Combine(root.Path, "symlink.zip");
+        using (var file = File.Create(archivePath))
+        using (var archive = new ZipArchive(file, ZipArchiveMode.Create))
+        {
+            Write(archive, "Settings.json", "{}");
+            var link = archive.CreateEntry("Profiles/link.json");
+            link.ExternalAttributes = unchecked((int)0xA1FF0000);
+            using var writer = new StreamWriter(link.Open(), Encoding.UTF8);
+            writer.Write("../../outside.json");
+        }
+        Assert.Throws<InvalidDataException>(() => ClassIslandBackupImporter.Inspect(archivePath));
     }
 
     private static void Write(ZipArchive archive, string path, string content)
