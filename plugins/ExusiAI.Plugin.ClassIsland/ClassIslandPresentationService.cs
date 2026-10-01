@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Windows.Interop;
+using Forms = System.Windows.Forms;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
@@ -64,6 +66,8 @@ public sealed class ClassIslandPresentationService
             WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent,
             ShowInTaskbar = false, ResizeMode = ResizeMode.NoResize, SizeToContent = SizeToContent.Manual
         };
+        window.SourceInitialized += (_, _) => ApplyAppearance();
+        window.DpiChanged += (_, _) => ApplyAppearance();
         island = new Border { Padding = new Thickness(22, 10, 22, 10), BorderThickness = new Thickness(1) };
         island.Cursor = Cursors.SizeAll;
         island.MouseLeftButtonDown += OnMouseLeftButtonDown;
@@ -139,7 +143,12 @@ public sealed class ClassIslandPresentationService
     {
         if (window is null) return;
         var s = appearance.Settings;
-        var area = SystemParameters.WorkArea;
+        var area = GetWorkArea(window, useSavedMonitor: false);
+        var position = ClassIslandWindowPlacement.Clamp(new Point(window.Left, window.Top),
+            new Size(window.Width, window.Height), area);
+        window.Left = position.X;
+        window.Top = position.Y;
+        s.MonitorDeviceName = Forms.Screen.FromHandle(new WindowInteropHelper(window).Handle).DeviceName;
         s.OffsetX = s.DockPosition switch
         {
             ClassIslandDockPosition.TopLeft or ClassIslandDockPosition.BottomLeft => window.Left - area.Left,
@@ -204,7 +213,8 @@ public sealed class ClassIslandPresentationService
         var s = appearance.Settings;
         window.Width = s.Width * s.Scale; window.Height = s.Height * s.Scale; window.Opacity = s.Opacity; window.Topmost = s.Topmost;
         island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius, s.Height / 2));
-        var area = SystemParameters.WorkArea;
+        if (PresentationSource.FromVisual(window) is null) return;
+        var area = GetWorkArea(window, useSavedMonitor: true);
         window.Left = s.DockPosition switch
         {
             ClassIslandDockPosition.TopLeft or ClassIslandDockPosition.BottomLeft => area.Left + s.OffsetX,
@@ -216,6 +226,25 @@ public sealed class ClassIslandPresentationService
             ClassIslandDockPosition.BottomLeft or ClassIslandDockPosition.BottomCenter or ClassIslandDockPosition.BottomRight => area.Bottom - window.Height - s.OffsetY,
             _ => area.Top + s.OffsetY
         };
+        var position = ClassIslandWindowPlacement.Clamp(new Point(window.Left, window.Top),
+            new Size(window.Width, window.Height), area);
+        window.Left = position.X;
+        window.Top = position.Y;
         island.Clip = new RectangleGeometry(new Rect(0, 0, window.Width, window.Height), island.CornerRadius.TopLeft, island.CornerRadius.TopLeft);
+    }
+
+    private Rect GetWorkArea(Window target, bool useSavedMonitor)
+    {
+        var handle = new WindowInteropHelper(target).Handle;
+        var screen = useSavedMonitor
+            ? Forms.Screen.AllScreens.FirstOrDefault(x => x.DeviceName == appearance.Settings.MonitorDeviceName)
+            : null;
+        screen ??= Forms.Screen.FromHandle(handle);
+        var work = screen.WorkingArea;
+        var transform = PresentationSource.FromVisual(target)?.CompositionTarget?.TransformFromDevice
+            ?? Matrix.Identity;
+        var topLeft = transform.Transform(new Point(work.Left, work.Top));
+        var bottomRight = transform.Transform(new Point(work.Right, work.Bottom));
+        return new Rect(topLeft, bottomRight);
     }
 }

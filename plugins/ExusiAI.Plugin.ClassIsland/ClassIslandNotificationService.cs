@@ -141,8 +141,9 @@ public sealed class ClassIslandNotificationService : IAsyncDisposable
             try
             {
                 request.State = ClassIslandNotificationState.Playing; RequestStarted?.Invoke(this, request);
-                await PlayAsync(request.MaskContent, request.MaskSession, request, cancellationToken).ConfigureAwait(false);
-                if (request.OverlayContent is { } overlay)
+                if (!request.MaskSession.IsCompleted)
+                    await PlayAsync(request.MaskContent, request.MaskSession, request, cancellationToken).ConfigureAwait(false);
+                if (request.OverlayContent is { } overlay && !request.OverlaySession.IsCompleted)
                     await PlayAsync(overlay, request.OverlaySession, request, cancellationToken).ConfigureAwait(false);
                 request.State = ClassIslandNotificationState.Completed; request.LeftProgress = 0; request.MarkCompleted();
             }

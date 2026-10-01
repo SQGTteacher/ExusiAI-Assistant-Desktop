@@ -1,7 +1,9 @@
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Windows;
 using ExusiAI.Plugin.ClassIsland;
+using ExusiAI.Extension.Abstractions;
 
 namespace ExusiAI.Extension.Runtime.Tests;
 
@@ -88,6 +90,26 @@ public sealed class ClassIslandRuntimeIntegrationTests
         var service = new ClassIslandComponentService(directory);
         await service.InitializeAsync("Teaching");
         Assert.Equal("Teaching", service.CurrentConfigName);
+    }
+
+    [Fact]
+    public async Task CoreRestoresSettingsSelectedProfileAndLayout()
+    {
+        using var root = new TemporaryDirectory();
+        var profiles = Path.Combine(root.Path, "Profiles");
+        var layouts = Path.Combine(root.Path, "Config", "ComponentLayouts");
+        Directory.CreateDirectory(profiles);
+        Directory.CreateDirectory(layouts);
+        await File.WriteAllTextAsync(Path.Combine(profiles, "a.json"), "{\"Name\":\"first\"}");
+        await File.WriteAllTextAsync(Path.Combine(profiles, "b.json"), "{\"Name\":\"selected\"}");
+        await File.WriteAllTextAsync(Path.Combine(layouts, "Default.json"), "{\"Lines\":[]}");
+        await File.WriteAllTextAsync(Path.Combine(layouts, "Teaching.json"), "{\"Lines\":[]}");
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "Settings.json"),
+            "{\"SelectedProfile\":\"b.json\",\"CurrentComponentConfig\":\"Teaching\"}");
+        await using var core = new ClassIslandCoreService(new NullExtensionLogger(), root.Path);
+        await core.InitializeAsync();
+        Assert.Equal("selected", core.Profiles.Current?.Name);
+        Assert.Equal("Teaching", core.Components.CurrentConfigName);
     }
 
     [Fact]
@@ -200,6 +222,62 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public void WindowPlacementKeepsDraggableAreaVisibleAcrossMonitorBounds()
+    {
+        var secondary = new Rect(-1920, 0, 1920, 1040);
+        var size = new Size(620, 72);
+        var position = ClassIslandWindowPlacement.Clamp(new Point(-2500, -100), size, secondary);
+        Assert.Equal(-2492, position.X);
+        Assert.Equal(0, position.Y);
+        var right = ClassIslandWindowPlacement.Clamp(new Point(1000, 2000), size, secondary);
+        Assert.Equal(-48, right.X);
+        Assert.Equal(992, right.Y);
+    }
+
+    [Fact]
+    public async Task CancelledNotificationDoesNotComplete()
+    {
+        await using var service = new ClassIslandNotificationService();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = new ClassIslandNotificationRequest
+        {
+            MaskContent = new() { Content = "取消", Duration = TimeSpan.FromSeconds(5) }
+        };
+        service.RequestStarted += (_, _) => started.TrySetResult();
+        service.RequestCompleted += (_, _) => finished.TrySetResult();
+        service.Start();
+        service.Enqueue(request);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        request.Cancel();
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ClassIslandNotificationState.Cancelled, request.State);
+        Assert.False(request.CompletedToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task HostStopAndRestartResumesNotification()
+    {
+        await using var service = new ClassIslandNotificationService();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = new ClassIslandNotificationRequest
+        {
+            MaskContent = new() { Content = "继续", Duration = TimeSpan.FromMilliseconds(150) }
+        };
+        service.RequestStarted += (_, _) => started.TrySetResult();
+        request.Completed += (_, _) => completed.TrySetResult();
+        service.Start();
+        service.Enqueue(request);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await service.StopAsync();
+        Assert.Equal(ClassIslandNotificationState.Queued, request.State);
+        service.Start();
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ClassIslandNotificationState.Completed, request.State);
+    }
+
+    [Fact]
     public void ComponentCatalogUsesUpstreamMishaGuids()
     {
         Assert.Equal("日期", ClassIslandComponentCatalog.Find("DF3F8295-21F6-482E-BADA-FA0E5F14BB66")?.Name);
@@ -281,6 +359,13 @@ public sealed class ClassIslandRuntimeIntegrationTests
         var entry = archive.CreateEntry(path);
         using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
         writer.Write(content);
+    }
+
+    private sealed class NullExtensionLogger : IExtensionLogger
+    {
+        public void Information(string message) { }
+        public void Warning(string message) { }
+        public void Error(string message, Exception? exception = null) { }
     }
 
     private sealed class TemporaryDirectory : IDisposable

@@ -21,6 +21,7 @@ public partial class App : Application
     private ICrashReporter? crashReporter;
     private CancellationTokenSource? extensionStartupCancellation;
     private Task? extensionStartupTask;
+    private string startupStage = "进入 WPF 启动";
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -30,14 +31,18 @@ public partial class App : Application
         base.OnStartup(e);
         try
         {
+            TraceStartup(startupStage);
             host = BuildHost();
+            TraceStartup("Host 已创建");
             crashReporter = host.Services.GetRequiredService<ICrashReporter>();
             DispatcherUnhandledException += App_DispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
             TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
             await host.StartAsync();
+            TraceStartup("Host 已启动");
             var theme = host.Services.GetRequiredService<IThemeService>();
             var settings = await host.Services.GetRequiredService<ISettingsService>().LoadAsync();
+            TraceStartup("设置已加载");
             theme.Apply(settings.Theme);
             ApplyTheme(theme.Current);
             theme.Changed += (_, _) => Dispatcher.InvokeAsync(() => ApplyTheme(theme.Current));
@@ -48,6 +53,7 @@ public partial class App : Application
             var paths = host.Services.GetRequiredService<IAppPaths>();
             RemoveLegacyBundledPackages(paths);
             await host.Services.GetRequiredService<BundledPackageSynchronizer>().SynchronizeAsync();
+            TraceStartup("内置插件包已同步");
 
             var window = host.Services.GetRequiredService<MainWindow>();
             window.DataContext = host.Services.GetRequiredService<ShellViewModel>();
@@ -55,6 +61,7 @@ public partial class App : Application
             window.SourceInitialized += (_, _) => ApplyAdaptiveMetrics(window);
             window.DpiChanged += (_, _) => ApplyAdaptiveMetrics(window);
             window.Show();
+            TraceStartup("主窗口已显示");
             ShutdownMode = ShutdownMode.OnLastWindowClose;
 
             extensionStartupCancellation = new CancellationTokenSource();
@@ -65,7 +72,8 @@ public partial class App : Application
         }
         catch (Exception exception)
         {
-            host?.Services.GetService<ILogger<App>>()?.LogCritical(exception, "Application startup failed.");
+            TraceStartup($"启动失败：{exception.GetType().Name}，阶段：{startupStage}");
+            host?.Services.GetService<ILogger<App>>()?.LogCritical(exception, "Application startup failed at {Stage}.", startupStage);
             if (crashReporter is not null)
                 crashReporter.Report(exception, "应用启动失败");
             else
@@ -98,6 +106,7 @@ public partial class App : Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        TraceStartup($"进程退出，代码 {e.ApplicationExitCode}");
         try
         {
             extensionStartupCancellation?.Cancel();
@@ -125,6 +134,19 @@ public partial class App : Application
             TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
             base.OnExit(e);
         }
+    }
+
+    private void TraceStartup(string stage)
+    {
+        startupStage = stage;
+        try
+        {
+            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "logs");
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(Path.Combine(directory, "startup.log"),
+                $"{DateTimeOffset.Now:O} | {stage} | PID={Environment.ProcessId} | {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture} | WorkingSet={Environment.WorkingSet / 1024 / 1024} MiB{Environment.NewLine}");
+        }
+        catch (Exception) { /* Diagnostics must never prevent startup. */ }
     }
 
     private async Task InitializeExtensionsAsync(
