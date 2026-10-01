@@ -43,11 +43,14 @@ internal sealed class ClassIslandSyncPage : UserControl
         title.Children.Add(new TextBlock { Text = "Misha · ExusiAI 原生插件", FontSize = 11, Foreground = Muted, Margin = new Thickness(0, 3, 0, 0) });
         sideGrid.Children.Add(title);
         var menu = new StackPanel();
+        menu.Children.Add(new TextBlock { Text = "主界面", FontSize = 11, Foreground = Muted, Margin = new Thickness(12, 10, 0, 7) });
         AddNavigation(menu, "overview", "信息岛", ShowOverview);
         AddNavigation(menu, "profile", "档案与课表", ShowProfile);
-        AddNavigation(menu, "components", "组件布局", ShowComponents);
+        AddNavigation(menu, "components", "组件", ShowComponents);
+        AddNavigation(menu, "appearance", "外观", ShowAppearance);
+        AddNavigation(menu, "window", "窗口", ShowWindow);
+        menu.Children.Add(new TextBlock { Text = "服务", FontSize = 11, Foreground = Muted, Margin = new Thickness(12, 10, 0, 7) });
         AddNavigation(menu, "notifications", "提醒", ShowNotifications);
-        AddNavigation(menu, "appearance", "外观与位置", ShowAppearance);
         AddNavigation(menu, "sync", "同步", ShowSync);
         Grid.SetRow(menu, 1); sideGrid.Children.Add(menu);
         var footer = new TextBlock { Text = "配置保持 ClassIsland JSON 兼容", Foreground = Muted, FontSize = 10, Margin = new Thickness(11, 10, 11, 0), TextWrapping = TextWrapping.Wrap };
@@ -158,18 +161,39 @@ internal sealed class ClassIslandSyncPage : UserControl
 
     private void ShowAppearance()
     {
-        Activate("appearance"); var body = Page("信息岛外观与位置", "设置立即应用到桌面信息岛；圆角始终限制为实际高度的一半。", out var stack); var s = core.Appearance.Settings;
-        var dock = new ComboBox { MinHeight = Metric("TouchCompactTargetHeight", 40), Width = 220, ItemsSource = Enum.GetValues<ClassIslandDockPosition>(), SelectedItem = s.DockPosition, Margin = new Thickness(0, 4, 0, 8) }; stack.Children.Add(Field("停靠位置", dock));
+        Activate("appearance"); var body = Page("外观", "信息岛主题独立于 ExusiAI 主程序；更改会立即应用到桌面信息岛。", out var stack); var s = core.Appearance.Settings;
         var theme = new ComboBox { MinHeight = Metric("TouchCompactTargetHeight", 40), Width = 220, ItemsSource = Enum.GetValues<ClassIslandIslandTheme>(), SelectedItem = s.IslandTheme };
         stack.Children.Add(Field("信息岛专用主题（独立于主程序）", theme));
-        var width = Numeric(s.Width); var height = Numeric(s.Height); var radius = Numeric(s.CornerRadius); var opacity = Numeric(s.Opacity); var hoverOpacity = Numeric(s.HoverOpacity); var scale = Numeric(s.Scale); var offsetX = Numeric(s.OffsetX); var offsetY = Numeric(s.OffsetY);
-        stack.Children.Add(Field("宽度", width)); stack.Children.Add(Field("高度", height)); stack.Children.Add(Field("圆角", radius)); stack.Children.Add(Field("透明度（0.25–1）", opacity)); stack.Children.Add(Field("缩放（0.6–2）", scale)); stack.Children.Add(Field("水平偏移", offsetX)); stack.Children.Add(Field("垂直偏移", offsetY));
+        var radius = Numeric(s.CornerRadius); var opacity = Numeric(s.Opacity); var hoverOpacity = Numeric(s.HoverOpacity);
+        stack.Children.Add(Field("圆角", radius)); stack.Children.Add(Field("透明度（0.25–1）", opacity));
         stack.Children.Add(Field("鼠标移入后的透明度", hoverOpacity));
-        var topmost = new CheckBox { Content = "始终置顶", IsChecked = s.Topmost, Margin = new Thickness(2, 6, 0, 6) }; var seconds = new CheckBox { Content = "显示秒数", IsChecked = s.ShowSeconds, Margin = new Thickness(2, 0, 0, 12) }; var fade = new CheckBox { Content = "鼠标移入时淡化", IsChecked = s.FadeOnPointerEnter, Margin = new Thickness(2, 0, 0, 12) }; stack.Children.Add(topmost); stack.Children.Add(seconds); stack.Children.Add(fade);
+        var fade = new CheckBox { Content = "鼠标移入时淡化", IsChecked = s.FadeOnPointerEnter, Margin = new Thickness(2, 0, 0, 12) }; stack.Children.Add(fade);
         var save = Primary("保存并立即应用"); save.Click += async (_, _) =>
         {
-            s.DockPosition = dock.SelectedItem is ClassIslandDockPosition value ? value : s.DockPosition; s.IslandTheme = theme.SelectedItem is ClassIslandIslandTheme selected ? selected : s.IslandTheme; s.Width = Parse(width, s.Width); s.Height = Parse(height, s.Height); s.CornerRadius = Parse(radius, s.CornerRadius); s.Opacity = Parse(opacity, s.Opacity); s.HoverOpacity = Parse(hoverOpacity, s.HoverOpacity); s.Scale = Parse(scale, s.Scale); s.OffsetX = Parse(offsetX, s.OffsetX); s.OffsetY = Parse(offsetY, s.OffsetY); s.Topmost = topmost.IsChecked == true; s.ShowSeconds = seconds.IsChecked == true; s.FadeOnPointerEnter = fade.IsChecked == true;
+            s.IslandTheme = theme.SelectedItem is ClassIslandIslandTheme selected ? selected : s.IslandTheme;
+            s.CornerRadius = Parse(radius, s.CornerRadius); s.Opacity = Parse(opacity, s.Opacity); s.HoverOpacity = Parse(hoverOpacity, s.HoverOpacity); s.FadeOnPointerEnter = fade.IsChecked == true;
             await core.Appearance.SaveAsync(); core.Presentation.RefreshAppearance(); ShowAppearance();
+        }; stack.Children.Add(save); Present(body);
+    }
+
+    private void ShowWindow()
+    {
+        Activate("window"); var body = Page("窗口", "控制信息岛在教学屏幕上的尺寸、停靠位置和层级。", out var stack); var s = core.Appearance.Settings;
+        var dock = new ComboBox { MinHeight = Metric("TouchCompactTargetHeight", 40), Width = 220, ItemsSource = Enum.GetValues<ClassIslandDockPosition>(), SelectedItem = s.DockPosition };
+        stack.Children.Add(Field("停靠位置", dock));
+        var width = Numeric(s.Width); var height = Numeric(s.Height); var scale = Numeric(s.Scale); var offsetX = Numeric(s.OffsetX); var offsetY = Numeric(s.OffsetY);
+        stack.Children.Add(Field("宽度", width)); stack.Children.Add(Field("高度", height)); stack.Children.Add(Field("缩放", scale));
+        stack.Children.Add(Field("水平偏移", offsetX)); stack.Children.Add(Field("垂直偏移", offsetY));
+        var topmost = new CheckBox { Content = "始终置顶", IsChecked = s.Topmost, Margin = new Thickness(2, 6, 0, 8) };
+        var seconds = new CheckBox { Content = "时钟显示秒数", IsChecked = s.ShowSeconds, Margin = new Thickness(2, 0, 0, 12) };
+        stack.Children.Add(topmost); stack.Children.Add(seconds);
+        var save = Primary("保存并立即应用"); save.Click += async (_, _) =>
+        {
+            s.DockPosition = dock.SelectedItem is ClassIslandDockPosition position ? position : s.DockPosition;
+            s.Width = Parse(width, s.Width); s.Height = Parse(height, s.Height); s.Scale = Parse(scale, s.Scale);
+            s.OffsetX = Parse(offsetX, s.OffsetX); s.OffsetY = Parse(offsetY, s.OffsetY);
+            s.Topmost = topmost.IsChecked == true; s.ShowSeconds = seconds.IsChecked == true;
+            await core.Appearance.SaveAsync(); core.Presentation.RefreshAppearance(); ShowWindow();
         }; stack.Children.Add(save); Present(body);
     }
 

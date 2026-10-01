@@ -19,7 +19,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
         Components = new(Path.Combine(DataDirectory, "Config", "ComponentLayouts"));
         Notifications = new();
         Appearance = new(DataDirectory);
-        Presentation = new(Timetable, Appearance, Notifications);
+        Presentation = new(Timetable, Components, Appearance, Notifications);
     }
 
     public string DataDirectory { get; }

@@ -20,6 +20,7 @@ public sealed class ClassIslandPresentationService
     [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
     private static extern int SetWindowLong(nint handle, int index, int value);
     private readonly ClassIslandTimetableService timetable;
+    private readonly ClassIslandComponentService components;
     private readonly ClassIslandAppearanceService appearance;
     private readonly ClassIslandNotificationService notifications;
     private Window? window;
@@ -29,16 +30,20 @@ public sealed class ClassIslandPresentationService
     private TextBlock? detailText;
     private Border? notificationOverlay;
     private TextBlock? notificationText;
+    private Grid? defaultContent;
+    private StackPanel? componentContent;
+    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text)> componentTexts = [];
     private DispatcherTimer? timer;
     private TouchDevice? dragTouch;
     private Point dragStartScreen;
     private Point dragStartWindow;
 
-    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications)
+    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications)
     {
-        this.timetable = timetable; this.appearance = appearance; this.notifications = notifications;
+        this.timetable = timetable; this.components = components; this.appearance = appearance; this.notifications = notifications;
         notifications.RequestStarted += (_, request) => ShowNotification(request);
         notifications.RequestCompleted += (_, request) => HideNotification(request);
+        components.ComponentsChanged += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
     }
 
     public bool IsVisible => window?.IsVisible == true;
@@ -92,6 +97,7 @@ public sealed class ClassIslandPresentationService
         island.PreviewTouchMove += OnTouchMove;
         island.PreviewTouchUp += OnTouchUp;
         var grid = new Grid();
+        defaultContent = grid;
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         timeText = new TextBlock { FontSize = 18, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
@@ -102,6 +108,8 @@ public sealed class ClassIslandPresentationService
         Grid.SetColumn(lesson, 1); grid.Children.Add(timeText); grid.Children.Add(lesson);
         var layers = new Grid();
         layers.Children.Add(grid);
+        componentContent = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        layers.Children.Add(componentContent);
         notificationText = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, FontSize = 16, FontWeight = FontWeights.SemiBold };
         notificationOverlay = new Border { Padding = new Thickness(18, 8, 18, 8), Visibility = Visibility.Collapsed,
@@ -111,6 +119,39 @@ public sealed class ClassIslandPresentationService
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => Refresh();
         appearance.Changed += (_, _) => ApplyAppearance();
+        RebuildComponents();
+    }
+
+    private void RebuildComponents()
+    {
+        if (componentContent is null || defaultContent is null) return;
+        componentContent.Children.Clear();
+        componentTexts.Clear();
+        foreach (var line in components.CurrentComponents.Lines.Where(x => x.IsVisible))
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            foreach (var component in line.Children.Where(x => x.IsVisible))
+            {
+                if (ClassIslandComponentText.Resolve(component, timetable, DateTime.Now) is null) continue;
+                var block = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(row.Children.Count == 0 ? 0 : 14, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    MinWidth = component.IsMinWidthEnabled ? Math.Max(0, component.MinWidth) : 0,
+                    MaxWidth = component.IsFixedWidthEnabled ? Math.Max(40, component.FixedWidth)
+                        : component.IsMaxWidthEnabled ? Math.Max(40, component.MaxWidth) : 230 };
+                if (component.IsFixedWidthEnabled) block.Width = Math.Max(40, component.FixedWidth);
+                if (component.IsCustomMarginEnabled)
+                    block.Margin = new Thickness(component.MarginLeft, component.MarginTop, component.MarginRight, component.MarginBottom);
+                componentTexts.Add((component, block));
+                row.Children.Add(block);
+            }
+            if (row.Children.Count > 0) componentContent.Children.Add(row);
+        }
+        var hasComponents = componentTexts.Count > 0;
+        componentContent.Visibility = hasComponents ? Visibility.Visible : Visibility.Collapsed;
+        defaultContent.Visibility = hasComponents ? Visibility.Collapsed : Visibility.Visible;
+        ApplyAppearance();
+        Refresh();
     }
 
     private async void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -177,6 +218,8 @@ public sealed class ClassIslandPresentationService
     {
         if (timeText is null) return;
         var now = DateTime.Now;
+        foreach (var (component, text) in componentTexts)
+            text.Text = ClassIslandComponentText.Resolve(component, timetable, now) ?? "";
         timeText.Text = now.ToString(appearance.Settings.ShowSeconds ? "HH:mm:ss" : "HH:mm");
         var lessons = timetable.GetLessons(now);
         var current = lessons.FirstOrDefault(x => now.TimeOfDay >= x.Time.StartTime && now.TimeOfDay < x.Time.EndTime);
@@ -221,10 +264,12 @@ public sealed class ClassIslandPresentationService
     {
         if (window is null || island is null) return;
         var s = appearance.Settings;
-        window.Width = s.Width * s.Scale; window.Height = s.Height * s.Scale; window.Topmost = s.Topmost;
+        window.Width = s.Width * s.Scale;
+        window.Height = Math.Max(s.Height, componentContent?.Children.Count * 28 + 12 ?? 0) * s.Scale;
+        window.Topmost = s.Topmost;
         window.BeginAnimation(UIElement.OpacityProperty, null);
         window.Opacity = s.FadeOnPointerEnter && window.IsMouseOver ? s.HoverOpacity : s.Opacity;
-        island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius, s.Height / 2) * s.Scale);
+        island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius * s.Scale, window.Height / 2));
         var light = s.IslandTheme == ClassIslandIslandTheme.LightGlass;
         island.Background = new SolidColorBrush(light ? Color.FromArgb(238, 242, 246, 252) : Color.FromArgb(234, 13, 15, 19));
         island.BorderBrush = new SolidColorBrush(light ? Color.FromArgb(120, 60, 70, 85) : Color.FromArgb(115, 220, 228, 240));
@@ -233,6 +278,7 @@ public sealed class ClassIslandPresentationService
         detailText!.Foreground = new SolidColorBrush(light ? Color.FromRgb(90, 98, 110) : Color.FromRgb(205, 212, 220));
         notificationText!.Foreground = timeText.Foreground;
         notificationOverlay!.Background = island.Background;
+        foreach (var (_, block) in componentTexts) block.Foreground = timeText.Foreground;
         if (PresentationSource.FromVisual(window) is null) return;
         var area = GetWorkArea(window, useSavedMonitor: true);
         window.Left = s.DockPosition switch

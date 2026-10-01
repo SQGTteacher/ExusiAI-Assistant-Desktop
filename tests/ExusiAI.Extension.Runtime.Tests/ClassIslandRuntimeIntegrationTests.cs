@@ -364,6 +364,37 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public void BuiltInComponentTextReadsUpstreamSettings()
+    {
+        using var root = new TemporaryDirectory();
+        var timetable = new ClassIslandTimetableService(new ClassIslandProfileService(Path.Combine(root.Path, "Profiles")));
+        var now = new DateTime(2026, 10, 1, 9, 30, 15);
+        var clock = new ClassIslandComponentSettings
+        {
+            Id = "9E1AF71D-8F77-4B21-A342-448787104DD9",
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new { ShowSeconds = true })
+        };
+        Assert.Equal("09:30:15", ClassIslandComponentText.Resolve(clock, timetable, now));
+        var countdown = new ClassIslandComponentSettings
+        {
+            Id = "7C645D35-8151-48BA-B4AC-15017460D994",
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+            {
+                CountDownName = "高考", CountDownConnector = "还有", OverTime = "2026-10-11T00:00:00"
+            })
+        };
+        Assert.Equal("距离 高考 还有 10天", ClassIslandComponentText.Resolve(countdown, timetable, now));
+        countdown.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountDownName = "高考", OverTime = "2026-10-11T00:00:00", IsCompactModeEnabled = true,
+            CustomStringFormat = "%D天 %h小时"
+        });
+        Assert.Equal("高考 10天 14小时", ClassIslandComponentText.Resolve(countdown, timetable, now));
+        clock.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new { ShowSeconds = false });
+        Assert.Equal("09 30", ClassIslandComponentText.Resolve(clock, timetable, new DateTime(2026, 10, 1, 9, 30, 14)));
+    }
+
+    [Fact]
     public void RuntimeDescriptorPinsExactUpstreamBaselines()
     {
         Assert.Equal("ClassIsland/ClassIsland", ClassIslandRuntimeDescriptor.UpstreamRepository);

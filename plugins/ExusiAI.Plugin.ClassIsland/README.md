@@ -11,7 +11,7 @@ ClassIsland 2.2 Misha is implemented as a native ExusiAI plugin. The normal exec
 - `ClassIslandComponentService` reads and writes the upstream `ComponentProfile -> Lines -> ComponentSettings` structure under `Config/ComponentLayouts`, including visual overrides, size/margin constraints, rules and unknown component settings.
 - `ClassIslandNotificationService` queues mask/overlay requests, tracks timing and cancellation, and resumes queued requests after a host restart. The island displays basic notification text; upstream templates, speech, sound and action execution still require migration.
 - `ClassIslandCoreService` creates, starts and stops these modules as one unit under the ExusiAI plugin lifecycle.
-- `ClassIslandPresentationService` owns the in-process information-island overlay. Its appearance is stored separately from the ExusiAI theme, with a compact 440×52 default, six dock positions, mouse-hover fading, and a tool-window style that stays out of Alt+Tab. This remains a partial renderer; the upstream component and notification visuals still need migration.
+- `ClassIslandPresentationService` owns the in-process information-island overlay. Its appearance is stored separately from the ExusiAI theme, with a compact 440×52 default, six dock positions, mouse-hover fading, and a tool-window style that stays out of Alt+Tab. Selected component layouts now drive basic date, schedule, clock, text and static countdown content. Weather, containers, rules and the upstream notification visuals still need migration.
 
 ## Integrated workbench
 
