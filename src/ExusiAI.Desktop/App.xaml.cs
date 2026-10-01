@@ -22,6 +22,7 @@ public partial class App : Application
     private CancellationTokenSource? extensionStartupCancellation;
     private Task? extensionStartupTask;
     private string startupStage = "进入 WPF 启动";
+    private StartupWindow? startupWindow;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -31,6 +32,11 @@ public partial class App : Application
         base.OnStartup(e);
         try
         {
+            startupWindow = new StartupWindow();
+            MainWindow = startupWindow;
+            startupWindow.Show();
+            // Give WPF a render turn before any host construction or disk I/O.
+            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
             TraceStartup(startupStage);
             host = BuildHost();
             TraceStartup("Host 已创建");
@@ -51,17 +57,22 @@ public partial class App : Application
             backdrop.Apply(backdropSelection);
             runtime = host.Services.GetRequiredService<ExtensionRuntime>();
             var paths = host.Services.GetRequiredService<IAppPaths>();
+            TraceStartup("正在同步内置插件");
             RemoveLegacyBundledPackages(paths);
-            await host.Services.GetRequiredService<BundledPackageSynchronizer>().SynchronizeAsync();
+            await Task.Run(() => host.Services.GetRequiredService<BundledPackageSynchronizer>().SynchronizeAsync());
             TraceStartup("内置插件包已同步");
 
+            TraceStartup("正在创建主窗口");
             var window = host.Services.GetRequiredService<MainWindow>();
             window.DataContext = host.Services.GetRequiredService<ShellViewModel>();
             MainWindow = window;
             window.SourceInitialized += (_, _) => ApplyAdaptiveMetrics(window);
             window.DpiChanged += (_, _) => ApplyAdaptiveMetrics(window);
             window.Show();
+            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
             TraceStartup("主窗口已显示");
+            startupWindow.Close();
+            startupWindow = null;
             ShutdownMode = ShutdownMode.OnLastWindowClose;
 
             extensionStartupCancellation = new CancellationTokenSource();
@@ -72,10 +83,16 @@ public partial class App : Application
         }
         catch (Exception exception)
         {
-            TraceStartup($"启动失败：{exception.GetType().Name}，阶段：{startupStage}");
-            host?.Services.GetService<ILogger<App>>()?.LogCritical(exception, "Application startup failed at {Stage}.", startupStage);
+            var failedStage = startupStage;
+            TraceStartup($"启动失败：{exception.GetType().Name}，阶段：{failedStage}");
+            host?.Services.GetService<ILogger<App>>()?.LogCritical(exception, "Application startup failed at {Stage}.", failedStage);
             if (crashReporter is not null)
-                crashReporter.Report(exception, "应用启动失败");
+                crashReporter.Report(exception, "应用启动失败", showDialog: false);
+            if (startupWindow is { IsVisible: true })
+            {
+                startupWindow.ShowFailure(failedStage, StartupLogPath);
+                return;
+            }
             else
                 MessageBox.Show("ExusiAI 无法启动。请检查本地日志后重试。", "启动失败", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(-1);
@@ -139,15 +156,18 @@ public partial class App : Application
     private void TraceStartup(string stage)
     {
         startupStage = stage;
+        startupWindow?.SetStage(stage);
         try
         {
-            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "logs");
-            Directory.CreateDirectory(directory);
-            File.AppendAllText(Path.Combine(directory, "startup.log"),
+            Directory.CreateDirectory(Path.GetDirectoryName(StartupLogPath)!);
+            File.AppendAllText(StartupLogPath,
                 $"{DateTimeOffset.Now:O} | {stage} | PID={Environment.ProcessId} | {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture} | WorkingSet={Environment.WorkingSet / 1024 / 1024} MiB{Environment.NewLine}");
         }
         catch (Exception) { /* Diagnostics must never prevent startup. */ }
     }
+
+    private static string StartupLogPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExusiAI", "logs", "startup.log");
 
     private async Task InitializeExtensionsAsync(
         IAppPaths paths,
