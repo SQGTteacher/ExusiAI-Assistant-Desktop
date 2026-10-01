@@ -4,12 +4,21 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using System.Windows.Interop;
+using System.Windows.Media.Animation;
+using System.Runtime.InteropServices;
 using Forms = System.Windows.Forms;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
 public sealed class ClassIslandPresentationService
 {
+    private const int GwlExStyle = -20;
+    private const int WsExToolWindow = 0x80;
+    private const int WsExAppWindow = 0x40000;
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong(nint handle, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static extern int SetWindowLong(nint handle, int index, int value);
     private readonly ClassIslandTimetableService timetable;
     private readonly ClassIslandAppearanceService appearance;
     private readonly ClassIslandNotificationService notifications;
@@ -64,38 +73,39 @@ public sealed class ClassIslandPresentationService
         window = new Window
         {
             WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent,
-            ShowInTaskbar = false, ResizeMode = ResizeMode.NoResize, SizeToContent = SizeToContent.Manual
+            ShowInTaskbar = false, ShowActivated = false, ResizeMode = ResizeMode.NoResize, SizeToContent = SizeToContent.Manual
         };
-        window.SourceInitialized += (_, _) => ApplyAppearance();
+        window.SourceInitialized += (_, _) =>
+        {
+            var handle = new WindowInteropHelper(window).Handle;
+            var style = GetWindowLong(handle, GwlExStyle);
+            SetWindowLong(handle, GwlExStyle, (style | WsExToolWindow) & ~WsExAppWindow);
+            ApplyAppearance();
+        };
         window.DpiChanged += (_, _) => ApplyAppearance();
-        island = new Border { Padding = new Thickness(22, 10, 22, 10), BorderThickness = new Thickness(1) };
+        window.MouseEnter += (_, _) => AnimateOpacity(true);
+        window.MouseLeave += (_, _) => AnimateOpacity(false);
+        island = new Border { Padding = new Thickness(17, 6, 17, 6), BorderThickness = new Thickness(1) };
         island.Cursor = Cursors.SizeAll;
         island.MouseLeftButtonDown += OnMouseLeftButtonDown;
         island.PreviewTouchDown += OnTouchDown;
         island.PreviewTouchMove += OnTouchMove;
         island.PreviewTouchUp += OnTouchUp;
-        island.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
-        island.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        timeText = new TextBlock { FontSize = 25, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-        timeText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        var lesson = new StackPanel { Margin = new Thickness(22, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        lessonText = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold };
-        lessonText.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
-        detailText = new TextBlock { FontSize = 12, Margin = new Thickness(0, 3, 0, 0) };
-        detailText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        timeText = new TextBlock { FontSize = 18, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        var lesson = new StackPanel { Margin = new Thickness(15, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        lessonText = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        detailText = new TextBlock { FontSize = 11, Margin = new Thickness(0, 1, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         lesson.Children.Add(lessonText); lesson.Children.Add(detailText);
         Grid.SetColumn(lesson, 1); grid.Children.Add(timeText); grid.Children.Add(lesson);
         var layers = new Grid();
         layers.Children.Add(grid);
         notificationText = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, FontSize = 16, FontWeight = FontWeights.SemiBold };
-        notificationText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
         notificationOverlay = new Border { Padding = new Thickness(18, 8, 18, 8), Visibility = Visibility.Collapsed,
             Child = notificationText };
-        notificationOverlay.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
         layers.Children.Add(notificationOverlay);
         island.Child = layers; window.Content = island;
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -181,7 +191,7 @@ public sealed class ClassIslandPresentationService
             lessonText!.Text = $"接下来 · {next.Subject.Name}";
             detailText!.Text = $"{next.Time.StartTime:hh\\:mm} 开始  {next.Subject.TeacherName}".Trim();
         }
-        else { lessonText!.Text = "当前没有课程"; detailText!.Text = "ClassIsland · ExusiAI"; }
+        else { lessonText!.Text = lessons.Count == 0 ? "今天没有课程。" : "当前没有课程"; detailText!.Text = ""; }
     }
 
     private void ShowNotification(ClassIslandNotificationRequest request)
@@ -211,8 +221,18 @@ public sealed class ClassIslandPresentationService
     {
         if (window is null || island is null) return;
         var s = appearance.Settings;
-        window.Width = s.Width * s.Scale; window.Height = s.Height * s.Scale; window.Opacity = s.Opacity; window.Topmost = s.Topmost;
-        island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius, s.Height / 2));
+        window.Width = s.Width * s.Scale; window.Height = s.Height * s.Scale; window.Topmost = s.Topmost;
+        window.BeginAnimation(UIElement.OpacityProperty, null);
+        window.Opacity = s.FadeOnPointerEnter && window.IsMouseOver ? s.HoverOpacity : s.Opacity;
+        island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius, s.Height / 2) * s.Scale);
+        var light = s.IslandTheme == ClassIslandIslandTheme.LightGlass;
+        island.Background = new SolidColorBrush(light ? Color.FromArgb(238, 242, 246, 252) : Color.FromArgb(234, 13, 15, 19));
+        island.BorderBrush = new SolidColorBrush(light ? Color.FromArgb(120, 60, 70, 85) : Color.FromArgb(115, 220, 228, 240));
+        timeText!.Foreground = new SolidColorBrush(light ? Color.FromRgb(38, 43, 51) : Colors.White);
+        lessonText!.Foreground = timeText.Foreground;
+        detailText!.Foreground = new SolidColorBrush(light ? Color.FromRgb(90, 98, 110) : Color.FromRgb(205, 212, 220));
+        notificationText!.Foreground = timeText.Foreground;
+        notificationOverlay!.Background = island.Background;
         if (PresentationSource.FromVisual(window) is null) return;
         var area = GetWorkArea(window, useSavedMonitor: true);
         window.Left = s.DockPosition switch
@@ -231,6 +251,15 @@ public sealed class ClassIslandPresentationService
         window.Left = position.X;
         window.Top = position.Y;
         island.Clip = new RectangleGeometry(new Rect(0, 0, window.Width, window.Height), island.CornerRadius.TopLeft, island.CornerRadius.TopLeft);
+    }
+
+    private void AnimateOpacity(bool pointerInside)
+    {
+        if (window is null) return;
+        var s = appearance.Settings;
+        var target = pointerInside && s.FadeOnPointerEnter ? s.HoverOpacity : s.Opacity;
+        window.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(target, TimeSpan.FromMilliseconds(180))
+        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.HoldEnd });
     }
 
     private Rect GetWorkArea(Window target, bool useSavedMonitor)

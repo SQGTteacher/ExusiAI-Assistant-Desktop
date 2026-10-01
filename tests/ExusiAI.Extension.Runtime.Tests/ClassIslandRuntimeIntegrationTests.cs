@@ -242,6 +242,42 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task AppearanceMigratesUntouchedWidePresetToCompactIsland()
+    {
+        using var root = new TemporaryDirectory();
+        var config = Path.Combine(root.Path, "Config");
+        Directory.CreateDirectory(config);
+        await File.WriteAllTextAsync(Path.Combine(config, "Appearance.json"),
+            "{\"Width\":620,\"Height\":72,\"CornerRadius\":28}");
+        var appearance = new ClassIslandAppearanceService(root.Path);
+        await appearance.LoadAsync();
+        Assert.Equal(440, appearance.Settings.Width);
+        Assert.Equal(52, appearance.Settings.Height);
+        Assert.True(appearance.Settings.FadeOnPointerEnter);
+        appearance.Settings.IslandTheme = ClassIslandIslandTheme.LightGlass;
+        appearance.Settings.HoverOpacity = 0.12;
+        await appearance.SaveAsync();
+        var reloaded = new ClassIslandAppearanceService(root.Path);
+        await reloaded.LoadAsync();
+        Assert.Equal(ClassIslandIslandTheme.LightGlass, reloaded.Settings.IslandTheme);
+        Assert.Equal(0.12, reloaded.Settings.HoverOpacity);
+        Assert.Equal(440, reloaded.Settings.Width);
+    }
+
+    [Fact]
+    public async Task AppearanceLeavesCustomWidthUntouched()
+    {
+        using var root = new TemporaryDirectory();
+        var config = Path.Combine(root.Path, "Config");
+        Directory.CreateDirectory(config);
+        await File.WriteAllTextAsync(Path.Combine(config, "Appearance.json"),
+            "{\"Width\":500,\"Height\":72}");
+        var appearance = new ClassIslandAppearanceService(root.Path);
+        await appearance.LoadAsync();
+        Assert.Equal(500, appearance.Settings.Width);
+    }
+
+    [Fact]
     public void WindowPlacementKeepsDraggableAreaVisibleAcrossMonitorBounds()
     {
         var secondary = new Rect(-1920, 0, 1920, 1040);
