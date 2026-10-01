@@ -163,6 +163,23 @@ public sealed class ClassIslandRuntimeIntegrationTests
         var lessons = timetable.GetLessons(new DateTime(2026, 9, 28, 8, 10, 0), anchor);
         Assert.Single(lessons);
         Assert.Equal("数学", lessons[0].Subject.Name);
+        timetable.RotationAnchor = anchor;
+        Assert.Single(timetable.GetLessons(new DateTime(2026, 9, 28, 8, 10, 0)));
+    }
+
+    [Fact]
+    public async Task GeneralSettingsPreserveUpstreamFieldsAndRotationAnchor()
+    {
+        using var root = new TemporaryDirectory();
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "Settings.json"),
+            "{\"SingleWeekStartTime\":\"2026-09-21T00:00:00\",\"UnknownSetting\":{\"Keep\":true}}");
+        var settings = new ClassIslandSettingsService(root.Path);
+        await settings.LoadAsync();
+        Assert.Equal(new DateOnly(2026, 9, 21), settings.SingleWeekStartTime);
+        await settings.SaveGeneralAsync(new DateOnly(2026, 9, 28), 3.5, "ntp.aliyun.com");
+        using var saved = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(root.Path, "Settings.json")));
+        Assert.True(saved.RootElement.GetProperty("UnknownSetting").GetProperty("Keep").GetBoolean());
+        Assert.Equal(3.5, saved.RootElement.GetProperty("TimeOffsetSeconds").GetDouble());
     }
 
     [Fact]

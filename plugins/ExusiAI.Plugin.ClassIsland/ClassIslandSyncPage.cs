@@ -43,6 +43,9 @@ internal sealed class ClassIslandSyncPage : UserControl
         title.Children.Add(new TextBlock { Text = "Misha · ExusiAI 原生插件", FontSize = 11, Foreground = Muted, Margin = new Thickness(0, 3, 0, 0) });
         sideGrid.Children.Add(title);
         var menu = new StackPanel();
+        menu.Children.Add(new TextBlock { Text = "通用", FontSize = 11, Foreground = Muted, Margin = new Thickness(12, 10, 0, 7) });
+        AddNavigation(menu, "basic", "基本", ShowBasic);
+        AddNavigation(menu, "clock", "时钟", ShowClock);
         menu.Children.Add(new TextBlock { Text = "主界面", FontSize = 11, Foreground = Muted, Margin = new Thickness(12, 10, 0, 7) });
         AddNavigation(menu, "overview", "信息岛", ShowOverview);
         AddNavigation(menu, "profile", "档案与课表", ShowProfile);
@@ -53,7 +56,8 @@ internal sealed class ClassIslandSyncPage : UserControl
         AddNavigation(menu, "notifications", "提醒", ShowNotifications);
         AddNavigation(menu, "weather", "天气", ShowWeather);
         AddNavigation(menu, "sync", "同步", ShowSync);
-        Grid.SetRow(menu, 1); sideGrid.Children.Add(menu);
+        var menuScroll = new ScrollViewer { Content = menu, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Grid.SetRow(menuScroll, 1); sideGrid.Children.Add(menuScroll);
         var footer = new TextBlock { Text = "配置保持 ClassIsland JSON 兼容", Foreground = Muted, FontSize = 10, Margin = new Thickness(11, 10, 11, 0), TextWrapping = TextWrapping.Wrap };
         Grid.SetRow(footer, 2); sideGrid.Children.Add(footer); side.Child = sideGrid; root.Children.Add(side);
         contentHost.Margin = new Thickness(22, 18, 18, 18); Grid.SetColumn(contentHost, 1); root.Children.Add(contentHost); frame.Child = root;
@@ -80,6 +84,45 @@ internal sealed class ClassIslandSyncPage : UserControl
         stack.Children.Add(Section("当前运行状态", profile is null ? "尚未导入档案。请前往“同步”导入 ClassIsland 备份或 Profile JSON。" :
             $"档案：{profile.Name}\n科目：{profile.Subjects.Count}　时间表：{profile.TimeLayouts.Count}　课表：{profile.ClassPlans.Count}　课表群：{profile.ClassPlanGroups.Count}\n组件方案：{core.Components.CurrentConfigName}　提醒队列：{(core.Notifications.Current is null ? "空闲" : core.Notifications.Current.State.ToString())}"));
         Present(body);
+    }
+
+    private void ShowBasic()
+    {
+        Activate("basic"); var body = Page("基本", "与 ClassIsland Settings.json 保持相同的学期日期字段。", out var stack);
+        var anchor = new DatePicker
+        {
+            SelectedDate = core.Settings.SingleWeekStartTime?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today,
+            Width = 190, MinHeight = Metric("TouchCompactTargetHeight", 40)
+        };
+        stack.Children.Add(Field("学期开始时间（轮换课表起点）", anchor));
+        var save = Primary("保存并更新课表");
+        save.Click += async (_, _) =>
+        {
+            if (anchor.SelectedDate is not { } selected) return;
+            var date = DateOnly.FromDateTime(selected);
+            await core.Settings.SaveGeneralAsync(date, core.Settings.TimeOffsetSeconds, core.Settings.ExactTimeServer);
+            core.Timetable.RotationAnchor = date;
+            ShowBasic();
+        };
+        stack.Children.Add(save); Present(body);
+    }
+
+    private void ShowClock()
+    {
+        Activate("clock"); var body = Page("时钟", "调整信息岛时间与课表时间的偏移值。", out var stack);
+        stack.Children.Add(Section("当前时间", DateTime.Now.AddSeconds(core.Settings.TimeOffsetSeconds).ToString("yyyy年M月d日 HH:mm:ss")));
+        var offset = Numeric(core.Settings.TimeOffsetSeconds);
+        stack.Children.Add(Field("时间偏移（秒）", offset));
+        var save = Primary("保存并应用");
+        save.Click += async (_, _) =>
+        {
+            var date = core.Settings.SingleWeekStartTime ?? DateOnly.FromDateTime(DateTime.Today);
+            var seconds = Parse(offset, core.Settings.TimeOffsetSeconds);
+            if (!double.IsFinite(seconds)) return;
+            await core.Settings.SaveGeneralAsync(date, Math.Clamp(seconds, -86400, 86400), core.Settings.ExactTimeServer);
+            ShowClock();
+        };
+        stack.Children.Add(save); Present(body);
     }
 
     private void ShowProfile()

@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace ExusiAI.Plugin.ClassIsland;
 
 public enum ClassIslandDockPosition { TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, BottomRight }
-public enum ClassIslandIslandTheme { DarkGlass, LightGlass, SqgtLiquidGlass }
+public enum ClassIslandIslandTheme { DarkGlass, LightGlass, SqgtLiquidGlass, SqgtLiquidGlassLight }
 
 public sealed class ClassIslandAppearanceSettings
 {
@@ -20,7 +20,7 @@ public sealed class ClassIslandAppearanceSettings
     public bool ShowSeconds { get; set; }
     public bool FadeOnPointerEnter { get; set; } = true;
     public double HoverOpacity { get; set; } = 0.25;
-    public ClassIslandIslandTheme IslandTheme { get; set; } = ClassIslandIslandTheme.DarkGlass;
+    public ClassIslandIslandTheme IslandTheme { get; set; } = ClassIslandIslandTheme.SqgtLiquidGlass;
     public string? MonitorDeviceName { get; set; }
 }
 

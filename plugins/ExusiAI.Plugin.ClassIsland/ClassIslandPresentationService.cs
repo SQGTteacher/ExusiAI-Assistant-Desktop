@@ -7,6 +7,10 @@ using System.Windows.Interop;
 using System.Windows.Media.Animation;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Windows.Shapes;
+using ShapePath = System.Windows.Shapes.Path;
+using System.Windows.Documents;
+using System.Globalization;
 using Forms = System.Windows.Forms;
 
 namespace ExusiAI.Plugin.ClassIsland;
@@ -25,6 +29,7 @@ public sealed class ClassIslandPresentationService
     private readonly ClassIslandAppearanceService appearance;
     private readonly ClassIslandNotificationService notifications;
     private readonly ClassIslandWeatherService weather;
+    private readonly ClassIslandSettingsService settings;
     private Window? window;
     private Border? island;
     private TextBlock? timeText;
@@ -35,15 +40,16 @@ public sealed class ClassIslandPresentationService
     private Grid? defaultContent;
     private StackPanel? componentContent;
     private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text)> componentTexts = [];
+    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text, ShapePath? Progress)> countdownViews = [];
     private readonly List<(Grid Host, int Seconds)> slideHosts = [];
     private DispatcherTimer? timer;
     private TouchDevice? dragTouch;
     private Point dragStartScreen;
     private Point dragStartWindow;
 
-    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications, ClassIslandWeatherService weather)
+    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications, ClassIslandWeatherService weather, ClassIslandSettingsService settings)
     {
-        this.timetable = timetable; this.components = components; this.appearance = appearance; this.notifications = notifications; this.weather = weather;
+        this.timetable = timetable; this.components = components; this.appearance = appearance; this.notifications = notifications; this.weather = weather; this.settings = settings;
         notifications.RequestStarted += (_, request) => ShowNotification(request);
         notifications.RequestCompleted += (_, request) => HideNotification(request);
         components.ComponentsChanged += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
@@ -131,6 +137,7 @@ public sealed class ClassIslandPresentationService
         if (componentContent is null || defaultContent is null) return;
         componentContent.Children.Clear();
         componentTexts.Clear();
+        countdownViews.Clear();
         slideHosts.Clear();
         foreach (var line in components.CurrentComponents.Lines.Where(x => x.IsVisible))
         {
@@ -157,6 +164,22 @@ public sealed class ClassIslandPresentationService
         if (depth > 8 || !Guid.TryParse(component.Id, out var id)) return null;
         if (id == new Guid("AB0F26D5-9DF6-4575-B844-73B04D0907C1"))
             return new Border { Width = 1, Height = 20, Background = new SolidColorBrush(Color.FromArgb(100, 240, 245, 255)) };
+        if (id == new Guid("7C645D35-8151-48BA-B4AC-15017460D994"))
+        {
+            var line = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            ShapePath? progress = null;
+            if (ReadSettingBool(component.Settings, "ShowProgress"))
+            {
+                var ring = new Grid { Width = 22, Height = 22, Margin = new Thickness(0, 0, 6, 0) };
+                ring.Children.Add(new Ellipse { Stroke = new SolidColorBrush(Color.FromArgb(72, 218, 225, 235)), StrokeThickness = 2.6 });
+                progress = new ShapePath { Stroke = Brushes.Red, StrokeThickness = 3.1, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
+                ring.Children.Add(progress); line.Children.Add(ring);
+            }
+            var label = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            line.Children.Add(label);
+            countdownViews.Add((component, label, progress));
+            return line;
+        }
         var group = id == new Guid("C911D762-107F-40C6-84CC-0146AB3C86B1");
         var rolling = id == new Guid("70FCD5EA-3FAE-4E06-ACA2-4F4DF47F9ACD");
         var stack = id == new Guid("2D849ECE-9F21-4C78-9434-415CFC283294");
@@ -210,6 +233,45 @@ public sealed class ClassIslandPresentationService
     private static int ReadSettingInt(JsonElement? settings, string key, int fallback) =>
         settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) &&
         value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : fallback;
+
+    private static bool ReadSettingBool(JsonElement? settings, string key) =>
+        settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.True;
+
+    private static string ReadSettingString(JsonElement? settings, string key, string fallback) =>
+        settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? fallback : fallback;
+
+    private void UpdateCountdown(ClassIslandComponentSettings settings, TextBlock label, ShapePath? progress, DateTime now)
+    {
+        var text = ClassIslandComponentText.Resolve(settings, timetable, now) ?? "";
+        var name = ReadSettingString(settings.Settings, "CountDownName", "倒计时");
+        var connector = ReadSettingString(settings.Settings, "CountDownConnector", "还有");
+        var compact = ReadSettingBool(settings.Settings, "IsCompactModeEnabled");
+        var prefix = compact ? $"{name} " : $"距离 {name} {connector} ";
+        var value = text.StartsWith(prefix, StringComparison.Ordinal) ? text[prefix.Length..] : text;
+        Color accent;
+        try { accent = (Color)ColorConverter.ConvertFromString(ReadSettingString(settings.Settings, "FontColor", "#FFFF0000")); }
+        catch (FormatException) { accent = Colors.Red; }
+        var foreground = appearance.Settings.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight
+            ? Brushes.Black : Brushes.White;
+        label.Inlines.Clear();
+        if (!compact) label.Inlines.Add(new Run("距离 ") { Foreground = foreground });
+        label.Inlines.Add(new Run(name) { Foreground = new SolidColorBrush(accent) });
+        if (!compact) label.Inlines.Add(new Run($" {connector} ") { Foreground = foreground });
+        else label.Inlines.Add(new Run(" ") { Foreground = foreground });
+        label.Inlines.Add(new Run(value) { Foreground = new SolidColorBrush(accent) });
+        if (progress is null) return;
+        progress.Stroke = new SolidColorBrush(accent);
+        if (!DateTime.TryParse(ReadSettingString(settings.Settings, "StartTime", ""), CultureInfo.InvariantCulture, DateTimeStyles.None, out var start) ||
+            !DateTime.TryParse(ReadSettingString(settings.Settings, "OverTime", ""), CultureInfo.InvariantCulture, DateTimeStyles.None, out var end) || end <= start)
+        { progress.Data = Geometry.Empty; return; }
+        var fraction = Math.Clamp((now - start).TotalSeconds / (end - start).TotalSeconds, 0, .9999);
+        var angle = fraction * 2 * Math.PI - Math.PI / 2;
+        var figure = new PathFigure { StartPoint = new Point(11, 1), IsClosed = false };
+        figure.Segments.Add(new ArcSegment(new Point(11 + 10 * Math.Cos(angle), 11 + 10 * Math.Sin(angle)),
+            new Size(10, 10), 0, fraction > .5, SweepDirection.Clockwise, true));
+        progress.Data = new PathGeometry([figure]);
+    }
 
     private async void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -274,9 +336,11 @@ public sealed class ClassIslandPresentationService
     private void Refresh()
     {
         if (timeText is null) return;
-        var now = DateTime.Now;
+        var now = DateTime.Now.AddSeconds(settings.TimeOffsetSeconds);
         foreach (var (component, text) in componentTexts)
             text.Text = ClassIslandComponentText.Resolve(component, timetable, now, weather.Current) ?? "";
+        foreach (var (settings, text, progress) in countdownViews)
+            UpdateCountdown(settings, text, progress, now);
         foreach (var (host, seconds) in slideHosts)
         {
             var active = (int)((now.Ticks / TimeSpan.TicksPerSecond / seconds) % host.Children.Count);
@@ -333,15 +397,11 @@ public sealed class ClassIslandPresentationService
         window.BeginAnimation(UIElement.OpacityProperty, null);
         window.Opacity = s.FadeOnPointerEnter && window.IsMouseOver ? s.HoverOpacity : s.Opacity;
         island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius * s.Scale, window.Height / 2));
-        var light = s.IslandTheme == ClassIslandIslandTheme.LightGlass;
-        var liquid = s.IslandTheme == ClassIslandIslandTheme.SqgtLiquidGlass;
-        island.Background = liquid ? LiquidGlassSurface() : new SolidColorBrush(light ? Color.FromArgb(238, 242, 246, 252) : Color.FromArgb(234, 13, 15, 19));
-        island.BorderBrush = liquid ? new LinearGradientBrush(new GradientStopCollection
-        {
-            new(Color.FromArgb(245, 255, 255, 255), 0), new(Color.FromArgb(40, 46, 65, 85), 0.25),
-            new(Color.FromArgb(223, 244, 252, 255), 0.465), new(Color.FromArgb(53, 56, 76, 96), 0.735),
-            new(Color.FromArgb(234, 255, 255, 255), 1)
-        }, new Point(0, 0), new Point(1, 1)) : new SolidColorBrush(light ? Color.FromArgb(120, 60, 70, 85) : Color.FromArgb(115, 220, 228, 240));
+        var light = s.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight;
+        var liquidDark = s.IslandTheme == ClassIslandIslandTheme.SqgtLiquidGlass;
+        var liquidLight = s.IslandTheme == ClassIslandIslandTheme.SqgtLiquidGlassLight;
+        island.Background = liquidDark ? ClassIslandLiquidGlassBrushes.DarkSurface : liquidLight ? ClassIslandLiquidGlassBrushes.LightSurface : new SolidColorBrush(light ? Color.FromArgb(238, 242, 246, 252) : Color.FromArgb(234, 13, 15, 19));
+        island.BorderBrush = liquidDark ? ClassIslandLiquidGlassBrushes.DarkEdge : liquidLight ? ClassIslandLiquidGlassBrushes.LightEdge : new SolidColorBrush(light ? Color.FromArgb(120, 60, 70, 85) : Color.FromArgb(115, 220, 228, 240));
         timeText!.Foreground = new SolidColorBrush(light ? Color.FromRgb(38, 43, 51) : Colors.White);
         lessonText!.Foreground = timeText.Foreground;
         detailText!.Foreground = new SolidColorBrush(light ? Color.FromRgb(90, 98, 110) : Color.FromRgb(205, 212, 220));
@@ -368,22 +428,6 @@ public sealed class ClassIslandPresentationService
         island.Clip = new RectangleGeometry(new Rect(0, 0, window.Width, window.Height), island.CornerRadius.TopLeft, island.CornerRadius.TopLeft);
     }
 
-    // WPF has no Avalonia ConicGradientBrush. The optical surface keeps the
-    // upstream Crystal stops; the diagonal rim is a fallback for its conic edge.
-    private static Brush LiquidGlassSurface()
-    {
-        var baseBrush = new SolidColorBrush(Color.FromArgb(195, 9, 17, 29));
-        var sheen = new LinearGradientBrush(new GradientStopCollection
-        {
-            new(Color.FromArgb(48, 245, 250, 255), 0), new(Color.FromArgb(32, 246, 251, 255), 0.16),
-            new(Color.FromArgb(20, 249, 252, 255), 0.4), new(Color.FromArgb(24, 247, 251, 255), 0.68),
-            new(Color.FromArgb(44, 238, 247, 255), 1)
-        }, new Point(0, 0), new Point(0, 1));
-        var surface = new DrawingGroup();
-        surface.Children.Add(new GeometryDrawing(baseBrush, null, new RectangleGeometry(new Rect(0, 0, 1, 1))));
-        surface.Children.Add(new GeometryDrawing(sheen, null, new RectangleGeometry(new Rect(0, 0, 1, 1))));
-        return new DrawingBrush(surface) { Stretch = Stretch.Fill };
-    }
 
     private void AnimateOpacity(bool pointerInside)
     {
