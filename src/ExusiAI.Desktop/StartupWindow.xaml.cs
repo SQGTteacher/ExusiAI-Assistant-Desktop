@@ -8,11 +8,11 @@ public partial class StartupWindow : Window
 
     public void SetStage(string stage) => StageText.Text = stage;
 
-    public void ShowFailure(string stage, string logPath)
+    public void ShowFailure(string stage, string reason, string logPath)
     {
         Title = "ExusiAI 启动失败";
         StageText.Text = $"启动失败 · {stage}";
-        DetailsText.Text = $"请检查启动日志：{logPath}";
+        DetailsText.Text = $"{reason}\n\n完整异常记录：{logPath}";
         StartupProgress.IsIndeterminate = false;
         StartupProgress.Visibility = Visibility.Collapsed;
         CloseButton.Visibility = Visibility.Visible;

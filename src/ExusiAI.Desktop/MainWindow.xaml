@@ -11,7 +11,7 @@
 
     <Grid x:Name="ChromeRoot" Background="{DynamicResource AppBackgroundBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="{DynamicResource TouchTitleBarHeight}" />
+            <RowDefinition x:Name="TitleBarRow" Height="48" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
