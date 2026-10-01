@@ -163,6 +163,23 @@ public sealed class ClassIslandRuntimeIntegrationTests
         var lessons = timetable.GetLessons(new DateTime(2026, 9, 28, 8, 10, 0), anchor);
         Assert.Single(lessons);
         Assert.Equal("数学", lessons[0].Subject.Name);
+        timetable.RotationAnchor = anchor;
+        Assert.Single(timetable.GetLessons(new DateTime(2026, 9, 28, 8, 10, 0)));
+    }
+
+    [Fact]
+    public async Task GeneralSettingsPreserveUpstreamFieldsAndRotationAnchor()
+    {
+        using var root = new TemporaryDirectory();
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "Settings.json"),
+            "{\"SingleWeekStartTime\":\"2026-09-21T00:00:00\",\"UnknownSetting\":{\"Keep\":true}}");
+        var settings = new ClassIslandSettingsService(root.Path);
+        await settings.LoadAsync();
+        Assert.Equal(new DateOnly(2026, 9, 21), settings.SingleWeekStartTime);
+        await settings.SaveGeneralAsync(new DateOnly(2026, 9, 28), 3.5, "ntp.aliyun.com");
+        using var saved = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(root.Path, "Settings.json")));
+        Assert.True(saved.RootElement.GetProperty("UnknownSetting").GetProperty("Keep").GetBoolean());
+        Assert.Equal(3.5, saved.RootElement.GetProperty("TimeOffsetSeconds").GetDouble());
     }
 
     [Fact]
@@ -239,6 +256,42 @@ public sealed class ClassIslandRuntimeIntegrationTests
         await reloaded.LoadAsync();
         Assert.Equal(30, reloaded.Settings.CornerRadius);
         Assert.Equal(ClassIslandDockPosition.BottomRight, reloaded.Settings.DockPosition);
+    }
+
+    [Fact]
+    public async Task AppearanceMigratesUntouchedWidePresetToCompactIsland()
+    {
+        using var root = new TemporaryDirectory();
+        var config = Path.Combine(root.Path, "Config");
+        Directory.CreateDirectory(config);
+        await File.WriteAllTextAsync(Path.Combine(config, "Appearance.json"),
+            "{\"Width\":620,\"Height\":72,\"CornerRadius\":28}");
+        var appearance = new ClassIslandAppearanceService(root.Path);
+        await appearance.LoadAsync();
+        Assert.Equal(440, appearance.Settings.Width);
+        Assert.Equal(52, appearance.Settings.Height);
+        Assert.True(appearance.Settings.FadeOnPointerEnter);
+        appearance.Settings.IslandTheme = ClassIslandIslandTheme.LightGlass;
+        appearance.Settings.HoverOpacity = 0.12;
+        await appearance.SaveAsync();
+        var reloaded = new ClassIslandAppearanceService(root.Path);
+        await reloaded.LoadAsync();
+        Assert.Equal(ClassIslandIslandTheme.LightGlass, reloaded.Settings.IslandTheme);
+        Assert.Equal(0.12, reloaded.Settings.HoverOpacity);
+        Assert.Equal(440, reloaded.Settings.Width);
+    }
+
+    [Fact]
+    public async Task AppearanceLeavesCustomWidthUntouched()
+    {
+        using var root = new TemporaryDirectory();
+        var config = Path.Combine(root.Path, "Config");
+        Directory.CreateDirectory(config);
+        await File.WriteAllTextAsync(Path.Combine(config, "Appearance.json"),
+            "{\"Width\":500,\"Height\":72}");
+        var appearance = new ClassIslandAppearanceService(root.Path);
+        await appearance.LoadAsync();
+        Assert.Equal(500, appearance.Settings.Width);
     }
 
     [Fact]
@@ -325,6 +378,71 @@ public sealed class ClassIslandRuntimeIntegrationTests
         Assert.Equal("课程表", ClassIslandComponentCatalog.Find("1DB2017D-E374-4BC6-9D57-0B4ADF03A6B8")?.Name);
         Assert.Equal("时钟", ClassIslandComponentCatalog.Find("9E1AF71D-8F77-4B21-A342-448787104DD9")?.Name);
         Assert.Equal(11, ClassIslandComponentCatalog.BuiltIn.Count);
+    }
+
+    [Fact]
+    public void BuiltInComponentTextReadsUpstreamSettings()
+    {
+        using var root = new TemporaryDirectory();
+        var timetable = new ClassIslandTimetableService(new ClassIslandProfileService(Path.Combine(root.Path, "Profiles")));
+        var now = new DateTime(2026, 10, 1, 9, 30, 15);
+        var clock = new ClassIslandComponentSettings
+        {
+            Id = "9E1AF71D-8F77-4B21-A342-448787104DD9",
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new { ShowSeconds = true })
+        };
+        Assert.Equal("09:30:15", ClassIslandComponentText.Resolve(clock, timetable, now));
+        var countdown = new ClassIslandComponentSettings
+        {
+            Id = "7C645D35-8151-48BA-B4AC-15017460D994",
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+            {
+                CountDownName = "高考", CountDownConnector = "还有", OverTime = "2026-10-11T00:00:00"
+            })
+        };
+        Assert.Equal("距离 高考 还有 10天", ClassIslandComponentText.Resolve(countdown, timetable, now));
+        countdown.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountDownName = "高考", OverTime = "2026-10-11T00:00:00", IsCompactModeEnabled = true,
+            CustomStringFormat = "%D天 %h小时"
+        });
+        Assert.Equal("高考 10天 14小时", ClassIslandComponentText.Resolve(countdown, timetable, now));
+        clock.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new { ShowSeconds = false });
+        Assert.Equal("09 30", ClassIslandComponentText.Resolve(clock, timetable, new DateTime(2026, 10, 1, 9, 30, 14)));
+        countdown.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountDownName = "课间", CountdownSource = 1, CycleStartTime = "2026-10-01T08:00:00",
+            CycleDuration = "00:40:00", CycleBeforeDuration = "00:05:00", CycleAfterDuration = "00:05:00",
+            IsAdvancedCycleTimingEnabled = true, CustomStringFormat = "%m:%s"
+        });
+        Assert.Equal("距离 课间 还有 39:45", ClassIslandComponentText.Resolve(countdown, timetable, new DateTime(2026, 10, 1, 8, 55, 15)));
+        countdown.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountDownName = "课间", CountdownSource = 1, CycleStartTime = "2026-10-01T08:00:00",
+            CycleDuration = "00:40:00", IsCycleCountLimited = true, CycleCountLimit = 1,
+            CustomStringFormat = "%m:%s"
+        });
+        Assert.Equal("距离 课间 还有 00:00", ClassIslandComponentText.Resolve(countdown, timetable, new DateTime(2026, 10, 1, 10, 0, 0)));
+        var weather = new ClassIslandComponentSettings
+        {
+            Id = "CA495086-E297-4BEB-9603-C5C1C1A8551E",
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new { MainWeatherInfoKind = 0 })
+        };
+        var snapshot = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            current = new { temperature = new { value = "22", unit = "°C" } },
+            alerts = new[] { new { title = "大风预警" } }
+        });
+        Assert.Equal("22°C  大风预警", ClassIslandComponentText.Resolve(weather, timetable, now, snapshot));
+        var group = new ClassIslandComponentSettings
+        {
+            Id = "C911D762-107F-40C6-84CC-0146AB3C86B1",
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+            {
+                Children = new[] { new { Id = "EE8F66BD-C423-4E7C-AB46-AA9976B00E08", Settings = new { TextContent = "测试" } } }
+            })
+        };
+        Assert.Equal("测试", ClassIslandComponentText.Resolve(group, timetable, now));
     }
 
     [Fact]

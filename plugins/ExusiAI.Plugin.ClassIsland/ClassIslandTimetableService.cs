@@ -10,6 +10,7 @@ public sealed record ClassIslandLesson(
 public sealed class ClassIslandTimetableService
 {
     private readonly ClassIslandProfileService profiles;
+    public DateOnly? RotationAnchor { get; set; }
 
     public ClassIslandTimetableService(ClassIslandProfileService profiles) => this.profiles = profiles;
 
@@ -22,7 +23,7 @@ public sealed class ClassIslandTimetableService
     {
         var profile = profiles.Current;
         if (profile is null) return [];
-        var planPair = ResolvePlanPair(now, rotationAnchor);
+        var planPair = ResolvePlanPair(now, rotationAnchor ?? RotationAnchor);
         if (planPair is null || !profile.TimeLayouts.TryGetValue(planPair.Value.Value.TimeLayoutId, out var layout)) return [];
         var lessonTimes = layout.Layouts.Where(x => x.TimeType == 0).ToArray();
         var count = Math.Min(lessonTimes.Length, planPair.Value.Value.Classes.Count);
@@ -39,11 +40,12 @@ public sealed class ClassIslandTimetableService
     public IReadOnlyList<ClassIslandScheduleItem> GetScheduleItems(DateTime now, DateOnly? rotationAnchor = null)
     {
         var profile = profiles.Current;
-        return profile?.ScheduleItems.Values.Where(x => Matches(x.EnableRule, now, rotationAnchor)).OrderBy(x => x.StartTime).ToArray() ?? [];
+        return profile?.ScheduleItems.Values.Where(x => Matches(x.EnableRule, now, rotationAnchor ?? RotationAnchor)).OrderBy(x => x.StartTime).ToArray() ?? [];
     }
 
     private KeyValuePair<Guid, ClassIslandClassPlan>? ResolvePlanPair(DateTime now, DateOnly? rotationAnchor)
     {
+        rotationAnchor ??= RotationAnchor;
         var profile = profiles.Current;
         if (profile is null) return null;
         if (profile.IsOverlayClassPlanEnabled && profile.OverlayClassPlanId is { } overlay && profile.ClassPlans.TryGetValue(overlay, out var overlayPlan))

@@ -43,13 +43,21 @@ internal sealed class ClassIslandSyncPage : UserControl
         title.Children.Add(new TextBlock { Text = "Misha · ExusiAI 原生插件", FontSize = 11, Foreground = Muted, Margin = new Thickness(0, 3, 0, 0) });
         sideGrid.Children.Add(title);
         var menu = new StackPanel();
+        menu.Children.Add(new TextBlock { Text = "通用", FontSize = 11, Foreground = Muted, Margin = new Thickness(12, 10, 0, 7) });
+        AddNavigation(menu, "basic", "基本", ShowBasic);
+        AddNavigation(menu, "clock", "时钟", ShowClock);
+        menu.Children.Add(new TextBlock { Text = "主界面", FontSize = 11, Foreground = Muted, Margin = new Thickness(12, 10, 0, 7) });
         AddNavigation(menu, "overview", "信息岛", ShowOverview);
         AddNavigation(menu, "profile", "档案与课表", ShowProfile);
-        AddNavigation(menu, "components", "组件布局", ShowComponents);
+        AddNavigation(menu, "components", "组件", ShowComponents);
+        AddNavigation(menu, "appearance", "外观", ShowAppearance);
+        AddNavigation(menu, "window", "窗口", ShowWindow);
+        menu.Children.Add(new TextBlock { Text = "服务", FontSize = 11, Foreground = Muted, Margin = new Thickness(12, 10, 0, 7) });
         AddNavigation(menu, "notifications", "提醒", ShowNotifications);
-        AddNavigation(menu, "appearance", "外观与位置", ShowAppearance);
+        AddNavigation(menu, "weather", "天气", ShowWeather);
         AddNavigation(menu, "sync", "同步", ShowSync);
-        Grid.SetRow(menu, 1); sideGrid.Children.Add(menu);
+        var menuScroll = new ScrollViewer { Content = menu, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Grid.SetRow(menuScroll, 1); sideGrid.Children.Add(menuScroll);
         var footer = new TextBlock { Text = "配置保持 ClassIsland JSON 兼容", Foreground = Muted, FontSize = 10, Margin = new Thickness(11, 10, 11, 0), TextWrapping = TextWrapping.Wrap };
         Grid.SetRow(footer, 2); sideGrid.Children.Add(footer); side.Child = sideGrid; root.Children.Add(side);
         contentHost.Margin = new Thickness(22, 18, 18, 18); Grid.SetColumn(contentHost, 1); root.Children.Add(contentHost); frame.Child = root;
@@ -76,6 +84,45 @@ internal sealed class ClassIslandSyncPage : UserControl
         stack.Children.Add(Section("当前运行状态", profile is null ? "尚未导入档案。请前往“同步”导入 ClassIsland 备份或 Profile JSON。" :
             $"档案：{profile.Name}\n科目：{profile.Subjects.Count}　时间表：{profile.TimeLayouts.Count}　课表：{profile.ClassPlans.Count}　课表群：{profile.ClassPlanGroups.Count}\n组件方案：{core.Components.CurrentConfigName}　提醒队列：{(core.Notifications.Current is null ? "空闲" : core.Notifications.Current.State.ToString())}"));
         Present(body);
+    }
+
+    private void ShowBasic()
+    {
+        Activate("basic"); var body = Page("基本", "与 ClassIsland Settings.json 保持相同的学期日期字段。", out var stack);
+        var anchor = new DatePicker
+        {
+            SelectedDate = core.Settings.SingleWeekStartTime?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today,
+            Width = 190, MinHeight = Metric("TouchCompactTargetHeight", 40)
+        };
+        stack.Children.Add(Field("学期开始时间（轮换课表起点）", anchor));
+        var save = Primary("保存并更新课表");
+        save.Click += async (_, _) =>
+        {
+            if (anchor.SelectedDate is not { } selected) return;
+            var date = DateOnly.FromDateTime(selected);
+            await core.Settings.SaveGeneralAsync(date, core.Settings.TimeOffsetSeconds, core.Settings.ExactTimeServer);
+            core.Timetable.RotationAnchor = date;
+            ShowBasic();
+        };
+        stack.Children.Add(save); Present(body);
+    }
+
+    private void ShowClock()
+    {
+        Activate("clock"); var body = Page("时钟", "调整信息岛时间与课表时间的偏移值。", out var stack);
+        stack.Children.Add(Section("当前时间", DateTime.Now.AddSeconds(core.Settings.TimeOffsetSeconds).ToString("yyyy年M月d日 HH:mm:ss")));
+        var offset = Numeric(core.Settings.TimeOffsetSeconds);
+        stack.Children.Add(Field("时间偏移（秒）", offset));
+        var save = Primary("保存并应用");
+        save.Click += async (_, _) =>
+        {
+            var date = core.Settings.SingleWeekStartTime ?? DateOnly.FromDateTime(DateTime.Today);
+            var seconds = Parse(offset, core.Settings.TimeOffsetSeconds);
+            if (!double.IsFinite(seconds)) return;
+            await core.Settings.SaveGeneralAsync(date, Math.Clamp(seconds, -86400, 86400), core.Settings.ExactTimeServer);
+            ShowClock();
+        };
+        stack.Children.Add(save); Present(body);
     }
 
     private void ShowProfile()
@@ -156,17 +203,60 @@ internal sealed class ClassIslandSyncPage : UserControl
         foreach (var item in core.Notifications.History.Reverse().Take(20)) stack.Children.Add(Section(item.Title, $"{item.CreatedAt:HH:mm:ss}　{item.Message}")); Present(body);
     }
 
+    private void ShowWeather()
+    {
+        Activate("weather"); var body = Page("天气", "使用 ClassIsland 的城市编号和天气数据服务；网络不可用时保留最近一次成功获取的数据。", out var stack);
+        var city = Input("ClassIsland 城市编号"); city.Text = core.Weather.CityId;
+        stack.Children.Add(Field("城市编号", city));
+        var actions = new WrapPanel(); var save = Primary("保存并更新天气");
+        save.Click += async (_, _) =>
+        {
+            try { await core.Weather.SetCityAsync(city.Text); ShowWeather(); }
+            catch (Exception error) when (error is IOException or System.Text.Json.JsonException or System.Net.Http.HttpRequestException)
+            { operationStatus!.Text = error.Message; }
+        };
+        var refresh = Secondary("立即刷新"); refresh.Click += async (_, _) => { await core.Weather.RefreshAsync(); ShowWeather(); };
+        actions.Children.Add(save); actions.Children.Add(refresh); stack.Children.Add(actions);
+        operationStatus = new TextBlock { Foreground = Accent, Margin = new Thickness(2, 8, 0, 0), TextWrapping = TextWrapping.Wrap }; stack.Children.Add(operationStatus);
+        stack.Children.Add(Section("天气数据", core.Weather.Summary));
+        Present(body);
+    }
+
     private void ShowAppearance()
     {
-        Activate("appearance"); var body = Page("信息岛外观与位置", "设置立即应用到桌面信息岛；圆角始终限制为实际高度的一半。", out var stack); var s = core.Appearance.Settings;
-        var dock = new ComboBox { MinHeight = Metric("TouchCompactTargetHeight", 40), Width = 220, ItemsSource = Enum.GetValues<ClassIslandDockPosition>(), SelectedItem = s.DockPosition, Margin = new Thickness(0, 4, 0, 8) }; stack.Children.Add(Field("停靠位置", dock));
-        var width = Numeric(s.Width); var height = Numeric(s.Height); var radius = Numeric(s.CornerRadius); var opacity = Numeric(s.Opacity); var scale = Numeric(s.Scale); var offsetX = Numeric(s.OffsetX); var offsetY = Numeric(s.OffsetY);
-        stack.Children.Add(Field("宽度", width)); stack.Children.Add(Field("高度", height)); stack.Children.Add(Field("圆角", radius)); stack.Children.Add(Field("透明度（0.25–1）", opacity)); stack.Children.Add(Field("缩放（0.6–2）", scale)); stack.Children.Add(Field("水平偏移", offsetX)); stack.Children.Add(Field("垂直偏移", offsetY));
-        var topmost = new CheckBox { Content = "始终置顶", IsChecked = s.Topmost, Margin = new Thickness(2, 6, 0, 6) }; var seconds = new CheckBox { Content = "显示秒数", IsChecked = s.ShowSeconds, Margin = new Thickness(2, 0, 0, 12) }; stack.Children.Add(topmost); stack.Children.Add(seconds);
+        Activate("appearance"); var body = Page("外观", "信息岛主题独立于 ExusiAI 主程序；更改会立即应用到桌面信息岛。", out var stack); var s = core.Appearance.Settings;
+        var theme = new ComboBox { MinHeight = Metric("TouchCompactTargetHeight", 40), Width = 220, ItemsSource = Enum.GetValues<ClassIslandIslandTheme>(), SelectedItem = s.IslandTheme };
+        stack.Children.Add(Field("信息岛专用主题（独立于主程序）", theme));
+        var radius = Numeric(s.CornerRadius); var opacity = Numeric(s.Opacity); var hoverOpacity = Numeric(s.HoverOpacity);
+        stack.Children.Add(Field("圆角", radius)); stack.Children.Add(Field("透明度（0.25–1）", opacity));
+        stack.Children.Add(Field("鼠标移入后的透明度", hoverOpacity));
+        var fade = new CheckBox { Content = "鼠标移入时淡化", IsChecked = s.FadeOnPointerEnter, Margin = new Thickness(2, 0, 0, 12) }; stack.Children.Add(fade);
         var save = Primary("保存并立即应用"); save.Click += async (_, _) =>
         {
-            s.DockPosition = dock.SelectedItem is ClassIslandDockPosition value ? value : s.DockPosition; s.Width = Parse(width, s.Width); s.Height = Parse(height, s.Height); s.CornerRadius = Parse(radius, s.CornerRadius); s.Opacity = Parse(opacity, s.Opacity); s.Scale = Parse(scale, s.Scale); s.OffsetX = Parse(offsetX, s.OffsetX); s.OffsetY = Parse(offsetY, s.OffsetY); s.Topmost = topmost.IsChecked == true; s.ShowSeconds = seconds.IsChecked == true;
+            s.IslandTheme = theme.SelectedItem is ClassIslandIslandTheme selected ? selected : s.IslandTheme;
+            s.CornerRadius = Parse(radius, s.CornerRadius); s.Opacity = Parse(opacity, s.Opacity); s.HoverOpacity = Parse(hoverOpacity, s.HoverOpacity); s.FadeOnPointerEnter = fade.IsChecked == true;
             await core.Appearance.SaveAsync(); core.Presentation.RefreshAppearance(); ShowAppearance();
+        }; stack.Children.Add(save); Present(body);
+    }
+
+    private void ShowWindow()
+    {
+        Activate("window"); var body = Page("窗口", "控制信息岛在教学屏幕上的尺寸、停靠位置和层级。", out var stack); var s = core.Appearance.Settings;
+        var dock = new ComboBox { MinHeight = Metric("TouchCompactTargetHeight", 40), Width = 220, ItemsSource = Enum.GetValues<ClassIslandDockPosition>(), SelectedItem = s.DockPosition };
+        stack.Children.Add(Field("停靠位置", dock));
+        var width = Numeric(s.Width); var height = Numeric(s.Height); var scale = Numeric(s.Scale); var offsetX = Numeric(s.OffsetX); var offsetY = Numeric(s.OffsetY);
+        stack.Children.Add(Field("宽度", width)); stack.Children.Add(Field("高度", height)); stack.Children.Add(Field("缩放", scale));
+        stack.Children.Add(Field("水平偏移", offsetX)); stack.Children.Add(Field("垂直偏移", offsetY));
+        var topmost = new CheckBox { Content = "始终置顶", IsChecked = s.Topmost, Margin = new Thickness(2, 6, 0, 8) };
+        var seconds = new CheckBox { Content = "时钟显示秒数", IsChecked = s.ShowSeconds, Margin = new Thickness(2, 0, 0, 12) };
+        stack.Children.Add(topmost); stack.Children.Add(seconds);
+        var save = Primary("保存并立即应用"); save.Click += async (_, _) =>
+        {
+            s.DockPosition = dock.SelectedItem is ClassIslandDockPosition position ? position : s.DockPosition;
+            s.Width = Parse(width, s.Width); s.Height = Parse(height, s.Height); s.Scale = Parse(scale, s.Scale);
+            s.OffsetX = Parse(offsetX, s.OffsetX); s.OffsetY = Parse(offsetY, s.OffsetY);
+            s.Topmost = topmost.IsChecked == true; s.ShowSeconds = seconds.IsChecked == true;
+            await core.Appearance.SaveAsync(); core.Presentation.RefreshAppearance(); ShowWindow();
         }; stack.Children.Add(save); Present(body);
     }
 

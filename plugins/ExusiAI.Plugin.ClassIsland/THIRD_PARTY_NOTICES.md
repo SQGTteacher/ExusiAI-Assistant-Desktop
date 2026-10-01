@@ -13,3 +13,5 @@ This ExusiAI built-in plugin is a source-derived ClassIsland compatibility imple
 The complete corresponding ClassIsland source is available from the upstream repository at the commit above. ExusiAI does not claim authorship of ClassIsland itself and retains the upstream data-contract names required for Profile and timetable compatibility.
 
 The plugin no longer redistributes or launches the ClassIsland 2.1.0.1 folder runtime in its normal execution path. The retained legacy host source exists only as a transition compatibility layer and is not a dependency of new functionality or a packaged runtime asset.
+
+The optional SQGT Liquid Glass optical palette is adapted from the user-supplied `SQGT-LiquidGlass-Avalonia-1.2.0-optical-preview` theme by SQGTteacher, licensed under the MIT License. The WPF fallback is a separate implementation and does not embed the original Avalonia XAML theme package.
