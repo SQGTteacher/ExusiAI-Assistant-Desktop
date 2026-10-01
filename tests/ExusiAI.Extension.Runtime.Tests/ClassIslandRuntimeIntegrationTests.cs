@@ -52,6 +52,45 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task ProfileRoundTripKeepsGuidAttachedSettingsAndLegacySubjectFields()
+    {
+        using var root = new TemporaryDirectory();
+        var service = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await service.InitializeAsync();
+        var subjectId = Guid.NewGuid();
+        var attachmentId = Guid.NewGuid();
+        var json = $$"""
+        { "Subjects": { "{{subjectId}}": { "Name": "物理", "Location": "旧版字段",
+          "AttachedObjects": { "{{attachmentId}}": { "Enabled": true, "Rule": { "Version": 2 } } } } } }
+        """;
+        await using var input = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        var profile = await service.ImportAsync(input, "sample.json");
+        var attachment = profile.Subjects[subjectId].GetAttachedObject<System.Text.Json.JsonElement>(attachmentId);
+        Assert.True(attachment.GetProperty("Enabled").GetBoolean());
+        Assert.True(profile.Subjects[subjectId].ExtensionData.ContainsKey("Location"));
+        await using var output = new MemoryStream();
+        await service.ExportAsync(profile, output);
+        using var document = System.Text.Json.JsonDocument.Parse(output.ToArray());
+        var subject = document.RootElement.GetProperty("Subjects").GetProperty(subjectId.ToString());
+        Assert.Equal("旧版字段", subject.GetProperty("Location").GetString());
+        Assert.Equal(2, subject.GetProperty("AttachedObjects").GetProperty(attachmentId.ToString())
+            .GetProperty("Rule").GetProperty("Version").GetInt32());
+    }
+
+    [Fact]
+    public async Task ComponentServiceLoadsSelectedConfiguration()
+    {
+        using var root = new TemporaryDirectory();
+        var directory = Path.Combine(root.Path, "Config", "ComponentLayouts");
+        Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(Path.Combine(directory, "Default.json"), "{\"Lines\":[]}");
+        await File.WriteAllTextAsync(Path.Combine(directory, "Teaching.json"), "{\"Lines\":[]}");
+        var service = new ClassIslandComponentService(directory);
+        await service.InitializeAsync("Teaching");
+        Assert.Equal("Teaching", service.CurrentConfigName);
+    }
+
+    [Fact]
     public async Task TimetableResolvesSubjectsLayoutsPlansAndRotatingWeekRules()
     {
         using var root = new TemporaryDirectory();

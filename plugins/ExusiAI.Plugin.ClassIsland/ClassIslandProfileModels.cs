@@ -9,6 +9,17 @@ public abstract class ClassIslandJsonModel
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = new(StringComparer.Ordinal);
 }
 
+public abstract class ClassIslandAttachableModel : ClassIslandJsonModel
+{
+    public Dictionary<Guid, JsonElement> AttachedObjects { get; set; } = [];
+
+    public T? GetAttachedObject<T>(Guid id) =>
+        AttachedObjects.TryGetValue(id, out var value) && value.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined
+            ? value.Deserialize<T>() : default;
+
+    public void SetAttachedObject<T>(Guid id, T value) => AttachedObjects[id] = JsonSerializer.SerializeToElement(value);
+}
+
 public sealed class ClassIslandProfile : ClassIslandJsonModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -33,18 +44,15 @@ public sealed class ClassIslandProfile : ClassIslandJsonModel
     public List<ClassIslandProfileMigration> Migrations { get; set; } = [];
 }
 
-public sealed class ClassIslandSubject : ClassIslandJsonModel
+public sealed class ClassIslandSubject : ClassIslandAttachableModel
 {
     public string Name { get; set; } = "";
     public string Initial { get; set; } = "";
     public string TeacherName { get; set; } = "";
     public bool IsOutDoor { get; set; }
-    public string Icon { get; set; } = "lucide(\ue54f)";
-    public string ColorHex { get; set; } = "#66ccff";
-    public string Location { get; set; } = "";
 }
 
-public sealed class ClassIslandTimeLayout : ClassIslandJsonModel
+public sealed class ClassIslandTimeLayout : ClassIslandAttachableModel
 {
     public string Name { get; set; } = "新时间表";
     public List<ClassIslandTimeLayoutItem> Layouts { get; set; } = [];
@@ -54,7 +62,7 @@ public sealed class ClassIslandTimeLayout : ClassIslandJsonModel
     public Guid? OverlaySourceId { get; set; }
 }
 
-public sealed class ClassIslandTimeLayoutItem : ClassIslandJsonModel
+public sealed class ClassIslandTimeLayoutItem : ClassIslandAttachableModel
 {
     public TimeSpan StartTime { get; set; }
     public TimeSpan EndTime { get; set; }
@@ -64,7 +72,7 @@ public sealed class ClassIslandTimeLayoutItem : ClassIslandJsonModel
     public string BreakName { get; set; } = "";
 }
 
-public sealed class ClassIslandClassPlan : ClassIslandJsonModel
+public sealed class ClassIslandClassPlan : ClassIslandAttachableModel
 {
     public string Name { get; set; } = "新课表";
     public Guid TimeLayoutId { get; set; }
@@ -105,7 +113,7 @@ public sealed class ClassIslandProfileMigration : ClassIslandJsonModel
     public bool RemoveOnDowngrade { get; set; }
 }
 
-public sealed class ClassIslandClassInfo : ClassIslandJsonModel
+public sealed class ClassIslandClassInfo : ClassIslandAttachableModel
 {
     public Guid SubjectId { get; set; }
     public bool IsEnabled { get; set; } = true;

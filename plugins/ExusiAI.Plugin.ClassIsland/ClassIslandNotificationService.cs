@@ -97,6 +97,7 @@ public sealed class ClassIslandNotificationService : IAsyncDisposable
     {
         if (worker is { IsCompleted: false }) return;
         cancellationToken.ThrowIfCancellationRequested();
+        lifetime?.Dispose();
         lifetime = new CancellationTokenSource();
         worker = RunAsync(lifetime.Token);
     }
@@ -150,6 +151,12 @@ public sealed class ClassIslandNotificationService : IAsyncDisposable
                 request.State = request.CancellationToken.IsCancellationRequested
                     ? ClassIslandNotificationState.Cancelled
                     : ClassIslandNotificationState.Paused;
+                if (request.State == ClassIslandNotificationState.Paused)
+                {
+                    request.State = ClassIslandNotificationState.Queued;
+                    queue.Enqueue(request);
+                    signal.Release();
+                }
                 if (cancellationToken.IsCancellationRequested) throw;
             }
             finally { Current = null; RequestCompleted?.Invoke(this, request); }
@@ -159,7 +166,7 @@ public sealed class ClassIslandNotificationService : IAsyncDisposable
     private static async Task PlayAsync(ClassIslandNotificationContent content, ClassIslandNotificationSession session, ClassIslandNotificationRequest request, CancellationToken hostToken)
     {
         var now = DateTime.Now;
-        var duration = content.EndTime is { } end ? end - now : content.Duration;
+        var duration = content.EndTime is { } end ? end - now : content.Duration - session.SessionPlayedTime;
         if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
         session.SessionStartTime = session.SessionStartTime == default ? now : session.SessionStartTime;
         session.CurrentTicketStartTime = now; session.IsExplicitEndTime = content.EndTime is not null; session.TimingStopwatch.Restart();

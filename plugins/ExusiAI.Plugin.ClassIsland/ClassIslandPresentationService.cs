@@ -10,18 +10,25 @@ public sealed class ClassIslandPresentationService
 {
     private readonly ClassIslandTimetableService timetable;
     private readonly ClassIslandAppearanceService appearance;
+    private readonly ClassIslandNotificationService notifications;
     private Window? window;
     private Border? island;
     private TextBlock? timeText;
     private TextBlock? lessonText;
     private TextBlock? detailText;
+    private Border? notificationOverlay;
+    private TextBlock? notificationText;
     private DispatcherTimer? timer;
     private TouchDevice? dragTouch;
     private Point dragStartScreen;
     private Point dragStartWindow;
 
-    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandAppearanceService appearance)
-    { this.timetable = timetable; this.appearance = appearance; }
+    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications)
+    {
+        this.timetable = timetable; this.appearance = appearance; this.notifications = notifications;
+        notifications.RequestStarted += (_, request) => ShowNotification(request);
+        notifications.RequestCompleted += (_, request) => HideNotification(request);
+    }
 
     public bool IsVisible => window?.IsVisible == true;
 
@@ -77,7 +84,16 @@ public sealed class ClassIslandPresentationService
         detailText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
         lesson.Children.Add(lessonText); lesson.Children.Add(detailText);
         Grid.SetColumn(lesson, 1); grid.Children.Add(timeText); grid.Children.Add(lesson);
-        island.Child = grid; window.Content = island;
+        var layers = new Grid();
+        layers.Children.Add(grid);
+        notificationText = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center, FontSize = 16, FontWeight = FontWeights.SemiBold };
+        notificationText.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        notificationOverlay = new Border { Padding = new Thickness(18, 8, 18, 8), Visibility = Visibility.Collapsed,
+            Child = notificationText };
+        notificationOverlay.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        layers.Children.Add(notificationOverlay);
+        island.Child = layers; window.Content = island;
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => Refresh();
         appearance.Changed += (_, _) => ApplyAppearance();
@@ -149,14 +165,37 @@ public sealed class ClassIslandPresentationService
         if (current is not null)
         {
             lessonText!.Text = current.Subject.Name;
-            detailText!.Text = $"{current.Time.StartTime:hh\\:mm}–{current.Time.EndTime:hh\\:mm}  {current.Subject.TeacherName}  {current.Subject.Location}".Trim();
+            detailText!.Text = $"{current.Time.StartTime:hh\\:mm}–{current.Time.EndTime:hh\\:mm}  {current.Subject.TeacherName}".Trim();
         }
         else if (next is not null)
         {
             lessonText!.Text = $"接下来 · {next.Subject.Name}";
-            detailText!.Text = $"{next.Time.StartTime:hh\\:mm} 开始  {next.Subject.TeacherName}  {next.Subject.Location}".Trim();
+            detailText!.Text = $"{next.Time.StartTime:hh\\:mm} 开始  {next.Subject.TeacherName}".Trim();
         }
         else { lessonText!.Text = "当前没有课程"; detailText!.Text = "ClassIsland · ExusiAI"; }
+    }
+
+    private void ShowNotification(ClassIslandNotificationRequest request)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null) return;
+        dispatcher.BeginInvoke(() =>
+        {
+            if (notificationOverlay is null || notificationText is null) return;
+            notificationText.Text = $"{request.MaskContent.Content}  {request.OverlayContent?.Content}".Trim();
+            notificationOverlay.Visibility = Visibility.Visible;
+        });
+    }
+
+    private void HideNotification(ClassIslandNotificationRequest request)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null) return;
+        dispatcher.BeginInvoke(() =>
+        {
+            if (notificationOverlay is not null && notifications.Current is null)
+                notificationOverlay.Visibility = Visibility.Collapsed;
+        });
     }
 
     private void ApplyAppearance()

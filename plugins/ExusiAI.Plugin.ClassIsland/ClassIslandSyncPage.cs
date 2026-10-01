@@ -94,11 +94,11 @@ internal sealed class ClassIslandSyncPage : UserControl
     private FrameworkElement BuildSubjectEditor(ClassIslandProfile profile)
     {
         var panel = EditorPanel("科目"); var list = List(profile.Subjects.Select(x => new Keyed<ClassIslandSubject>(x.Key, x.Value)), nameof(Keyed<ClassIslandSubject>.Display)); panel.Children.Add(list);
-        var name = Input("科目名称"); var teacher = Input("任课教师"); var location = Input("上课地点"); panel.Children.Add(name); panel.Children.Add(teacher); panel.Children.Add(location);
-        list.SelectionChanged += (_, _) => { if (list.SelectedItem is not Keyed<ClassIslandSubject> item) return; name.Text = item.Value.Name; teacher.Text = item.Value.TeacherName; location.Text = item.Value.Location; };
+        var name = Input("科目名称"); var teacher = Input("任课教师"); panel.Children.Add(name); panel.Children.Add(teacher);
+        list.SelectionChanged += (_, _) => { if (list.SelectedItem is not Keyed<ClassIslandSubject> item) return; name.Text = item.Value.Name; teacher.Text = item.Value.TeacherName; };
         var buttons = new WrapPanel(); var add = Secondary("新增"); var save = Primary("保存"); var remove = Danger("删除");
         add.Click += (_, _) => { var id = Guid.NewGuid(); profile.Subjects[id] = new() { Name = "新科目" }; ShowProfile(); };
-        save.Click += async (_, _) => { if (list.SelectedItem is not Keyed<ClassIslandSubject> item) return; item.Value.Name = name.Text.Trim(); item.Value.Initial = item.Value.Name.FirstOrDefault().ToString(); item.Value.TeacherName = teacher.Text.Trim(); item.Value.Location = location.Text.Trim(); await SaveProfileAsync(profile); ShowProfile(); };
+        save.Click += async (_, _) => { if (list.SelectedItem is not Keyed<ClassIslandSubject> item) return; item.Value.Name = name.Text.Trim(); item.Value.Initial = item.Value.Name.FirstOrDefault().ToString(); item.Value.TeacherName = teacher.Text.Trim(); await SaveProfileAsync(profile); ShowProfile(); };
         remove.Click += async (_, _) => { if (list.SelectedItem is not Keyed<ClassIslandSubject> item) return; profile.Subjects.Remove(item.Id); await SaveProfileAsync(profile); ShowProfile(); };
         buttons.Children.Add(add); buttons.Children.Add(save); buttons.Children.Add(remove); panel.Children.Add(buttons); return WrapEditor(panel);
     }
