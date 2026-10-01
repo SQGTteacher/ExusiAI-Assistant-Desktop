@@ -1,7 +1,9 @@
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Windows;
 using ExusiAI.Plugin.ClassIsland;
+using ExusiAI.Extension.Abstractions;
 
 namespace ExusiAI.Extension.Runtime.Tests;
 
@@ -49,6 +51,85 @@ public sealed class ClassIslandRuntimeIntegrationTests
         Assert.Contains("FutureSubjectField", roundTrip);
         Assert.Contains("FutureTimeField", roundTrip);
         Assert.Contains("FutureRule", roundTrip);
+    }
+
+    [Fact]
+    public async Task ProfileRoundTripKeepsGuidAttachedSettingsAndLegacySubjectFields()
+    {
+        using var root = new TemporaryDirectory();
+        var service = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await service.InitializeAsync();
+        var subjectId = Guid.NewGuid();
+        var attachmentId = Guid.NewGuid();
+        var json = $$"""
+        { "Subjects": { "{{subjectId}}": { "Name": "物理", "Location": "旧版字段",
+          "AttachedObjects": { "{{attachmentId}}": { "Enabled": true, "Rule": { "Version": 2 } } } } } }
+        """;
+        await using var input = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        var profile = await service.ImportAsync(input, "sample.json");
+        var attachment = profile.Subjects[subjectId].GetAttachedObject<System.Text.Json.JsonElement>(attachmentId);
+        Assert.True(attachment.GetProperty("Enabled").GetBoolean());
+        Assert.True(profile.Subjects[subjectId].ExtensionData.ContainsKey("Location"));
+        await using var output = new MemoryStream();
+        await service.ExportAsync(profile, output);
+        using var document = System.Text.Json.JsonDocument.Parse(output.ToArray());
+        var subject = document.RootElement.GetProperty("Subjects").GetProperty(subjectId.ToString());
+        Assert.Equal("旧版字段", subject.GetProperty("Location").GetString());
+        Assert.Equal(2, subject.GetProperty("AttachedObjects").GetProperty(attachmentId.ToString())
+            .GetProperty("Rule").GetProperty("Version").GetInt32());
+    }
+
+    [Fact]
+    public void ClassNotificationAttachmentUsesUpstreamGuidAndPreservesUnknownSettings()
+    {
+        var subject = new ClassIslandSubject();
+        var id = ClassIslandClassNotificationAttachedSettings.Id;
+        Assert.Equal(new Guid("08F0D9C3-C770-4093-A3D0-02F3D90C24BC"), id);
+        subject.AttachedObjects[id] = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            IsAttachSettingsEnabled = true, ClassPreparingDeltaTime = 90, FutureOption = "keep"
+        });
+        var settings = subject.GetAttachedObject<ClassIslandClassNotificationAttachedSettings>(id)!;
+        Assert.True(settings.IsAttachSettingsEnabled);
+        Assert.Equal(90, settings.ClassPreparingDeltaTime);
+        settings.ClassOnMaskText = "开课";
+        subject.SetAttachedObject(id, settings);
+        var saved = subject.AttachedObjects[id];
+        Assert.Equal("keep", saved.GetProperty("FutureOption").GetString());
+        Assert.Equal("开课", saved.GetProperty("ClassOnMaskText").GetString());
+    }
+
+    [Fact]
+    public async Task ComponentServiceLoadsSelectedConfiguration()
+    {
+        using var root = new TemporaryDirectory();
+        var directory = Path.Combine(root.Path, "Config", "ComponentLayouts");
+        Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(Path.Combine(directory, "Default.json"), "{\"Lines\":[]}");
+        await File.WriteAllTextAsync(Path.Combine(directory, "Teaching.json"), "{\"Lines\":[]}");
+        var service = new ClassIslandComponentService(directory);
+        await service.InitializeAsync("Teaching");
+        Assert.Equal("Teaching", service.CurrentConfigName);
+    }
+
+    [Fact]
+    public async Task CoreRestoresSettingsSelectedProfileAndLayout()
+    {
+        using var root = new TemporaryDirectory();
+        var profiles = Path.Combine(root.Path, "Profiles");
+        var layouts = Path.Combine(root.Path, "Config", "ComponentLayouts");
+        Directory.CreateDirectory(profiles);
+        Directory.CreateDirectory(layouts);
+        await File.WriteAllTextAsync(Path.Combine(profiles, "a.json"), "{\"Name\":\"first\"}");
+        await File.WriteAllTextAsync(Path.Combine(profiles, "b.json"), "{\"Name\":\"selected\"}");
+        await File.WriteAllTextAsync(Path.Combine(layouts, "Default.json"), "{\"Lines\":[]}");
+        await File.WriteAllTextAsync(Path.Combine(layouts, "Teaching.json"), "{\"Lines\":[]}");
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "Settings.json"),
+            "{\"SelectedProfile\":\"b.json\",\"CurrentComponentConfig\":\"Teaching\"}");
+        await using var core = new ClassIslandCoreService(new NullExtensionLogger(), root.Path);
+        await core.InitializeAsync();
+        Assert.Equal("selected", core.Profiles.Current?.Name);
+        Assert.Equal("Teaching", core.Components.CurrentConfigName);
     }
 
     [Fact]
@@ -161,6 +242,83 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public void WindowPlacementKeepsDraggableAreaVisibleAcrossMonitorBounds()
+    {
+        var secondary = new Rect(-1920, 0, 1920, 1040);
+        var size = new Size(620, 72);
+        var position = ClassIslandWindowPlacement.Clamp(new Point(-2500, -100), size, secondary);
+        Assert.Equal(-2492, position.X);
+        Assert.Equal(0, position.Y);
+        var right = ClassIslandWindowPlacement.Clamp(new Point(1000, 2000), size, secondary);
+        Assert.Equal(-48, right.X);
+        Assert.Equal(992, right.Y);
+    }
+
+    [Fact]
+    public async Task CancelledNotificationDoesNotComplete()
+    {
+        await using var service = new ClassIslandNotificationService();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = new ClassIslandNotificationRequest
+        {
+            MaskContent = new() { Content = "取消", Duration = TimeSpan.FromSeconds(5) }
+        };
+        service.RequestStarted += (_, _) => started.TrySetResult();
+        service.RequestCompleted += (_, _) => finished.TrySetResult();
+        service.Start();
+        service.Enqueue(request);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        request.Cancel();
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ClassIslandNotificationState.Cancelled, request.State);
+        Assert.False(request.CompletedToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task NotificationCancelledWhileQueuedNeverStarts()
+    {
+        await using var service = new ClassIslandNotificationService();
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = false;
+        var request = new ClassIslandNotificationRequest();
+        service.RequestStarted += (_, _) => started = true;
+        service.RequestCompleted += (_, completed) =>
+        {
+            if (ReferenceEquals(completed, request)) finished.TrySetResult();
+        };
+        service.Enqueue(request);
+        request.Cancel();
+        service.Start();
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(started);
+        Assert.Equal(ClassIslandNotificationState.Cancelled, request.State);
+        Assert.False(request.CompletedToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task HostStopAndRestartResumesNotification()
+    {
+        await using var service = new ClassIslandNotificationService();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = new ClassIslandNotificationRequest
+        {
+            MaskContent = new() { Content = "继续", Duration = TimeSpan.FromMilliseconds(150) }
+        };
+        service.RequestStarted += (_, _) => started.TrySetResult();
+        request.Completed += (_, _) => completed.TrySetResult();
+        service.Start();
+        service.Enqueue(request);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await service.StopAsync();
+        Assert.Equal(ClassIslandNotificationState.Queued, request.State);
+        service.Start();
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ClassIslandNotificationState.Completed, request.State);
+    }
+
+    [Fact]
     public void ComponentCatalogUsesUpstreamMishaGuids()
     {
         Assert.Equal("日期", ClassIslandComponentCatalog.Find("DF3F8295-21F6-482E-BADA-FA0E5F14BB66")?.Name);
@@ -237,11 +395,50 @@ public sealed class ClassIslandRuntimeIntegrationTests
         Assert.False(File.Exists(Path.Combine(root.Path, "outside.txt")));
     }
 
+    [Fact]
+    public void SyncRejectsDuplicatePathsIgnoringCase()
+    {
+        using var root = new TemporaryDirectory();
+        var archivePath = Path.Combine(root.Path, "duplicate.zip");
+        using (var file = File.Create(archivePath))
+        using (var archive = new ZipArchive(file, ZipArchiveMode.Create))
+        {
+            Write(archive, "Settings.json", "{}");
+            Write(archive, "Profiles/class.json", "{}");
+            Write(archive, "profiles/CLASS.json", "{}");
+        }
+        Assert.Throws<InvalidDataException>(() => ClassIslandBackupImporter.Inspect(archivePath));
+    }
+
+    [Fact]
+    public void SyncRejectsUnixSymbolicLinks()
+    {
+        using var root = new TemporaryDirectory();
+        var archivePath = Path.Combine(root.Path, "symlink.zip");
+        using (var file = File.Create(archivePath))
+        using (var archive = new ZipArchive(file, ZipArchiveMode.Create))
+        {
+            Write(archive, "Settings.json", "{}");
+            var link = archive.CreateEntry("Profiles/link.json");
+            link.ExternalAttributes = unchecked((int)0xA1FF0000);
+            using var writer = new StreamWriter(link.Open(), Encoding.UTF8);
+            writer.Write("../../outside.json");
+        }
+        Assert.Throws<InvalidDataException>(() => ClassIslandBackupImporter.Inspect(archivePath));
+    }
+
     private static void Write(ZipArchive archive, string path, string content)
     {
         var entry = archive.CreateEntry(path);
         using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
         writer.Write(content);
+    }
+
+    private sealed class NullExtensionLogger : IExtensionLogger
+    {
+        public void Information(string message) { }
+        public void Warning(string message) { }
+        public void Error(string message, Exception? exception = null) { }
     }
 
     private sealed class TemporaryDirectory : IDisposable

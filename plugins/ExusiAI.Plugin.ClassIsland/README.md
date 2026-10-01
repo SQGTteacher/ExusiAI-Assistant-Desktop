@@ -9,7 +9,7 @@ ClassIsland 2.2 Misha is implemented as a native ExusiAI plugin. The normal exec
 - `ClassIslandProfileService` also implements upstream class-plan groups, ordered schedules, temporary overlay plans and migration records, including the protected default/global groups.
 - `ClassIslandTimetableService` honors active overlay plans and date-specific `OrderedSchedules`, and exposes Schedule-mode items.
 - `ClassIslandComponentService` reads and writes the upstream `ComponentProfile -> Lines -> ComponentSettings` structure under `Config/ComponentLayouts`, including visual overrides, size/margin constraints, rules and unknown component settings.
-- `ClassIslandNotificationService` implements the v2 mask/overlay request lifecycle, queueing, timing, progress, cancellation, pause and completion states.
+- `ClassIslandNotificationService` queues mask/overlay requests, tracks timing and cancellation, and resumes queued requests after a host restart. The island displays basic notification text; upstream templates, speech, sound and action execution still require migration.
 - `ClassIslandCoreService` creates, starts and stops these modules as one unit under the ExusiAI plugin lifecycle.
 - `ClassIslandPresentationService` owns the actual desktop information-island window. It renders current/next lesson data, follows the host theme, supports six dock positions, scale/opacity/offset/topmost options, and clamps the corner radius to half the rendered height.
 
@@ -19,7 +19,9 @@ The plugin page now follows the same full-workbench approach as the ArkPets inte
 
 ## Data and transfer
 
-The plugin stores writable data in `%LocalAppData%/ExusiAI/ClassIsland` and remains portable as an ordinary ExusiAI package. It can import/export individual upstream-compatible Profile JSON files and import ClassIsland 2.x automatic-backup ZIP files. Backup extraction retains the existing traversal, size-limit and rollback protections.
+The plugin stores writable data in `%LocalAppData%/ExusiAI/ClassIsland` and remains portable as an ordinary ExusiAI package. It can import/export individual upstream-compatible Profile JSON files and import the core configuration (`Settings.json`, `Profiles/`, `Config/`) from ClassIsland backup ZIP files. This is not a full backup migration of plugin assets, themes or rule dependencies. Backup extraction retains the existing traversal, size-limit and rollback protections. `SelectedProfile` and `CurrentComponentConfig` in the imported Settings are used when loading data.
+
+The GUID-keyed `AttachedObjects` on upstream attachable profile models can be read and edited without discarding unknown settings. Registered rule, notification and action settings still need typed adapters and execution. Legacy Subject fields outside the upstream model are preserved as unknown data rather than rewritten as 2.1 fields. The workbench and island remain partial WPF implementations, not a screen-for-screen migration of the Avalonia UI.
 
 The earlier `ClassIslandRuntimeHost` implementation remains source-compatible for legacy callers during the transition, but it is no longer constructed by the plugin, included in package assets, or used for new features.
 

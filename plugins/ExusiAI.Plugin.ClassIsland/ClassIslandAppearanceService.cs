@@ -17,6 +17,7 @@ public sealed class ClassIslandAppearanceSettings
     public double OffsetY { get; set; } = 12;
     public bool Topmost { get; set; } = true;
     public bool ShowSeconds { get; set; }
+    public string? MonitorDeviceName { get; set; }
 }
 
 public sealed class ClassIslandAppearanceService

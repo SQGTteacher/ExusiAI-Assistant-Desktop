@@ -19,7 +19,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
         Components = new(Path.Combine(DataDirectory, "Config", "ComponentLayouts"));
         Notifications = new();
         Appearance = new(DataDirectory);
-        Presentation = new(Timetable, Appearance);
+        Presentation = new(Timetable, Appearance, Notifications);
     }
 
     public string DataDirectory { get; }
@@ -37,11 +37,13 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
         try
         {
             Directory.CreateDirectory(DataDirectory);
+            var selection = await ClassIslandSelectionSettings.ReadAsync(DataDirectory, cancellationToken).ConfigureAwait(false);
             await Profiles.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            await Components.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            await Components.InitializeAsync(selection.CurrentComponentConfig, cancellationToken).ConfigureAwait(false);
             await Appearance.LoadAsync(cancellationToken).ConfigureAwait(false);
             var profiles = await Profiles.ListAsync(cancellationToken).ConfigureAwait(false);
-            if (profiles.Count > 0) await Profiles.LoadAsync(profiles[0], cancellationToken).ConfigureAwait(false);
+            if (selection.ResolveProfile(profiles) is { } selectedProfile)
+                await Profiles.LoadAsync(selectedProfile, cancellationToken).ConfigureAwait(false);
             logger.Information($"ClassIsland core initialized at '{DataDirectory}' with {profiles.Count} profile(s).");
         }
         finally { lifecycleGate.Release(); }
@@ -83,9 +85,11 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
     {
         var result = await ClassIslandBackupImporter.ImportIntoDataDirectoryAsync(archivePath, DataDirectory, cancellationToken)
             .ConfigureAwait(false);
-        await Components.ReloadAsync(cancellationToken).ConfigureAwait(false);
+        var selection = await ClassIslandSelectionSettings.ReadAsync(DataDirectory, cancellationToken).ConfigureAwait(false);
+        await Components.InitializeAsync(selection.CurrentComponentConfig, cancellationToken).ConfigureAwait(false);
         var profilePaths = await Profiles.ListAsync(cancellationToken).ConfigureAwait(false);
-        if (profilePaths.Count > 0) await Profiles.LoadAsync(profilePaths[0], cancellationToken).ConfigureAwait(false);
+        if (selection.ResolveProfile(profilePaths) is { } selectedProfile)
+            await Profiles.LoadAsync(selectedProfile, cancellationToken).ConfigureAwait(false);
         Notifications.Publish(ClassIslandNotificationKind.Information, "配置同步完成", $"已导入 {result.TotalFileCount} 个 ClassIsland 文件。");
         return result;
     }

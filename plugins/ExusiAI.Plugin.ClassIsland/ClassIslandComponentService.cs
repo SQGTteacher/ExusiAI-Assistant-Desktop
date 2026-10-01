@@ -20,11 +20,12 @@ public sealed class ClassIslandComponentService
     public IReadOnlyList<string> ComponentConfigs { get; private set; } = [];
     public event EventHandler? ComponentsChanged;
 
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    public async Task InitializeAsync(string? selectedConfig = null, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(ConfigurationDirectory);
         await RefreshConfigsAsync(cancellationToken).ConfigureAwait(false);
-        await LoadAsync(ComponentConfigs.Contains("Default", StringComparer.OrdinalIgnoreCase) ? "Default" : ComponentConfigs.FirstOrDefault(), cancellationToken)
+        var selected = ComponentConfigs.FirstOrDefault(x => x.Equals(selectedConfig, StringComparison.OrdinalIgnoreCase));
+        await LoadAsync(selected ?? (ComponentConfigs.Contains("Default", StringComparer.OrdinalIgnoreCase) ? "Default" : ComponentConfigs.FirstOrDefault()), cancellationToken)
             .ConfigureAwait(false);
     }
 
