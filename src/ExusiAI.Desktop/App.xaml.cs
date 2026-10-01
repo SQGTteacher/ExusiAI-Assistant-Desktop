@@ -24,6 +24,9 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // Initialization awaits I/O before the first window exists. Keep the WPF
+        // dispatcher alive until the main window has actually been shown.
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
         base.OnStartup(e);
         try
         {
@@ -52,6 +55,7 @@ public partial class App : Application
             window.SourceInitialized += (_, _) => ApplyAdaptiveMetrics(window);
             window.DpiChanged += (_, _) => ApplyAdaptiveMetrics(window);
             window.Show();
+            ShutdownMode = ShutdownMode.OnLastWindowClose;
 
             extensionStartupCancellation = new CancellationTokenSource();
             extensionStartupTask = InitializeExtensionsAsync(
