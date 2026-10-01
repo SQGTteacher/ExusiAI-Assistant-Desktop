@@ -11,7 +11,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
-  <ItemGroup><Using Include="Xunit" /></ItemGroup>
+  <ItemGroup><Using Include="Xunit" /><Using Include="System.IO" /></ItemGroup>
   <ItemGroup>
     <Compile Remove="ArkPetsTests.cs" />
     <Compile Remove="RuntimeTests.cs" />
