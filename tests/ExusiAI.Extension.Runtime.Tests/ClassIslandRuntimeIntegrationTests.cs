@@ -392,6 +392,40 @@ public sealed class ClassIslandRuntimeIntegrationTests
         Assert.Equal("高考 10天 14小时", ClassIslandComponentText.Resolve(countdown, timetable, now));
         clock.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new { ShowSeconds = false });
         Assert.Equal("09 30", ClassIslandComponentText.Resolve(clock, timetable, new DateTime(2026, 10, 1, 9, 30, 14)));
+        countdown.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountDownName = "课间", CountdownSource = 1, CycleStartTime = "2026-10-01T08:00:00",
+            CycleDuration = "00:40:00", CycleBeforeDuration = "00:05:00", CycleAfterDuration = "00:05:00",
+            IsAdvancedCycleTimingEnabled = true, CustomStringFormat = "%m:%s"
+        });
+        Assert.Equal("距离 课间 还有 39:45", ClassIslandComponentText.Resolve(countdown, timetable, new DateTime(2026, 10, 1, 8, 55, 15)));
+        countdown.Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountDownName = "课间", CountdownSource = 1, CycleStartTime = "2026-10-01T08:00:00",
+            CycleDuration = "00:40:00", IsCycleCountLimited = true, CycleCountLimit = 1,
+            CustomStringFormat = "%m:%s"
+        });
+        Assert.Equal("距离 课间 还有 00:00", ClassIslandComponentText.Resolve(countdown, timetable, new DateTime(2026, 10, 1, 10, 0, 0)));
+        var weather = new ClassIslandComponentSettings
+        {
+            Id = "CA495086-E297-4BEB-9603-C5C1C1A8551E",
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new { MainWeatherInfoKind = 0 })
+        };
+        var snapshot = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            current = new { temperature = new { value = "22", unit = "°C" } },
+            alerts = new[] { new { title = "大风预警" } }
+        });
+        Assert.Equal("22°C  大风预警", ClassIslandComponentText.Resolve(weather, timetable, now, snapshot));
+        var group = new ClassIslandComponentSettings
+        {
+            Id = "C911D762-107F-40C6-84CC-0146AB3C86B1",
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+            {
+                Children = new[] { new { Id = "EE8F66BD-C423-4E7C-AB46-AA9976B00E08", Settings = new { TextContent = "测试" } } }
+            })
+        };
+        Assert.Equal("测试", ClassIslandComponentText.Resolve(group, timetable, now));
     }
 
     [Fact]

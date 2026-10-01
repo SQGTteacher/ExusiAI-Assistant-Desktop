@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace ExusiAI.Plugin.ClassIsland;
 
 public enum ClassIslandDockPosition { TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, BottomRight }
-public enum ClassIslandIslandTheme { DarkGlass, LightGlass }
+public enum ClassIslandIslandTheme { DarkGlass, LightGlass, SqgtLiquidGlass }
 
 public sealed class ClassIslandAppearanceSettings
 {

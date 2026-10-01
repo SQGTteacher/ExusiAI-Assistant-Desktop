@@ -51,6 +51,7 @@ internal sealed class ClassIslandSyncPage : UserControl
         AddNavigation(menu, "window", "窗口", ShowWindow);
         menu.Children.Add(new TextBlock { Text = "服务", FontSize = 11, Foreground = Muted, Margin = new Thickness(12, 10, 0, 7) });
         AddNavigation(menu, "notifications", "提醒", ShowNotifications);
+        AddNavigation(menu, "weather", "天气", ShowWeather);
         AddNavigation(menu, "sync", "同步", ShowSync);
         Grid.SetRow(menu, 1); sideGrid.Children.Add(menu);
         var footer = new TextBlock { Text = "配置保持 ClassIsland JSON 兼容", Foreground = Muted, FontSize = 10, Margin = new Thickness(11, 10, 11, 0), TextWrapping = TextWrapping.Wrap };
@@ -157,6 +158,25 @@ internal sealed class ClassIslandSyncPage : UserControl
         var send = Primary("发送测试提醒"); send.Click += (_, _) => { core.Notifications.Publish(ClassIslandNotificationKind.Information, title.Text, message.Text); ShowNotifications(); }; stack.Children.Add(send);
         stack.Children.Add(Section("当前状态", core.Notifications.Current is null ? "提醒队列空闲" : $"{core.Notifications.Current.State} · 剩余 {core.Notifications.Current.LeftProgress:P0}"));
         foreach (var item in core.Notifications.History.Reverse().Take(20)) stack.Children.Add(Section(item.Title, $"{item.CreatedAt:HH:mm:ss}　{item.Message}")); Present(body);
+    }
+
+    private void ShowWeather()
+    {
+        Activate("weather"); var body = Page("天气", "使用 ClassIsland 的城市编号和天气数据服务；网络不可用时保留最近一次成功获取的数据。", out var stack);
+        var city = Input("ClassIsland 城市编号"); city.Text = core.Weather.CityId;
+        stack.Children.Add(Field("城市编号", city));
+        var actions = new WrapPanel(); var save = Primary("保存并更新天气");
+        save.Click += async (_, _) =>
+        {
+            try { await core.Weather.SetCityAsync(city.Text); ShowWeather(); }
+            catch (Exception error) when (error is IOException or System.Text.Json.JsonException or HttpRequestException)
+            { operationStatus!.Text = error.Message; }
+        };
+        var refresh = Secondary("立即刷新"); refresh.Click += async (_, _) => { await core.Weather.RefreshAsync(); ShowWeather(); };
+        actions.Children.Add(save); actions.Children.Add(refresh); stack.Children.Add(actions);
+        operationStatus = new TextBlock { Foreground = Accent, Margin = new Thickness(2, 8, 0, 0), TextWrapping = TextWrapping.Wrap }; stack.Children.Add(operationStatus);
+        stack.Children.Add(Section("天气数据", core.Weather.Summary));
+        Present(body);
     }
 
     private void ShowAppearance()

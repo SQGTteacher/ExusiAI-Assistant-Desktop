@@ -19,7 +19,8 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
         Components = new(Path.Combine(DataDirectory, "Config", "ComponentLayouts"));
         Notifications = new();
         Appearance = new(DataDirectory);
-        Presentation = new(Timetable, Components, Appearance, Notifications);
+        Weather = new(DataDirectory);
+        Presentation = new(Timetable, Components, Appearance, Notifications, Weather);
     }
 
     public string DataDirectory { get; }
@@ -28,6 +29,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
     public ClassIslandComponentService Components { get; }
     public ClassIslandNotificationService Notifications { get; }
     public ClassIslandAppearanceService Appearance { get; }
+    public ClassIslandWeatherService Weather { get; }
     public ClassIslandPresentationService Presentation { get; }
     public bool IsRunning => lifetime is { IsCancellationRequested: false };
 
@@ -41,6 +43,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             await Profiles.InitializeAsync(cancellationToken).ConfigureAwait(false);
             await Components.InitializeAsync(selection.CurrentComponentConfig, cancellationToken).ConfigureAwait(false);
             await Appearance.LoadAsync(cancellationToken).ConfigureAwait(false);
+            Weather.LoadCached();
             var profiles = await Profiles.ListAsync(cancellationToken).ConfigureAwait(false);
             if (selection.ResolveProfile(profiles) is { } selectedProfile)
                 await Profiles.LoadAsync(selectedProfile, cancellationToken).ConfigureAwait(false);
@@ -59,6 +62,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             lifetime = new CancellationTokenSource();
             Notifications.Start(cancellationToken);
+            Weather.Start();
             Presentation.Start();
             logger.Information("ClassIsland core services started under the ExusiAI plugin lifecycle.");
         }
@@ -73,6 +77,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             if (lifetime is null) return;
             await lifetime.CancelAsync().ConfigureAwait(false);
             await Notifications.StopAsync().ConfigureAwait(false);
+            await Weather.StopAsync().ConfigureAwait(false);
             Presentation.Stop();
             lifetime.Dispose();
             lifetime = null;
@@ -87,6 +92,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             .ConfigureAwait(false);
         var selection = await ClassIslandSelectionSettings.ReadAsync(DataDirectory, cancellationToken).ConfigureAwait(false);
         await Components.InitializeAsync(selection.CurrentComponentConfig, cancellationToken).ConfigureAwait(false);
+        Weather.LoadCached();
         var profilePaths = await Profiles.ListAsync(cancellationToken).ConfigureAwait(false);
         if (selection.ResolveProfile(profilePaths) is { } selectedProfile)
             await Profiles.LoadAsync(selectedProfile, cancellationToken).ConfigureAwait(false);
@@ -97,6 +103,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
+        Weather.Dispose();
         lifecycleGate.Dispose();
     }
 }
