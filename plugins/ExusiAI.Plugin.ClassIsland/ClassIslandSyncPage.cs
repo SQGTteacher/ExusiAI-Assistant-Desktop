@@ -250,7 +250,7 @@ internal sealed class ClassIslandSyncPage : UserControl
         var dock = new ComboBox { MinHeight = Metric("TouchCompactTargetHeight", 40), Width = 220, ItemsSource = Enum.GetValues<ClassIslandDockPosition>(), SelectedItem = s.DockPosition };
         stack.Children.Add(Field("停靠位置", dock));
         var width = Numeric(s.Width); var height = Numeric(s.Height); var scale = Numeric(s.Scale); var offsetX = Numeric(s.OffsetX); var offsetY = Numeric(s.OffsetY);
-        stack.Children.Add(Field("宽度", width)); stack.Children.Add(Field("高度", height)); stack.Children.Add(Field("缩放", scale));
+        stack.Children.Add(Field("最大宽度（内容较短时自动收窄）", width)); stack.Children.Add(Field("最小高度", height)); stack.Children.Add(Field("缩放", scale));
         stack.Children.Add(Field("水平偏移", offsetX)); stack.Children.Add(Field("垂直偏移", offsetY));
         var topmost = new CheckBox { Content = "始终置顶", IsChecked = s.Topmost, Margin = new Thickness(2, 6, 0, 8) };
         var seconds = new CheckBox { Content = "时钟显示秒数", IsChecked = s.ShowSeconds, Margin = new Thickness(2, 0, 0, 12) };

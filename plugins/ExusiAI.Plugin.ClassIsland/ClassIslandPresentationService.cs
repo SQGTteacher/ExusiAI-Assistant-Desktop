@@ -106,10 +106,10 @@ public sealed class ClassIslandPresentationService
         island.PreviewTouchDown += OnTouchDown;
         island.PreviewTouchMove += OnTouchMove;
         island.PreviewTouchUp += OnTouchUp;
-        var grid = new Grid();
+        var grid = new Grid { HorizontalAlignment = HorizontalAlignment.Center };
         defaultContent = grid;
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         timeText = new TextBlock { FontSize = 18, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         var lesson = new StackPanel { Margin = new Thickness(15, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         lessonText = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -118,7 +118,7 @@ public sealed class ClassIslandPresentationService
         Grid.SetColumn(lesson, 1); grid.Children.Add(timeText); grid.Children.Add(lesson);
         var layers = new Grid();
         layers.Children.Add(grid);
-        componentContent = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        componentContent = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
         layers.Children.Add(componentContent);
         notificationText = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, FontSize = 16, FontWeight = FontWeights.SemiBold };
@@ -141,7 +141,7 @@ public sealed class ClassIslandPresentationService
         slideHosts.Clear();
         foreach (var line in components.CurrentComponents.Lines.Where(x => x.IsVisible))
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
             foreach (var component in line.Children.Where(x => x.IsVisible))
             {
                 if (BuildComponent(component, 0) is not { } presenter) continue;
@@ -362,6 +362,7 @@ public sealed class ClassIslandPresentationService
             detailText!.Text = $"{next.Time.StartTime:hh\\:mm} 开始  {next.Subject.TeacherName}".Trim();
         }
         else { lessonText!.Text = lessons.Count == 0 ? "今天没有课程。" : "当前没有课程"; detailText!.Text = ""; }
+        ApplyAppearance();
     }
 
     private void ShowNotification(ClassIslandNotificationRequest request)
@@ -373,6 +374,7 @@ public sealed class ClassIslandPresentationService
             if (notificationOverlay is null || notificationText is null) return;
             notificationText.Text = $"{request.MaskContent.Content}  {request.OverlayContent?.Content}".Trim();
             notificationOverlay.Visibility = Visibility.Visible;
+            ApplyAppearance();
         });
     }
 
@@ -384,6 +386,7 @@ public sealed class ClassIslandPresentationService
         {
             if (notificationOverlay is not null && notifications.Current is null)
                 notificationOverlay.Visibility = Visibility.Collapsed;
+            ApplyAppearance();
         });
     }
 
@@ -394,8 +397,17 @@ public sealed class ClassIslandPresentationService
         // Appearance sizes are physical screen pixels. WPF window dimensions are DIPs;
         // without this conversion a 150% classroom display inflates 440 px to 660 px.
         var dpi = VisualTreeHelper.GetDpi(window);
-        window.Width = s.Width * s.Scale / dpi.DpiScaleX;
-        window.Height = Math.Max(s.Height, componentContent?.Children.Count * 28 + 12 ?? 0) * s.Scale / dpi.DpiScaleY;
+        // ClassIsland lines size to their visible components. The saved width is a ceiling,
+        // not empty space that every short notification or course name must occupy.
+        var active = notificationOverlay?.Visibility == Visibility.Visible ? (FrameworkElement?)notificationOverlay
+            : componentContent?.Visibility == Visibility.Visible ? componentContent : defaultContent;
+        var maximumWidth = s.Width * s.Scale / dpi.DpiScaleX;
+        var availableContentWidth = Math.Max(40, maximumWidth - island.Padding.Left - island.Padding.Right - island.BorderThickness.Left - island.BorderThickness.Right);
+        active?.Measure(new Size(availableContentWidth, double.PositiveInfinity));
+        var desiredWidth = (active?.DesiredSize.Width ?? 0) + island.Padding.Left + island.Padding.Right + island.BorderThickness.Left + island.BorderThickness.Right;
+        window.Width = Math.Min(maximumWidth, Math.Max(1, desiredWidth));
+        var desiredHeight = (active?.DesiredSize.Height ?? 0) + island.Padding.Top + island.Padding.Bottom + island.BorderThickness.Top + island.BorderThickness.Bottom;
+        window.Height = Math.Max(s.Height * s.Scale / dpi.DpiScaleY, desiredHeight);
         window.Topmost = s.Topmost;
         window.BeginAnimation(UIElement.OpacityProperty, null);
         window.Opacity = s.FadeOnPointerEnter && window.IsMouseOver ? s.HoverOpacity : s.Opacity;
