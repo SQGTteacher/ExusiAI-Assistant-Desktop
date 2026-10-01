@@ -391,12 +391,15 @@ public sealed class ClassIslandPresentationService
     {
         if (window is null || island is null) return;
         var s = appearance.Settings;
-        window.Width = s.Width * s.Scale;
-        window.Height = Math.Max(s.Height, componentContent?.Children.Count * 28 + 12 ?? 0) * s.Scale;
+        // Appearance sizes are physical screen pixels. WPF window dimensions are DIPs;
+        // without this conversion a 150% classroom display inflates 440 px to 660 px.
+        var dpi = VisualTreeHelper.GetDpi(window);
+        window.Width = s.Width * s.Scale / dpi.DpiScaleX;
+        window.Height = Math.Max(s.Height, componentContent?.Children.Count * 28 + 12 ?? 0) * s.Scale / dpi.DpiScaleY;
         window.Topmost = s.Topmost;
         window.BeginAnimation(UIElement.OpacityProperty, null);
         window.Opacity = s.FadeOnPointerEnter && window.IsMouseOver ? s.HoverOpacity : s.Opacity;
-        island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius * s.Scale, window.Height / 2));
+        island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius * s.Scale / dpi.DpiScaleX, window.Height / 2));
         var light = s.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight;
         var liquidDark = s.IslandTheme == ClassIslandIslandTheme.SqgtLiquidGlass;
         var liquidLight = s.IslandTheme == ClassIslandIslandTheme.SqgtLiquidGlassLight;

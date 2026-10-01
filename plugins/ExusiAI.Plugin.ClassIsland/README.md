@@ -19,7 +19,9 @@ The plugin page now follows the same full-workbench approach as the ArkPets inte
 
 ## Data and transfer
 
-The plugin stores writable data in `%LocalAppData%/ExusiAI/ClassIsland` and remains portable as an ordinary ExusiAI package. It can import/export individual upstream-compatible Profile JSON files and import the core configuration (`Settings.json`, `Profiles/`, `Config/`) from ClassIsland backup ZIP files. This is not a full backup migration of plugin assets, themes or rule dependencies. Backup extraction retains the existing traversal, size-limit and rollback protections. `SelectedProfile` and `CurrentComponentConfig` in the imported Settings are used when loading data.
+The plugin stores writable data in `%LocalAppData%/ExusiAI/ClassIsland` and remains portable as an ordinary ExusiAI package. It can import/export individual upstream-compatible Profile JSON files and import the core configuration (`Settings.json`, `Profiles/`, `Config/`) from ClassIsland backup ZIP files or an existing ClassIsland Data folder. The original folder is only read; import uses the same validated staging and rollback path as backups. This is not a full backup migration of plugin assets, themes or rule dependencies. `SelectedProfile` and `CurrentComponentConfig` in the imported Settings are used when loading data.
+
+Overlay width and height are physical screen pixels; they are converted to WPF DIPs for each monitor's DPI scale. The settings page limits content width and controls to usable classroom proportions rather than stretching every button across the host.
 
 The basic settings page reads and saves `SingleWeekStartTime` for rotating week rules. The clock page applies `TimeOffsetSeconds` to the island and timetable while preserving unrelated `Settings.json` fields. The upstream NTP client, privacy, storage, automation, update and plugin-management settings pages remain unported.
 

@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using ExusiAI.Extension.Abstractions;
 
 namespace ExusiAI.Plugin.ClassIsland;
@@ -104,6 +105,42 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
             await Profiles.LoadAsync(selectedProfile, cancellationToken).ConfigureAwait(false);
         Notifications.Publish(ClassIslandNotificationKind.Information, "配置同步完成", $"已导入 {result.TotalFileCount} 个 ClassIsland 文件。");
         return result;
+    }
+
+    public async Task<ClassIslandBackupSummary> ImportDataDirectoryAsync(string sourceDirectory, CancellationToken cancellationToken = default)
+    {
+        var source = Path.GetFullPath(sourceDirectory);
+        if (source.Equals(DataDirectory, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("请选择原版 ClassIsland 数据目录。", nameof(sourceDirectory));
+        var settingsFile = Path.Combine(source, "Settings.json");
+        if (!File.Exists(settingsFile)) throw new InvalidDataException("所选目录没有 Settings.json。请选择 ClassIsland 的 Data 文件夹。");
+        var archivePath = Path.Combine(Path.GetTempPath(), "classisland-import-" + Guid.NewGuid().ToString("N") + ".zip");
+        try
+        {
+            using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+            {
+                archive.CreateEntryFromFile(settingsFile, "Settings.json", CompressionLevel.Fastest);
+                long total = new FileInfo(settingsFile).Length;
+                var count = 1;
+                foreach (var folder in new[] { "Profiles", "Config" })
+                {
+                    var directory = Path.Combine(source, folder);
+                    if (!Directory.Exists(directory)) continue;
+                    foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var info = new FileInfo(file);
+                        if (info.Attributes.HasFlag(FileAttributes.ReparsePoint)) continue;
+                        total += info.Length;
+                        if (++count > 10_000 || total > 512L * 1024 * 1024)
+                            throw new InvalidDataException("ClassIsland 数据目录超过导入大小限制。");
+                        archive.CreateEntryFromFile(file, Path.GetRelativePath(source, file).Replace('\\', '/'), CompressionLevel.Fastest);
+                    }
+                }
+            }
+            return await ImportBackupAsync(archivePath, cancellationToken).ConfigureAwait(false);
+        }
+        finally { if (File.Exists(archivePath)) File.Delete(archivePath); }
     }
 
     public async ValueTask DisposeAsync()
