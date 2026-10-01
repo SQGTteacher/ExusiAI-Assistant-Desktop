@@ -1,0 +1,35 @@
+<Window x:Class="ExusiAI.Desktop.StartupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ExusiAI 正在启动" Width="700" Height="420" MinWidth="600" MinHeight="380"
+        WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize"
+        Background="{DynamicResource AppBackgroundBrush}" ShowInTaskbar="True">
+    <Border Margin="12" CornerRadius="18" Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="44,36">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel>
+                <Border Width="68" Height="68" CornerRadius="18" Background="{DynamicResource AccentBrush}"
+                        HorizontalAlignment="Left">
+                    <TextBlock Text="E" FontSize="39" FontWeight="Bold" Foreground="{DynamicResource AccentForegroundBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="ExusiAI Assistant" FontSize="30" FontWeight="SemiBold" Margin="0,24,0,0" />
+                <TextBlock Text="正在准备桌面助手" FontSize="16" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" VerticalAlignment="Bottom" Margin="0,0,0,18">
+                <TextBlock x:Name="StageText" Text="正在启动…" FontSize="18" FontWeight="SemiBold" />
+                <ProgressBar x:Name="StartupProgress" IsIndeterminate="True" Height="5" Margin="0,18,0,0"
+                             Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceAltBrush}" />
+                <TextBlock x:Name="DetailsText" Text="请稍候" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,16,0,0" />
+            </StackPanel>
+            <Button x:Name="CloseButton" Grid.Row="2" Content="退出" HorizontalAlignment="Right"
+                    Width="100" Visibility="Collapsed" Click="CloseButton_OnClick" />
+        </Grid>
+    </Border>
+</Window>
