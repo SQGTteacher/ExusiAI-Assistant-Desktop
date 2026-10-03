@@ -30,6 +30,8 @@ public sealed class ClassIslandPresentationService
     private readonly ClassIslandNotificationService notifications;
     private readonly ClassIslandWeatherService weather;
     private readonly ClassIslandSettingsService settings;
+    private readonly ClassIslandAvaloniaIsland avaloniaIsland;
+    private readonly ClassIslandOriginalHost originalHost;
     private Window? window;
     private Border? island;
     private TextBlock? timeText;
@@ -47,19 +49,29 @@ public sealed class ClassIslandPresentationService
     private Point dragStartScreen;
     private Point dragStartWindow;
 
-    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications, ClassIslandWeatherService weather, ClassIslandSettingsService settings)
+    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications, ClassIslandWeatherService weather, ClassIslandSettingsService settings, string dataDirectory)
     {
         this.timetable = timetable; this.components = components; this.appearance = appearance; this.notifications = notifications; this.weather = weather; this.settings = settings;
+        avaloniaIsland = new(timetable, components, appearance, notifications, weather, settings);
+        originalHost = new(dataDirectory);
         notifications.RequestStarted += (_, request) => ShowNotification(request);
         notifications.RequestCompleted += (_, request) => HideNotification(request);
         components.ComponentsChanged += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
         weather.Changed += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
     }
 
-    public bool IsVisible => window?.IsVisible == true;
+    public bool IsVisible => originalHost.IsVisible || avaloniaIsland.IsVisible || window?.IsVisible == true;
+
+    public bool IsOriginalHostAvailable => originalHost.IsAvailable;
+
+    public void OpenOriginalSettings() => originalHost.OpenSettings();
 
     public void Start()
     {
+        if (originalHost.IsAvailable && originalHost.Start()) return;
+        // The upstream component templates and line effects still need to be ported
+        // before the Avalonia backend can replace the established WPF renderer.
+        if (Environment.GetEnvironmentVariable("EXUSIAI_CLASSISLAND_AVALONIA") == "1" && avaloniaIsland.Start()) return;
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
         if (!dispatcher.CheckAccess()) { dispatcher.Invoke(Start); return; }
@@ -70,6 +82,8 @@ public sealed class ClassIslandPresentationService
 
     public void Stop()
     {
+        originalHost.Stop();
+        avaloniaIsland.Stop();
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
         if (!dispatcher.CheckAccess()) { dispatcher.Invoke(Stop); return; }
@@ -78,9 +92,16 @@ public sealed class ClassIslandPresentationService
 
     public void RefreshAppearance()
     {
+        avaloniaIsland.RefreshAppearance();
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
         dispatcher.Invoke(ApplyAppearance);
+    }
+
+    public void Dispose()
+    {
+        originalHost.Dispose();
+        avaloniaIsland.Dispose();
     }
 
     private void BuildWindow()

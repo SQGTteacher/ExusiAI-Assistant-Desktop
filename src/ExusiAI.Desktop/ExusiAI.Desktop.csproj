@@ -44,7 +44,8 @@
       <ClassIslandPackageDir>$(TargetDir)packages\exusiai.classisland</ClassIslandPackageDir>
     </PropertyGroup>
     <MakeDir Directories="$(ClassIslandPackageDir)" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.ClassIsland.dll" DestinationFolder="$(ClassIslandPackageDir)" />
+    <ItemGroup><ClassIslandBuiltFiles Include="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\**\*" /></ItemGroup>
+    <Copy SourceFiles="@(ClassIslandBuiltFiles)" DestinationFolder="$(ClassIslandPackageDir)\%(RecursiveDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ClassIslandPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ClassIslandPackageDir)" />
   </Target>
@@ -65,7 +66,8 @@
   <Target Name="CopyClassIslandPackageToPublish" AfterTargets="Publish">
     <PropertyGroup><ClassIslandPublishPackageDir>$(PublishDir)packages\exusiai.classisland</ClassIslandPublishPackageDir></PropertyGroup>
     <MakeDir Directories="$(ClassIslandPublishPackageDir)" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.ClassIsland.dll" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
+    <ItemGroup><ClassIslandPublishFiles Include="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\**\*" /></ItemGroup>
+    <Copy SourceFiles="@(ClassIslandPublishFiles)" DestinationFolder="$(ClassIslandPublishPackageDir)\%(RecursiveDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
   </Target>

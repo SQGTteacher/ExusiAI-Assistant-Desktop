@@ -81,6 +81,16 @@ internal sealed class ClassIslandSyncPage : UserControl
         var toggle = Primary(core.Presentation.IsVisible ? "隐藏桌面信息岛" : "显示桌面信息岛");
         toggle.Click += (_, _) => { if (core.Presentation.IsVisible) core.Presentation.Stop(); else core.Presentation.Start(); ShowOverview(); };
         actions.Children.Add(toggle); var refresh = Secondary("刷新预览"); refresh.Click += (_, _) => ShowOverview(); actions.Children.Add(refresh); stack.Children.Add(actions);
+        if (core.Presentation.IsOriginalHostAvailable)
+        {
+            var originalSettings = Secondary("打开 ClassIsland 原生设置");
+            originalSettings.Click += (_, _) =>
+            {
+                core.Presentation.Start();
+                core.Presentation.OpenOriginalSettings();
+            };
+            actions.Children.Add(originalSettings);
+        }
         var profile = core.Profiles.Current;
         if (profile is null)
         {

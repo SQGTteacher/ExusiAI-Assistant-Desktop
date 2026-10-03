@@ -22,7 +22,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
         Notifications = new();
         Appearance = new(DataDirectory);
         Weather = new(DataDirectory);
-        Presentation = new(Timetable, Components, Appearance, Notifications, Weather, Settings);
+        Presentation = new(Timetable, Components, Appearance, Notifications, Weather, Settings, DataDirectory);
     }
 
     public string DataDirectory { get; }
@@ -146,6 +146,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
+        Presentation.Dispose();
         Weather.Dispose();
         lifecycleGate.Dispose();
     }
