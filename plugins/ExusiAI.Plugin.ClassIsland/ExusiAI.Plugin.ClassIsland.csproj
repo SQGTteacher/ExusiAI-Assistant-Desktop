@@ -7,12 +7,14 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Description>Native ClassIsland profile, timetable, component and notification services for ExusiAI.</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <EnableClassIslandNative Condition="'$(EnableClassIslandNative)' == '' and '$(Configuration)' == 'Release'">true</EnableClassIslandNative>
   </PropertyGroup>
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Abstractions\ExusiAI.Extension.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.SDK\ExusiAI.Extension.SDK.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
@@ -22,4 +24,17 @@
     <None Include="README.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- Build the original app first with its pinned .NET 9 SDK. This target only
+       packages that output, avoiding SDK 8/9 MSBuild task assembly collisions. -->
+  <Target Name="PackageNativeClassIsland" AfterTargets="Build"
+          Condition="'$(EnableClassIslandNative)' == 'true'">
+    <ItemGroup>
+      <NativeClassIslandFiles Include="$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland\ClassIsland.Desktop\bin\$(Configuration)\net8.0-windows10.0.19041.0\**\*" />
+    </ItemGroup>
+    <Error Condition="'@(NativeClassIslandFiles)' == ''"
+           Text="ClassIsland.Desktop produced no Windows runtime files." />
+    <Copy SourceFiles="@(NativeClassIslandFiles)"
+          DestinationFolder="$(TargetDir)NativeClassIsland\%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

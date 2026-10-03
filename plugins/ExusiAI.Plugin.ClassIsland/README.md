@@ -2,6 +2,29 @@
 
 ClassIsland 2.2 Misha is implemented as a native ExusiAI plugin. The normal execution path does not launch or download a separate ClassIsland process.
 
+An experimental in-process Avalonia information island runs on a dedicated STA UI
+thread. Set `EXUSIAI_CLASSISLAND_AVALONIA=1` before launching to preview it;
+initialization failure falls back to WPF. The bridge renders native Avalonia
+component rows, recursively builds group/stack/slide containers, updates text
+without recreating controls each second, sizes to content and saves drag offsets.
+It also uses Avalonia's native conic gradient for the Liquid Glass edge. It does
+not yet reproduce upstream `MainWindowLine`, `ComponentPresenter`, all five
+Liquid Glass optical layers, rolling transitions or notification animations.
+Keep WPF as the default until Windows build and visual checks pass.
+
+The complete available ClassIsland 2.2 source snapshot, including its originally
+missing EdgeTtsSharp project, fonts, built-in themes, localization and static
+assets, is staged under `third_party/ClassIsland`. The original desktop app now
+has an embedded entry point, an isolated data directory, and an in-process
+reflection bridge. Build `third_party/ClassIsland/ClassIsland.Desktop` with its
+`.NET 9` SDK and Windows publish properties first; the ExusiAI Release build
+then packages that output under `NativeClassIsland` and uses the original
+Avalonia UI and settings by default. The Windows CI checks both builds. A
+native Windows launch and visual check is still required. Online theme/plugin
+catalogs and weather remain optional network-backed features, not startup
+dependencies. The legacy 2.1 runtime build still has a download fallback while
+that migration is unfinished.
+
 ## Core services
 
 - `ClassIslandProfileService` reads and writes the upstream `Profile` JSON shape. GUID-keyed `Subjects`, `TimeLayouts` and `ClassPlans` remain compatible, and unknown fields are retained at every modeled level.
@@ -19,7 +42,9 @@ The plugin page now follows the same full-workbench approach as the ArkPets inte
 
 ## Data and transfer
 
-The plugin stores writable data in `%LocalAppData%/ExusiAI/ClassIsland` and remains portable as an ordinary ExusiAI package. It can import/export individual upstream-compatible Profile JSON files and import the core configuration (`Settings.json`, `Profiles/`, `Config/`) from ClassIsland backup ZIP files. This is not a full backup migration of plugin assets, themes or rule dependencies. Backup extraction retains the existing traversal, size-limit and rollback protections. `SelectedProfile` and `CurrentComponentConfig` in the imported Settings are used when loading data.
+The plugin stores writable data in `%LocalAppData%/ExusiAI/ClassIsland` and remains portable as an ordinary ExusiAI package. It can import/export individual upstream-compatible Profile JSON files and import the core configuration (`Settings.json`, `Profiles/`, `Config/`) from ClassIsland backup ZIP files or an existing ClassIsland Data folder. The original folder is only read; import uses the same validated staging and rollback path as backups. This is not a full backup migration of plugin assets, themes or rule dependencies. `SelectedProfile` and `CurrentComponentConfig` in the imported Settings are used when loading data.
+
+Overlay width and height are physical screen pixels; they are converted to WPF DIPs for each monitor's DPI scale. The settings page limits content width and controls to usable classroom proportions rather than stretching every button across the host.
 
 The basic settings page reads and saves `SingleWeekStartTime` for rotating week rules. The clock page applies `TimeOffsetSeconds` to the island and timetable while preserving unrelated `Settings.json` fields. The upstream NTP client, privacy, storage, automation, update and plugin-management settings pages remain unported.
 

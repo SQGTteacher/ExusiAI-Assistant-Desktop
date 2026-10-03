@@ -30,6 +30,8 @@ public sealed class ClassIslandPresentationService
     private readonly ClassIslandNotificationService notifications;
     private readonly ClassIslandWeatherService weather;
     private readonly ClassIslandSettingsService settings;
+    private readonly ClassIslandAvaloniaIsland avaloniaIsland;
+    private readonly ClassIslandOriginalHost originalHost;
     private Window? window;
     private Border? island;
     private TextBlock? timeText;
@@ -47,19 +49,29 @@ public sealed class ClassIslandPresentationService
     private Point dragStartScreen;
     private Point dragStartWindow;
 
-    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications, ClassIslandWeatherService weather, ClassIslandSettingsService settings)
+    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications, ClassIslandWeatherService weather, ClassIslandSettingsService settings, string dataDirectory)
     {
         this.timetable = timetable; this.components = components; this.appearance = appearance; this.notifications = notifications; this.weather = weather; this.settings = settings;
+        avaloniaIsland = new(timetable, components, appearance, notifications, weather, settings);
+        originalHost = new(dataDirectory);
         notifications.RequestStarted += (_, request) => ShowNotification(request);
         notifications.RequestCompleted += (_, request) => HideNotification(request);
         components.ComponentsChanged += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
         weather.Changed += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
     }
 
-    public bool IsVisible => window?.IsVisible == true;
+    public bool IsVisible => originalHost.IsVisible || avaloniaIsland.IsVisible || window?.IsVisible == true;
+
+    public bool IsOriginalHostAvailable => originalHost.IsAvailable;
+
+    public void OpenOriginalSettings() => originalHost.OpenSettings();
 
     public void Start()
     {
+        if (originalHost.IsAvailable && originalHost.Start()) return;
+        // The upstream component templates and line effects still need to be ported
+        // before the Avalonia backend can replace the established WPF renderer.
+        if (Environment.GetEnvironmentVariable("EXUSIAI_CLASSISLAND_AVALONIA") == "1" && avaloniaIsland.Start()) return;
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
         if (!dispatcher.CheckAccess()) { dispatcher.Invoke(Start); return; }
@@ -70,6 +82,8 @@ public sealed class ClassIslandPresentationService
 
     public void Stop()
     {
+        originalHost.Stop();
+        avaloniaIsland.Stop();
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
         if (!dispatcher.CheckAccess()) { dispatcher.Invoke(Stop); return; }
@@ -78,9 +92,16 @@ public sealed class ClassIslandPresentationService
 
     public void RefreshAppearance()
     {
+        avaloniaIsland.RefreshAppearance();
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
         dispatcher.Invoke(ApplyAppearance);
+    }
+
+    public void Dispose()
+    {
+        originalHost.Dispose();
+        avaloniaIsland.Dispose();
     }
 
     private void BuildWindow()
@@ -106,10 +127,10 @@ public sealed class ClassIslandPresentationService
         island.PreviewTouchDown += OnTouchDown;
         island.PreviewTouchMove += OnTouchMove;
         island.PreviewTouchUp += OnTouchUp;
-        var grid = new Grid();
+        var grid = new Grid { HorizontalAlignment = HorizontalAlignment.Center };
         defaultContent = grid;
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         timeText = new TextBlock { FontSize = 18, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         var lesson = new StackPanel { Margin = new Thickness(15, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         lessonText = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -118,7 +139,7 @@ public sealed class ClassIslandPresentationService
         Grid.SetColumn(lesson, 1); grid.Children.Add(timeText); grid.Children.Add(lesson);
         var layers = new Grid();
         layers.Children.Add(grid);
-        componentContent = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        componentContent = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
         layers.Children.Add(componentContent);
         notificationText = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, FontSize = 16, FontWeight = FontWeights.SemiBold };
@@ -141,7 +162,7 @@ public sealed class ClassIslandPresentationService
         slideHosts.Clear();
         foreach (var line in components.CurrentComponents.Lines.Where(x => x.IsVisible))
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
             foreach (var component in line.Children.Where(x => x.IsVisible))
             {
                 if (BuildComponent(component, 0) is not { } presenter) continue;
@@ -362,6 +383,7 @@ public sealed class ClassIslandPresentationService
             detailText!.Text = $"{next.Time.StartTime:hh\\:mm} 开始  {next.Subject.TeacherName}".Trim();
         }
         else { lessonText!.Text = lessons.Count == 0 ? "今天没有课程。" : "当前没有课程"; detailText!.Text = ""; }
+        ApplyAppearance();
     }
 
     private void ShowNotification(ClassIslandNotificationRequest request)
@@ -373,6 +395,7 @@ public sealed class ClassIslandPresentationService
             if (notificationOverlay is null || notificationText is null) return;
             notificationText.Text = $"{request.MaskContent.Content}  {request.OverlayContent?.Content}".Trim();
             notificationOverlay.Visibility = Visibility.Visible;
+            ApplyAppearance();
         });
     }
 
@@ -384,6 +407,7 @@ public sealed class ClassIslandPresentationService
         {
             if (notificationOverlay is not null && notifications.Current is null)
                 notificationOverlay.Visibility = Visibility.Collapsed;
+            ApplyAppearance();
         });
     }
 
@@ -391,12 +415,24 @@ public sealed class ClassIslandPresentationService
     {
         if (window is null || island is null) return;
         var s = appearance.Settings;
-        window.Width = s.Width * s.Scale;
-        window.Height = Math.Max(s.Height, componentContent?.Children.Count * 28 + 12 ?? 0) * s.Scale;
+        // Appearance sizes are physical screen pixels. WPF window dimensions are DIPs;
+        // without this conversion a 150% classroom display inflates 440 px to 660 px.
+        var dpi = VisualTreeHelper.GetDpi(window);
+        // ClassIsland lines size to their visible components. The saved width is a ceiling,
+        // not empty space that every short notification or course name must occupy.
+        var active = notificationOverlay?.Visibility == Visibility.Visible ? (FrameworkElement?)notificationOverlay
+            : componentContent?.Visibility == Visibility.Visible ? componentContent : defaultContent;
+        var maximumWidth = s.Width * s.Scale / dpi.DpiScaleX;
+        var availableContentWidth = Math.Max(40, maximumWidth - island.Padding.Left - island.Padding.Right - island.BorderThickness.Left - island.BorderThickness.Right);
+        active?.Measure(new Size(availableContentWidth, double.PositiveInfinity));
+        var desiredWidth = (active?.DesiredSize.Width ?? 0) + island.Padding.Left + island.Padding.Right + island.BorderThickness.Left + island.BorderThickness.Right;
+        window.Width = Math.Min(maximumWidth, Math.Max(1, desiredWidth));
+        var desiredHeight = (active?.DesiredSize.Height ?? 0) + island.Padding.Top + island.Padding.Bottom + island.BorderThickness.Top + island.BorderThickness.Bottom;
+        window.Height = Math.Max(s.Height * s.Scale / dpi.DpiScaleY, desiredHeight);
         window.Topmost = s.Topmost;
         window.BeginAnimation(UIElement.OpacityProperty, null);
         window.Opacity = s.FadeOnPointerEnter && window.IsMouseOver ? s.HoverOpacity : s.Opacity;
-        island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius * s.Scale, window.Height / 2));
+        island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius * s.Scale / dpi.DpiScaleX, window.Height / 2));
         var light = s.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight;
         var liquidDark = s.IslandTheme == ClassIslandIslandTheme.SqgtLiquidGlass;
         var liquidLight = s.IslandTheme == ClassIslandIslandTheme.SqgtLiquidGlassLight;
