@@ -55,6 +55,7 @@ public sealed class ClassIslandPresentationService
         avaloniaIsland = new(timetable, components, appearance, notifications, weather, settings);
         originalHost = new(dataDirectory);
         notifications.RequestStarted += (_, request) => ShowNotification(request);
+        notifications.RequestUpdated += (_, request) => ShowNotification(request);
         notifications.RequestCompleted += (_, request) => HideNotification(request);
         components.ComponentsChanged += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
         weather.Changed += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
@@ -145,6 +146,12 @@ public sealed class ClassIslandPresentationService
             HorizontalAlignment = HorizontalAlignment.Center, FontSize = 16, FontWeight = FontWeights.SemiBold };
         notificationOverlay = new Border { Padding = new Thickness(18, 8, 18, 8), Visibility = Visibility.Collapsed,
             Child = notificationText };
+        notificationOverlay.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (notifications.Current is not { } request) return;
+            request.Cancel();
+            e.Handled = true;
+        };
         layers.Children.Add(notificationOverlay);
         island.Child = layers; window.Content = island;
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -392,8 +399,9 @@ public sealed class ClassIslandPresentationService
         if (dispatcher is null) return;
         dispatcher.BeginInvoke(() =>
         {
-            if (notificationOverlay is null || notificationText is null) return;
-            notificationText.Text = $"{request.MaskContent.Content}  {request.OverlayContent?.Content}".Trim();
+            if (notificationOverlay is null || notificationText is null || !ReferenceEquals(notifications.Current, request)) return;
+            notificationText.Text = (request.MaskSession.IsCompleted && request.OverlayContent is { } overlay
+                ? overlay.Content : request.MaskContent.Content)?.ToString() ?? "";
             notificationOverlay.Visibility = Visibility.Visible;
             ApplyAppearance();
         });

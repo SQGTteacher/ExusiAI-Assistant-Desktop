@@ -63,6 +63,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         appearance.Changed += OnChanged;
         weather.Changed += OnChanged;
         notifications.RequestStarted += OnNotification;
+        notifications.RequestUpdated += OnNotification;
         notifications.RequestCompleted += OnNotification;
     }
 
@@ -211,6 +212,12 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             lines.Children.Add(defaultText);
         }
         notificationText = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, IsVisible = false };
+        notificationText.PointerPressed += (_, e) =>
+        {
+            if (notifications.Current is not { } request || !e.GetCurrentPoint(notificationText).Properties.IsLeftButtonPressed) return;
+            request.Cancel();
+            e.Handled = true;
+        };
         lines.Children.Add(notificationText);
     }
 
@@ -316,8 +323,8 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         var notification = notifications.Current;
         if (notificationText is not null)
         {
-            notificationText.Text = notification is null ? "" :
-                $"{notification.MaskContent.Content}  {notification.OverlayContent?.Content}".Trim();
+            notificationText.Text = (notification is { MaskSession.IsCompleted: true, OverlayContent: { } overlay }
+                ? overlay.Content : notification?.MaskContent.Content)?.ToString() ?? "";
             notificationText.Foreground = ink;
             notificationText.IsVisible = notification is not null;
         }
@@ -394,6 +401,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         appearance.Changed -= OnChanged;
         weather.Changed -= OnChanged;
         notifications.RequestStarted -= OnNotification;
+        notifications.RequestUpdated -= OnNotification;
         notifications.RequestCompleted -= OnNotification;
         Stop();
         lifetime.Cancel();
