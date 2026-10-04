@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using ShapeEllipse = Avalonia.Controls.Shapes.Ellipse;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -42,6 +44,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
     private StackPanel? lines;
     private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text)> textViews = [];
     private readonly List<(Panel Host, int Seconds)> slideViews = [];
+    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Label, ShapePath? Ring, Border? Bar)> countdownViews = [];
     private TextBlock? defaultText;
     private TextBlock? notificationText;
     private DispatcherTimer? timer;
@@ -211,6 +214,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         if (lines is null) return;
         lines.Children.Clear();
         textViews.Clear();
+        countdownViews.Clear();
         slideViews.Clear();
         defaultText = null;
         notificationText = null;
@@ -244,6 +248,8 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
     private Control? BuildComponent(ClassIslandComponentSettings component, int depth)
     {
         if (depth > 8 || !Guid.TryParse(component.Id, out var id)) return null;
+        if (id == new Guid("7C645D35-8151-48BA-B4AC-15017460D994"))
+            return BuildCountdown(component);
         if (id == new Guid("AB0F26D5-9DF6-4575-B844-73B04D0907C1"))
             return new Border { Width = 1, Height = 20, Background = new SolidColorBrush(Color.FromArgb(100, 240, 245, 255)) };
         var group = id == new Guid("C911D762-107F-40C6-84CC-0146AB3C86B1");
@@ -283,6 +289,93 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         }
         textViews.Add((component, text));
         return text;
+    }
+
+    private Control? BuildCountdown(ClassIslandComponentSettings component)
+    {
+        if (ClassIslandComponentText.Resolve(component, timetable, DateTime.Now) is null) return null;
+        var root = new StackPanel { Orientation = Orientation.Vertical, Opacity = component.Opacity };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        ShapePath? ring = null;
+        Border? bar = null;
+        if (ReadBool(component.Settings, "ShowProgress"))
+        {
+            if (ReadInt(component.Settings, "ProgressBarMode", 0) == 1)
+            {
+                bar = new Border { Width = 0, Height = 3, HorizontalAlignment = HorizontalAlignment.Left };
+                var track = new Border { Width = 100, Height = 3, Background = new SolidColorBrush(Color.FromArgb(72, 218, 225, 235)), Child = bar };
+                root.Children.Add(row);
+                root.Children.Add(track);
+            }
+            else
+            {
+                var circle = new Grid { Width = 22, Height = 22, Margin = new Thickness(0, 0, 6, 0) };
+                circle.Children.Add(new ShapeEllipse
+                {
+                    Width = 21.4, Height = 21.4, StrokeThickness = 2.6,
+                    Stroke = new SolidColorBrush(Color.FromArgb(72, 218, 225, 235))
+                });
+                ring = new ShapePath { Width = 22, Height = 22, StrokeThickness = 3.1, StrokeLineCap = PenLineCap.Round };
+                circle.Children.Add(ring);
+                row.Children.Add(circle);
+            }
+        }
+        if (bar is null) root.Children.Add(row);
+        var label = new TextBlock
+        {
+            FontSize = ReadInt(component.Settings, "FontSize", (int)component.MainWindowBodyFontSize),
+            FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center
+        };
+        row.Children.Add(label);
+        countdownViews.Add((component, label, ring, bar));
+        return root;
+    }
+
+    private static bool ReadBool(JsonElement? settings, string key, bool fallback = false) =>
+        settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) &&
+        value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : fallback;
+
+    private static int ReadInt(JsonElement? settings, string key, int fallback) =>
+        settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) &&
+        value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : fallback;
+
+    private static string? ReadString(JsonElement? settings, string key) =>
+        settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) &&
+        value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static double CountdownProgress(ClassIslandComponentSettings component, DateTime now)
+    {
+        if (!ClassIslandComponentText.TryGetCountdownWindow(component.Settings, now, out var start, out var end) || end <= start)
+            return 0;
+        var elapsed = ReadBool(component.Settings, "IsProgressInverted") ? end - now : now - start;
+        return Math.Clamp(elapsed.TotalSeconds / (end - start).TotalSeconds, 0, .999999);
+    }
+
+    private static Geometry? ProgressArc(double fraction)
+    {
+        if (fraction <= 0) return null;
+        var angle = fraction * Math.PI * 2 - Math.PI / 2;
+        var x = 11 + 9.5 * Math.Cos(angle);
+        var y = 11 + 9.5 * Math.Sin(angle);
+        var figure = new PathFigure
+        {
+            StartPoint = new Point(11, 1.5),
+            Segments = new PathSegments
+            {
+                new ArcSegment
+                {
+                    Point = new Point(x, y),
+                    Size = new Size(9.5, 9.5),
+                    IsLargeArc = fraction > .5,
+                    SweepDirection = SweepDirection.Clockwise,
+                    IsStroked = true
+                }
+            },
+            IsClosed = false
+        };
+        var geometry = new PathGeometry();
+        geometry.Figures?.Add(figure);
+        return geometry;
     }
 
     private static Thickness ComponentMargin(ClassIslandComponentSettings component, int position, double spacing) =>
@@ -344,6 +437,25 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         {
             block.Text = ClassIslandComponentText.Resolve(component, timetable, now, weather.Current) ?? "";
             block.Foreground = ink;
+        }
+        foreach (var (component, label, ring, bar) in countdownViews)
+        {
+            label.Text = ClassIslandComponentText.Resolve(component, timetable, now) ?? "";
+            IBrush accent;
+            try { accent = new SolidColorBrush(Color.Parse(ReadString(component.Settings, "FontColor") ?? "#FFFF0000")); }
+            catch (FormatException) { accent = new SolidColorBrush(Colors.Red); }
+            label.Foreground = accent;
+            var progress = CountdownProgress(component, now);
+            if (ring is not null)
+            {
+                ring.Stroke = ReadBool(component.Settings, "UseAccentOnProgressBar", true) ? accent : ink;
+                ring.Data = ProgressArc(progress);
+            }
+            if (bar is not null)
+            {
+                bar.Width = progress * 100;
+                bar.Background = ReadBool(component.Settings, "UseAccentOnProgressBar", true) ? accent : ink;
+            }
         }
         foreach (var (host, seconds) in slideViews)
         {

@@ -225,6 +225,42 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public void WeeklyCountdownFollowsUpstreamDayBasedEnd()
+    {
+        var settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountdownSource = 3,
+            WeekCountdownStartDay = 1
+        });
+        var monday = new DateTime(2026, 9, 28, 12, 0, 0);
+        var tuesday = monday.AddDays(1);
+        Assert.True(ClassIslandComponentText.TryGetCountdownWindow(settings, monday, out var start, out var end));
+        Assert.Equal(new DateTime(2026, 9, 28), start);
+        Assert.Equal(new DateTime(2026, 10, 5), end);
+        Assert.True(ClassIslandComponentText.TryGetCountdownWindow(settings, tuesday, out var nextStart, out var nextEnd));
+        Assert.Equal(start, nextStart);
+        Assert.Equal(new DateTime(2026, 10, 6), nextEnd);
+    }
+
+    [Fact]
+    public void CyclicCountdownUsesConfiguredDurations()
+    {
+        var settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountdownSource = 1,
+            CycleStartTime = "2026-09-28T08:00:00",
+            CycleDuration = "01:00:00",
+            IsAdvancedCycleTimingEnabled = true,
+            CycleBeforeDuration = "00:10:00",
+            CycleAfterDuration = "00:20:00"
+        });
+        Assert.True(ClassIslandComponentText.TryGetCountdownWindow(settings,
+            new DateTime(2026, 9, 28, 9, 40, 0), out var start, out var end));
+        Assert.Equal(new DateTime(2026, 9, 28, 9, 40, 0), start);
+        Assert.Equal(new DateTime(2026, 9, 28, 10, 40, 0), end);
+    }
+
+    [Fact]
     public async Task NotificationServiceRunsMaskAndOverlayLifecycle()
     {
         await using var service = new ClassIslandNotificationService();

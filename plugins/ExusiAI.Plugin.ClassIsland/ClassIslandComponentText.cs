@@ -64,36 +64,7 @@ public static class ClassIslandComponentText
         }
         if (id == new Guid("7C645D35-8151-48BA-B4AC-15017460D994"))
         {
-            DateTime start, end;
-            switch (ReadInt(component.Settings, "CountdownSource"))
-            {
-                case 0:
-                    if (!TryReadDate(component.Settings, "OverTime", out end)) return null;
-                    TryReadDate(component.Settings, "StartTime", out start);
-                    break;
-                case 1:
-                    if (!TryReadDate(component.Settings, "CycleStartTime", out var cycleStart)) return null;
-                    var duration = ReadDuration(component.Settings, "CycleDuration", TimeSpan.FromDays(1));
-                    var before = ReadBool(component.Settings, "IsAdvancedCycleTimingEnabled") ? ReadDuration(component.Settings, "CycleBeforeDuration", TimeSpan.Zero) : TimeSpan.Zero;
-                    var after = ReadBool(component.Settings, "IsAdvancedCycleTimingEnabled") ? ReadDuration(component.Settings, "CycleAfterDuration", TimeSpan.Zero) : TimeSpan.Zero;
-                    var cycle = before + duration + after;
-                    if (cycle <= TimeSpan.Zero) { start = cycleStart; end = cycleStart; break; }
-                    var cycles = Math.Floor((now - cycleStart).Ticks / (double)cycle.Ticks);
-                    if (ReadBool(component.Settings, "IsCycleCountLimited")) cycles = Math.Min(cycles, ReadInt(component.Settings, "CycleCountLimit", 2));
-                    // Keep the calculation bounded for malformed or very old imported profiles.
-                    cycles = Math.Clamp(cycles, -100000, 100000);
-                    start = cycleStart + TimeSpan.FromTicks((long)(cycles * cycle.Ticks)) + before;
-                    end = start + duration;
-                    break;
-                case 2:
-                    start = now.Date; end = start.AddDays(1); break;
-                case 3:
-                    var weekStart = ReadInt(component.Settings, "WeekCountdownStartDay", 1);
-                    if (weekStart is < 0 or > 6) weekStart = 1;
-                    start = now.Date.AddDays(-(((int)now.DayOfWeek - weekStart + 7) % 7));
-                    end = now.Date.AddDays(8); break;
-                default: return null;
-            }
+            if (!TryGetCountdownWindow(component.Settings, now, out var start, out var end)) return null;
             var remaining = end - now;
             if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
             var total = end - start;
@@ -115,6 +86,42 @@ public static class ClassIslandComponentText
             return ReadBool(component.Settings, "IsCompactModeEnabled") ? $"{name} {value}" : $"距离 {name} {ReadString(component.Settings, "CountDownConnector") ?? "还有"} {value}";
         }
         return null;
+    }
+
+    public static bool TryGetCountdownWindow(JsonElement? settings, DateTime now, out DateTime start, out DateTime end)
+    {
+        start = default;
+        end = default;
+        switch (ReadInt(settings, "CountdownSource"))
+        {
+            case 0:
+                if (!TryReadDate(settings, "OverTime", out end)) return false;
+                TryReadDate(settings, "StartTime", out start);
+                break;
+            case 1:
+                if (!TryReadDate(settings, "CycleStartTime", out var cycleStart)) return false;
+                var duration = ReadDuration(settings, "CycleDuration", TimeSpan.FromDays(1));
+                var before = ReadBool(settings, "IsAdvancedCycleTimingEnabled") ? ReadDuration(settings, "CycleBeforeDuration", TimeSpan.Zero) : TimeSpan.Zero;
+                var after = ReadBool(settings, "IsAdvancedCycleTimingEnabled") ? ReadDuration(settings, "CycleAfterDuration", TimeSpan.Zero) : TimeSpan.Zero;
+                var cycle = before + duration + after;
+                if (cycle <= TimeSpan.Zero) { start = cycleStart; end = cycleStart; break; }
+                var cycles = Math.Floor((now - cycleStart).Ticks / (double)cycle.Ticks);
+                if (ReadBool(settings, "IsCycleCountLimited")) cycles = Math.Min(cycles, ReadInt(settings, "CycleCountLimit", 2));
+                // Keep the calculation bounded for malformed or very old imported profiles.
+                cycles = Math.Clamp(cycles, -100000, 100000);
+                start = cycleStart + TimeSpan.FromTicks((long)(cycles * cycle.Ticks)) + before;
+                end = start + duration;
+                break;
+            case 2:
+                start = now.Date; end = start.AddDays(1); break;
+            case 3:
+                var weekStart = ReadInt(settings, "WeekCountdownStartDay", 1);
+                if (weekStart is < 0 or > 6) weekStart = 1;
+                start = now.Date.AddDays(-(((int)now.DayOfWeek - weekStart + 7) % 7));
+                end = now.Date.AddDays(ReadInt(settings, "NatureTimeUseMode") == 1 ? 8 : 7); break;
+            default: return false;
+        }
+        return true;
     }
 
     private static string? ResolveWeather(JsonElement? settings, JsonElement? weather)
