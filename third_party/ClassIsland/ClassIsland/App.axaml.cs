@@ -591,7 +591,7 @@ public partial class App : AppBase, IAppHost
         var startupCount = File.Exists(startupCountFilePath)
             ? (int.TryParse(await File.ReadAllTextAsync(startupCountFilePath), out var count) ? count + 1 : 1)
             : 1;
-        if (startupCount >= 5 && ApplicationCommand is { Recovery: false, Quiet: false })
+        if (EmbeddedOptions is null && startupCount >= 5 && ApplicationCommand is { Recovery: false, Quiet: false })
         {
             Logger?.LogDebug("应用多次启动失败。startupCount={startupCount}",startupCount);
             var dialog = new TaskDialog()
@@ -615,7 +615,7 @@ public partial class App : AppBase, IAppHost
             }
         }
         // 恢复模式
-        if (ApplicationCommand.Recovery)
+        if (EmbeddedOptions is null && ApplicationCommand.Recovery)
         {
             Logger?.LogInformation("进入恢复模式");
             if (File.Exists(startupCountFilePath))
@@ -635,7 +635,7 @@ public partial class App : AppBase, IAppHost
 
         var spanProcessUpdate = spanPreInit.StartChild("startup-process-update");
         
-        if (ApplicationCommand.UpdateDeleteTarget != null)
+        if (EmbeddedOptions is null && ApplicationCommand.UpdateDeleteTarget != null)
         {
             //MessageBox.Show($"Update DELETE {ApplicationCommand.UpdateDeleteTarget}");
             UpdateService.RemoveUpdateTemporary(ApplicationCommand.UpdateDeleteTarget);
@@ -643,7 +643,8 @@ public partial class App : AppBase, IAppHost
         spanProcessUpdate.Finish();
 
         FileFolderService.CreateFolders();
-        PluginService.ProcessPluginsInstall();
+        if (EmbeddedOptions is null)
+            PluginService.ProcessPluginsInstall();
         bool isSystemSpeechSystemExist = false;
         var spanHostBuilding = spanPreInit.StartChild("startup-host-building");
 
@@ -735,7 +736,7 @@ public partial class App : AppBase, IAppHost
 
         CurrentLifetime = Core.Enums.ApplicationLifetime.StartingOnline;
         Logger.LogInformation("初始化应用。");
-        if (Settings.IsSplashEnabled)
+        if (EmbeddedOptions is null && Settings.IsSplashEnabled)
         {
             await GetService<ISplashService>().StartSplash();
         }
@@ -788,7 +789,7 @@ public partial class App : AppBase, IAppHost
         
         if (EmbeddedOptions is null && (!Settings.IsWelcomeWindowShowed || ApplicationCommand.Refreshing || ApplicationCommand.Onboarding))
         {
-            if (Settings.IsSplashEnabled)
+            if (EmbeddedOptions is null && Settings.IsSplashEnabled)
             {
                 await GetService<ISplashService>().EndSplash();
             }
@@ -882,11 +883,11 @@ public partial class App : AppBase, IAppHost
             GetService<IAutomationService>();
             GetService<IRulesetService>().NotifyStatusChanged();
             File.Delete(startupCountFilePath);
-            if (ConfigureFileHelper.Errors.FirstOrDefault(x => x.Critical) != null)
+            if (EmbeddedOptions is null && ConfigureFileHelper.Errors.FirstOrDefault(x => x.Critical) != null)
             {
                 PlatformServices.DesktopToastService.ShowToastAsync("配置文件损坏", "ClassIsland 部分配置文件已损坏且无法加载，这些配置文件已恢复至默认值。点击此消息以查看详细信息和从过往备份中恢复配置文件。", () => GetService<IUriNavigationService>().NavigateWrapped(new Uri("classisland://app/config-errors")));
             }
-            if (Settings.CorruptPluginsDisabledLastSession)
+            if (EmbeddedOptions is null && Settings.CorruptPluginsDisabledLastSession)
             {
                 Settings.CorruptPluginsDisabledLastSession = false;
                 var content = new DesktopToastContent()
@@ -912,7 +913,7 @@ public partial class App : AppBase, IAppHost
                 PlatformServices.DesktopToastService.ShowToastAsync(content);
             }
 
-            if (Settings.IsSplashEnabled)
+            if (EmbeddedOptions is null && Settings.IsSplashEnabled)
             {
                 App.GetService<ISplashService>().EndSplash();
             }
@@ -963,7 +964,7 @@ public partial class App : AppBase, IAppHost
             Logger.LogError(ex, "无法创建自动备份。");
         }
 
-        if (ApplicationCommand.UpdateDeleteTarget != null)
+        if (EmbeddedOptions is null && ApplicationCommand.UpdateDeleteTarget != null)
         {
             GetService<SettingsService>().Settings.LastUpdateStatus = UpdateStatus.UpToDate;
             var content = new DesktopToastContent()

@@ -268,20 +268,29 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
     private void PostInit()
     {
         IAppHost.GetService<ISplashService>().SetDetailedStatus("正在初始化托盘菜单");
-        var menu = this.FindResource("AppMenu") as NativeMenu;
-        TaskBarIconService.MainTaskBarIcon.Menu = menu;
-        TaskBarIconService.MainTaskBarIcon.IsVisible = true;
-        TaskBarIconService.MainTaskBarIcon.Clicked += MainTaskBarIconOnClicked;
-        if (!OperatingSystem.IsMacOS())
+        if (AppBase.Current is App { EmbeddedOptions: not null })
         {
-            PopupHelper.DisablePopupsRequested += (_, _) =>
+            // ExusiAI owns the process-level tray entry. The embedded island must
+            // not advertise itself as a second standalone application.
+            TaskBarIconService.MainTaskBarIcon.IsVisible = false;
+        }
+        else
+        {
+            var menu = this.FindResource("AppMenu") as NativeMenu;
+            TaskBarIconService.MainTaskBarIcon.Menu = menu;
+            TaskBarIconService.MainTaskBarIcon.IsVisible = true;
+            TaskBarIconService.MainTaskBarIcon.Clicked += MainTaskBarIconOnClicked;
+            if (!OperatingSystem.IsMacOS())
             {
-                TaskBarIconService.MainTaskBarIcon.Menu = null;
-            };
-            PopupHelper.RestorePopupsRequested += (_, _) =>
-            {
-                TaskBarIconService.MainTaskBarIcon.Menu = menu;
-            };
+                PopupHelper.DisablePopupsRequested += (_, _) =>
+                {
+                    TaskBarIconService.MainTaskBarIcon.Menu = null;
+                };
+                PopupHelper.RestorePopupsRequested += (_, _) =>
+                {
+                    TaskBarIconService.MainTaskBarIcon.Menu = menu;
+                };
+            }
         }
         ViewModel.OverlayRemainTimePercents = 0.5;
         DiagnosticService.EndStartup();

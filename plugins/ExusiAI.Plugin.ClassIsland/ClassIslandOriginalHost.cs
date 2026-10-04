@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Loader;
 
@@ -87,8 +88,9 @@ internal sealed class ClassIslandOriginalHost : IDisposable
             entryPoint!.GetMethod("RunEmbedded")!.Invoke(null, [options, created]);
             ready.TrySetResult(false);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Trace.TraceError("Embedded ClassIsland failed: {0}", exception);
             ready.TrySetResult(false);
         }
         finally { IsVisible = false; }
@@ -102,7 +104,8 @@ internal sealed class ClassIslandOriginalHost : IDisposable
         if (ready.Task.IsCompletedSuccessfully && ready.Task.Result)
             try { entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null); }
             catch (TargetInvocationException) { /* The Avalonia dispatcher may already be gone. */ }
-        if (thread is not null && !thread.Join(TimeSpan.FromSeconds(5))) return;
+        if (thread is not null && !thread.Join(TimeSpan.FromSeconds(5)))
+            Trace.TraceWarning("Embedded ClassIsland did not stop within five seconds.");
         AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
     }
 }

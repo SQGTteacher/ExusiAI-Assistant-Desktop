@@ -41,7 +41,7 @@ public partial class CrashWindow : MyWindow
 
     private void ButtonExit_OnClick(object sender, RoutedEventArgs e)
     {
-        if (IsCritical)
+        if (IsCritical && AppBase.Current is not App { EmbeddedOptions: not null })
         {
             Environment.Exit(1);
         }
