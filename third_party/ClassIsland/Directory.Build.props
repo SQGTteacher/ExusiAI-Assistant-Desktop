@@ -1,0 +1,6 @@
+<Project>
+  <!-- Keep upstream's own project settings separate from ExusiAI's build defaults. -->
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);EXUSIAI_EMBEDDED_SOURCE</DefineConstants>
+  </PropertyGroup>
+</Project>

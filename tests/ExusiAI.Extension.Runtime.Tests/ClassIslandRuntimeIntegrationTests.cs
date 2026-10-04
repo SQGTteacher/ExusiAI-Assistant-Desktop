@@ -499,6 +499,25 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task InstalledDataImportCopiesWorkingSetWithoutChangingOriginal()
+    {
+        using var root = new TemporaryDirectory();
+        var source = Path.Combine(root.Path, "Original");
+        var destination = Path.Combine(root.Path, "Plugin");
+        Directory.CreateDirectory(Path.Combine(source, "Profiles"));
+        Directory.CreateDirectory(Path.Combine(source, "Config", "ComponentLayouts"));
+        await File.WriteAllTextAsync(Path.Combine(source, "Settings.json"), "{\"CurrentComponentConfig\":\"Default\"}");
+        await File.WriteAllTextAsync(Path.Combine(source, "Profiles", "a.json"), "{\"Name\":\"一班\"}");
+        await File.WriteAllTextAsync(Path.Combine(source, "Config", "ComponentLayouts", "Default.json"), "{\"Lines\":[]}");
+        await using var core = new ClassIslandCoreService(new NullExtensionLogger(), destination);
+        await core.InitializeAsync();
+        var summary = await core.ImportDataDirectoryAsync(source);
+        Assert.Equal(3, summary.TotalFileCount);
+        Assert.True(File.Exists(Path.Combine(destination, "Profiles", "a.json")));
+        Assert.Equal("{\"Name\":\"一班\"}", await File.ReadAllTextAsync(Path.Combine(source, "Profiles", "a.json")));
+    }
+
+    [Fact]
     public void SyncRejectsTraversal()
     {
         using var root = new TemporaryDirectory();

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.Win32;
+using Forms = System.Windows.Forms;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
@@ -35,7 +36,7 @@ internal sealed class ClassIslandSyncPage : UserControl
     {
         var frame = new Border { CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), BorderBrush = BorderBrushValue, Background = Surface };
         frame.SizeChanged += (_, _) => ApplyRoundedClip(frame, 12);
-        var root = new Grid(); root.ColumnDefinitions.Add(new() { Width = new GridLength(Metric("TouchSidebarWidth", 210)) }); root.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        var root = new Grid(); root.ColumnDefinitions.Add(new() { Width = new GridLength(205) }); root.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         var side = new Border { Background = SurfaceAlt, CornerRadius = new CornerRadius(12, 0, 0, 12), BorderBrush = BorderBrushValue, BorderThickness = new Thickness(0, 0, 1, 0), Padding = new Thickness(8, 16, 8, 12) };
         var sideGrid = new Grid(); sideGrid.RowDefinitions.Add(new() { Height = GridLength.Auto }); sideGrid.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) }); sideGrid.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var title = new StackPanel { Margin = new Thickness(11, 0, 11, 16) };
@@ -80,7 +81,23 @@ internal sealed class ClassIslandSyncPage : UserControl
         var toggle = Primary(core.Presentation.IsVisible ? "隐藏桌面信息岛" : "显示桌面信息岛");
         toggle.Click += (_, _) => { if (core.Presentation.IsVisible) core.Presentation.Stop(); else core.Presentation.Start(); ShowOverview(); };
         actions.Children.Add(toggle); var refresh = Secondary("刷新预览"); refresh.Click += (_, _) => ShowOverview(); actions.Children.Add(refresh); stack.Children.Add(actions);
+        if (core.Presentation.IsOriginalHostAvailable)
+        {
+            var originalSettings = Secondary("打开 ClassIsland 原生设置");
+            originalSettings.Click += (_, _) =>
+            {
+                core.Presentation.Start();
+                core.Presentation.OpenOriginalSettings();
+            };
+            actions.Children.Add(originalSettings);
+        }
         var profile = core.Profiles.Current;
+        if (profile is null)
+        {
+            var import = Primary("导入本机 ClassIsland 数据");
+            import.Click += async (_, _) => await ImportInstalledAsync();
+            stack.Children.Add(import);
+        }
         stack.Children.Add(Section("当前运行状态", profile is null ? "尚未导入档案。请前往“同步”导入 ClassIsland 备份或 Profile JSON。" :
             $"档案：{profile.Name}\n科目：{profile.Subjects.Count}　时间表：{profile.TimeLayouts.Count}　课表：{profile.ClassPlans.Count}　课表群：{profile.ClassPlanGroups.Count}\n组件方案：{core.Components.CurrentConfigName}　提醒队列：{(core.Notifications.Current is null ? "空闲" : core.Notifications.Current.State.ToString())}"));
         Present(body);
@@ -89,17 +106,15 @@ internal sealed class ClassIslandSyncPage : UserControl
     private void ShowBasic()
     {
         Activate("basic"); var body = Page("基本", "与 ClassIsland Settings.json 保持相同的学期日期字段。", out var stack);
-        var anchor = new DatePicker
-        {
-            SelectedDate = core.Settings.SingleWeekStartTime?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today,
-            Width = 190, MinHeight = Metric("TouchCompactTargetHeight", 40)
-        };
+        var anchor = Input("yyyy-MM-dd");
+        anchor.Text = (core.Settings.SingleWeekStartTime ?? DateOnly.FromDateTime(DateTime.Today)).ToString("yyyy-MM-dd");
+        anchor.Width = 155;
         stack.Children.Add(Field("学期开始时间（轮换课表起点）", anchor));
         var save = Primary("保存并更新课表");
         save.Click += async (_, _) =>
         {
-            if (anchor.SelectedDate is not { } selected) return;
-            var date = DateOnly.FromDateTime(selected);
+            if (!DateOnly.TryParseExact(anchor.Text.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var date)) return;
             await core.Settings.SaveGeneralAsync(date, core.Settings.TimeOffsetSeconds, core.Settings.ExactTimeServer);
             core.Timetable.RotationAnchor = date;
             ShowBasic();
@@ -245,7 +260,7 @@ internal sealed class ClassIslandSyncPage : UserControl
         var dock = new ComboBox { MinHeight = Metric("TouchCompactTargetHeight", 40), Width = 220, ItemsSource = Enum.GetValues<ClassIslandDockPosition>(), SelectedItem = s.DockPosition };
         stack.Children.Add(Field("停靠位置", dock));
         var width = Numeric(s.Width); var height = Numeric(s.Height); var scale = Numeric(s.Scale); var offsetX = Numeric(s.OffsetX); var offsetY = Numeric(s.OffsetY);
-        stack.Children.Add(Field("宽度", width)); stack.Children.Add(Field("高度", height)); stack.Children.Add(Field("缩放", scale));
+        stack.Children.Add(Field("最大宽度（内容较短时自动收窄）", width)); stack.Children.Add(Field("最小高度", height)); stack.Children.Add(Field("缩放", scale));
         stack.Children.Add(Field("水平偏移", offsetX)); stack.Children.Add(Field("垂直偏移", offsetY));
         var topmost = new CheckBox { Content = "始终置顶", IsChecked = s.Topmost, Margin = new Thickness(2, 6, 0, 8) };
         var seconds = new CheckBox { Content = "时钟显示秒数", IsChecked = s.ShowSeconds, Margin = new Thickness(2, 0, 0, 12) };
@@ -263,20 +278,49 @@ internal sealed class ClassIslandSyncPage : UserControl
     private void ShowSync()
     {
         Activate("sync"); var body = Page("同步", "导入 ClassIsland 2.x 自动备份或单个 Profile；原文件不被修改，插件只编辑 ExusiAI 工作副本。", out var stack);
-        var actions = new WrapPanel(); var profile = Secondary("导入 Profile JSON"); profile.Click += async (_, _) => await ImportProfileAsync(); var backup = Primary("导入自动备份 ZIP"); backup.Click += async (_, _) => await ImportBackupAsync(); var export = Secondary("导出当前 Profile"); export.Click += async (_, _) => await ExportProfileAsync(); var folder = Secondary("打开数据目录"); folder.Click += (_, _) => { Directory.CreateDirectory(core.DataDirectory); Process.Start(new ProcessStartInfo(core.DataDirectory) { UseShellExecute = true }); };
-        actions.Children.Add(profile); actions.Children.Add(backup); actions.Children.Add(export); actions.Children.Add(folder); stack.Children.Add(actions);
+        var actions = new WrapPanel(); var profile = Secondary("导入 Profile JSON"); profile.Click += async (_, _) => await ImportProfileAsync(); var backup = Primary("导入自动备份 ZIP"); backup.Click += async (_, _) => await ImportBackupAsync(); var installed = Secondary("导入本机 ClassIsland 数据"); installed.Click += async (_, _) => await ImportInstalledAsync(); var export = Secondary("导出当前 Profile"); export.Click += async (_, _) => await ExportProfileAsync(); var folder = Secondary("打开数据目录"); folder.Click += (_, _) => { Directory.CreateDirectory(core.DataDirectory); Process.Start(new ProcessStartInfo(core.DataDirectory) { UseShellExecute = true }); };
+        actions.Children.Add(profile); actions.Children.Add(backup); actions.Children.Add(installed); actions.Children.Add(export); actions.Children.Add(folder); stack.Children.Add(actions);
         operationStatus = new TextBlock { Foreground = Accent, Margin = new Thickness(2, 14, 0, 0), TextWrapping = TextWrapping.Wrap }; stack.Children.Add(operationStatus);
         stack.Children.Add(Section("兼容策略", "保留 PascalCase、GUID 字典、枚举数值、日期格式及未知字段；保存采用临时文件替换并生成 .bak。Settings.json、Profiles 和 Config 从备份同步到插件工作区。")); Present(body);
     }
 
     private async Task ImportProfileAsync() { var d = new OpenFileDialog { Filter = "ClassIsland Profile (*.json)|*.json" }; if (d.ShowDialog() != true) return; await using var stream = File.OpenRead(d.FileName); var p = await core.Profiles.ImportAsync(stream, Path.GetFileName(d.FileName)); SetStatus($"已导入档案：{p.Name}"); }
     private async Task ImportBackupAsync() { var d = new OpenFileDialog { Filter = "ClassIsland 自动备份 (*.zip)|*.zip" }; if (d.ShowDialog() != true) return; var r = await core.ImportBackupAsync(d.FileName); SetStatus($"同步完成：{r.TotalFileCount} 个文件，Profiles {r.ProfileFileCount}，Config {r.ConfigFileCount}。"); }
+    private async Task ImportInstalledAsync()
+    {
+        var recommended = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClassIsland", "Data");
+        using var dialog = new Forms.FolderBrowserDialog { Description = "选择原版 ClassIsland 的 Data 文件夹", UseDescriptionForTitle = true,
+            SelectedPath = Directory.Exists(recommended) ? recommended : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) };
+        if (dialog.ShowDialog() != Forms.DialogResult.OK) return;
+        try
+        {
+            var result = await core.ImportDataDirectoryAsync(dialog.SelectedPath);
+            ShowOverview();
+            SetStatus($"已导入 {result.TotalFileCount} 个原版数据文件。");
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            if (operationStatus is null) ShowSync();
+            SetStatus(error.Message);
+        }
+    }
     private async Task ExportProfileAsync() { var p = core.Profiles.Current; if (p is null) { SetStatus("当前没有档案。"); return; } var d = new SaveFileDialog { Filter = "ClassIsland Profile (*.json)|*.json", FileName = $"{p.Id:N}.json" }; if (d.ShowDialog() != true) return; await using var stream = File.Create(d.FileName); await core.Profiles.ExportAsync(p, stream); SetStatus($"已导出：{p.Name}"); }
     private async Task SaveProfileAsync(ClassIslandProfile profile) { await core.Profiles.SaveAsync(profile); SetStatus("档案已保存。"); }
 
-    private ScrollViewer Page(string title, string subtitle, out StackPanel stack) { stack = new StackPanel(); stack.Children.Add(new TextBlock { Text = title, FontSize = 25, FontWeight = FontWeights.SemiBold, Foreground = Ink }); stack.Children.Add(new TextBlock { Text = subtitle, Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 16) }); return new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, PanningMode = PanningMode.VerticalFirst, PanningDeceleration = 0.001, PanningRatio = 1 }; }
+    private ScrollViewer Page(string title, string subtitle, out StackPanel stack)
+    {
+        stack = new StackPanel { Width = 800, HorizontalAlignment = HorizontalAlignment.Left };
+        stack.Children.Add(new TextBlock { Text = title, FontSize = 25, FontWeight = FontWeights.SemiBold, Foreground = Ink });
+        stack.Children.Add(new TextBlock { Text = subtitle, Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 16) });
+        var viewer = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, PanningMode = PanningMode.VerticalFirst,
+            PanningDeceleration = 0.001, PanningRatio = 1 };
+        var page = stack;
+        viewer.SizeChanged += (_, _) => page.Width = Math.Max(400, Math.Min(880, viewer.ActualWidth - 16));
+        return viewer;
+    }
     private void Present(UIElement view) { contentHost.Children.Clear(); contentHost.Children.Add(view); }
-    private void AddNavigation(Panel panel, string key, string title, Action action) { var button = new Button { Content = title, MinHeight = Metric("TouchTargetHeight", 44), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 0, 3), Background = Brushes.Transparent, Foreground = Ink, BorderThickness = new Thickness(0) }; button.Click += (_, _) => action(); navigation[key] = button; panel.Children.Add(button); }
+    private void AddNavigation(Panel panel, string key, string title, Action action) { var button = new Button { Content = title, Height = 35, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(0, 0, 0, 2), Background = Brushes.Transparent, Foreground = Ink, BorderThickness = new Thickness(0) }; button.Click += (_, _) => action(); navigation[key] = button; panel.Children.Add(button); }
     private void Activate(string key) { foreach (var item in navigation) { item.Value.Background = item.Key == key ? AccentSoft : Brushes.Transparent; item.Value.Foreground = item.Key == key ? Accent : Ink; item.Value.FontWeight = item.Key == key ? FontWeights.SemiBold : FontWeights.Normal; } }
     private static StackPanel EditorPanel(string title) { var p = new StackPanel(); p.Children.Add(new TextBlock { Text = title, Foreground = Accent, FontWeight = FontWeights.SemiBold, FontSize = 16, Margin = new Thickness(0, 0, 0, 8) }); return p; }
     private static Border WrapEditor(UIElement child) => new() { Child = child, Background = SurfaceAlt, BorderBrush = BorderBrushValue, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Margin = new Thickness(0, 0, 10, 0) };
@@ -289,7 +333,7 @@ internal sealed class ClassIslandSyncPage : UserControl
     private static Button Primary(string text) => Button(text, Accent, Resource("AccentForegroundBrush", "#FFFFFF"));
     private static Button Secondary(string text) => Button(text, SurfaceAlt, Ink);
     private static Button Danger(string text) => Button(text, Resource("DangerBrush", "#D86464"), Brushes.White);
-    private static Button Button(string text, Brush background, Brush foreground) => new() { Content = text, MinHeight = Metric("TouchTargetHeight", 44), MinWidth = 88, Padding = new Thickness(13, 0, 13, 0), Margin = new Thickness(0, 4, 8, 4), Background = background, Foreground = foreground, BorderBrush = BorderBrushValue };
+    private static Button Button(string text, Brush background, Brush foreground) => new() { Content = text, Height = 38, MinWidth = 88, HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(13, 0, 13, 0), Margin = new Thickness(0, 4, 8, 4), Background = background, Foreground = foreground, BorderBrush = BorderBrushValue };
     private static double Metric(string key, double fallback) => Application.Current?.TryFindResource(key) is double value ? value : fallback;
     private static Brush Resource(string key, string fallback) => Application.Current?.TryFindResource(key) as Brush ?? new SolidColorBrush((Color)ColorConverter.ConvertFromString(fallback));
     private static void ApplyRoundedClip(FrameworkElement element, double radius) { if (element.ActualWidth <= 0 || element.ActualHeight <= 0) return; var r = Math.Min(radius, Math.Min(element.ActualWidth, element.ActualHeight) / 2); element.Clip = new RectangleGeometry(new Rect(0, 0, element.ActualWidth, element.ActualHeight), r, r); }
