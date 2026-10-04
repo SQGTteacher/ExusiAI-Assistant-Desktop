@@ -24,10 +24,12 @@
     <None Include="README.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-  <!-- Build the original app first with its pinned .NET 9 SDK. This target only
-       packages that output, avoiding SDK 8/9 MSBuild task assembly collisions. -->
+  <!-- Build the original app in a separate dotnet process so its pinned .NET 9 SDK
+       is honored even when ExusiAI is built directly with .NET 8. -->
   <Target Name="PackageNativeClassIsland" AfterTargets="Build"
           Condition="'$(EnableClassIslandNative)' == 'true'">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland"
+          Command="dotnet build ClassIsland.Desktop\ClassIsland.Desktop.csproj --configuration $(Configuration) -p:PublishBuilding=true -p:PublishPlatform=windows -p:ClassIsland_PlatformTarget=x64" />
     <ItemGroup>
       <NativeClassIslandFiles Include="$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland\ClassIsland.Desktop\bin\$(Configuration)\net8.0-windows10.0.19041.0\**\*" />
     </ItemGroup>
