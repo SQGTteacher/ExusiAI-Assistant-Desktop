@@ -4,6 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Description>Native ClassIsland profile, timetable, component and notification services for ExusiAI.</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
@@ -24,6 +25,12 @@
     <None Include="README.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- Fail at packaging time if Avalonia is missing, rather than shipping a plugin
+       that cannot be loaded by the extension runtime. -->
+  <Target Name="VerifyClassIslandPluginDependencies" AfterTargets="Build">
+    <Error Condition="!Exists('$(TargetDir)Avalonia.Controls.dll')"
+           Text="ClassIsland plugin output is missing Avalonia.Controls.dll. Restore packages and rebuild before packaging." />
+  </Target>
   <!-- Build the original app in a separate dotnet process so its pinned .NET 9 SDK
        is honored even when ExusiAI is built directly with .NET 8. -->
   <Target Name="PackageNativeClassIsland" AfterTargets="Build"
