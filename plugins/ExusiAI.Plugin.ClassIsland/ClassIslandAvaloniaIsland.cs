@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia;
@@ -45,6 +46,11 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
     private TextBlock? notificationText;
     private DispatcherTimer? timer;
     private DispatcherTimer? dragEndTimer;
+    private DispatcherTimer? opacityTimer;
+    private long opacityStarted;
+    private double opacityFrom;
+    private double opacityTo;
+    private bool pointerInside;
     private bool visible;
     private bool disposed;
     private bool dragging;
@@ -93,7 +99,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
     {
         visible = false;
         if (ready.Task.IsCompletedSuccessfully && ready.Task.Result)
-            Dispatcher.UIThread.Post(() => { timer?.Stop(); window?.Hide(); });
+            Dispatcher.UIThread.Post(() => { timer?.Stop(); opacityTimer?.Stop(); window?.Hide(); });
     }
 
     internal void RefreshAppearance()
@@ -120,6 +126,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
                 ready.TrySetResult(true);
                 app.Run(lifetime.Token);
                 timer?.Stop();
+                opacityTimer?.Stop();
                 window?.Close();
             }, []);
         }
@@ -168,6 +175,18 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             if (!dragging) return;
             dragEndTimer.Stop();
             dragEndTimer.Start();
+        };
+        island.PointerEntered += (_, _) => FadeOnPointer(true);
+        island.PointerExited += (_, _) => FadeOnPointer(false);
+        var fadeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        opacityTimer = fadeTimer;
+        fadeTimer.Tick += (_, _) =>
+        {
+            if (window is null) return;
+            var progress = Math.Clamp(Stopwatch.GetElapsedTime(opacityStarted).TotalMilliseconds / 180, 0, 1);
+            var eased = 1 - (1 - progress) * (1 - progress);
+            window.Opacity = opacityFrom + (opacityTo - opacityFrom) * eased;
+            if (progress >= 1) fadeTimer.Stop();
         };
         island.PointerPressed += (_, e) =>
         {
@@ -303,6 +322,17 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         return brush;
     }
 
+    private void FadeOnPointer(bool inside)
+    {
+        pointerInside = inside;
+        if (window is null || opacityTimer is null) return;
+        var s = appearance.Settings;
+        opacityFrom = window.Opacity;
+        opacityTo = inside && s.FadeOnPointerEnter ? s.HoverOpacity : s.Opacity;
+        opacityStarted = Stopwatch.GetTimestamp();
+        opacityTimer.Start();
+    }
+
     private void Refresh()
     {
         if (lines is null || island is null || window is null) return;
@@ -351,7 +381,8 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         window.Height = Math.Max(s.Height * s.Scale / dpi, lines.DesiredSize.Height + 14);
         island.CornerRadius = new CornerRadius(Math.Min(s.CornerRadius * s.Scale / dpi, window.Height / 2));
         window.Topmost = s.Topmost;
-        window.Opacity = s.Opacity;
+        if (opacityTimer?.IsEnabled != true)
+            window.Opacity = pointerInside && s.FadeOnPointerEnter ? s.HoverOpacity : s.Opacity;
         var screen = Forms.Screen.AllScreens.FirstOrDefault(x => x.DeviceName == s.MonitorDeviceName)
             ?? Forms.Screen.PrimaryScreen;
         if (screen is null) return;
