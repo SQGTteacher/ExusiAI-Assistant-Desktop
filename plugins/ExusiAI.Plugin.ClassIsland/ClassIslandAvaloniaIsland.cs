@@ -211,10 +211,11 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             defaultText = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold };
             lines.Children.Add(defaultText);
         }
-        notificationText = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, IsVisible = false };
-        notificationText.PointerPressed += (_, e) =>
+        var notificationLabel = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, IsVisible = false };
+        notificationText = notificationLabel;
+        notificationLabel.PointerPressed += (_, e) =>
         {
-            if (notifications.Current is not { } request || !e.GetCurrentPoint(notificationText).Properties.IsLeftButtonPressed) return;
+            if (notifications.Current is not { } request || !e.GetCurrentPoint(notificationLabel).Properties.IsLeftButtonPressed) return;
             request.Cancel();
             e.Handled = true;
         };
