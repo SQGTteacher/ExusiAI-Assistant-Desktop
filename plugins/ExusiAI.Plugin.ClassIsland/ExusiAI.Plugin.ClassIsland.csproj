@@ -29,7 +29,7 @@
   <Target Name="PackageNativeClassIsland" AfterTargets="Build"
           Condition="'$(EnableClassIslandNative)' == 'true'">
     <Exec WorkingDirectory="$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland"
-          Command="dotnet build ClassIsland.Desktop\ClassIsland.Desktop.csproj --configuration $(Configuration) -p:PublishBuilding=true -p:PublishPlatform=windows -p:ClassIsland_PlatformTarget=x64" />
+          Command="dotnet build ClassIsland.Desktop\ClassIsland.Desktop.csproj --configuration $(Configuration) -p:PublishBuilding=true -p:PublishPlatform=windows -p:ClassIsland_PlatformTarget=x64 -p:UseAppHost=false" />
     <ItemGroup>
       <NativeClassIslandFiles Include="$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland\ClassIsland.Desktop\bin\$(Configuration)\net8.0-windows10.0.19041.0\**\*" />
     </ItemGroup>

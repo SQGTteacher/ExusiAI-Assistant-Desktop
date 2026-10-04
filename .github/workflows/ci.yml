@@ -31,9 +31,6 @@ jobs:
           dotnet-version: |
             8.0.x
             9.0.x
-      - name: Build original ClassIsland runtime
-        working-directory: third_party/ClassIsland
-        run: dotnet build ClassIsland.Desktop/ClassIsland.Desktop.csproj --configuration Release -p:PublishBuilding=true -p:PublishPlatform=windows -p:ClassIsland_PlatformTarget=x64
       - name: Restore
         run: dotnet restore ExusiAI.sln
       - name: Build
