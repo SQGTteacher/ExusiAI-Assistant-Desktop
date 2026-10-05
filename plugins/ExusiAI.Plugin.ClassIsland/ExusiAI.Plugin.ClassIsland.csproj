@@ -6,7 +6,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Description>In-process host for the original ClassIsland Avalonia UI.</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
-    <EnableClassIslandNative Condition="'$(EnableClassIslandNative)' == '' and '$(Configuration)' == 'Release'">true</EnableClassIslandNative>
+    <EnableClassIslandNative Condition="'$(EnableClassIslandNative)' == ''">true</EnableClassIslandNative>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Abstractions\ExusiAI.Extension.Abstractions.csproj" />

@@ -111,6 +111,15 @@ internal sealed class ClassIslandHost : IDisposable
                 var started = app.GetType().GetEvent("AppStarted")
                     ?? throw new MissingMemberException("ClassIsland.App.AppStarted");
                 started.AddEventHandler(app, new EventHandler((_, _) => ready.TrySetResult(true)));
+                app.GetType().GetEvent("EmbeddedRestartRequested")?.AddEventHandler(app,
+                    new EventHandler((_, _) =>
+                    {
+                        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                        dispatcher?.BeginInvoke((Action)(() => System.Windows.MessageBox.Show(
+                            "ClassIsland 的这项设置需要重启 ExusiAI 后生效。",
+                            "需要重启 ExusiAI", System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Information)));
+                    }));
             };
             entryPoint!.GetMethod("RunEmbedded")!.Invoke(null, [options, created]);
             if (!ready.Task.IsCompleted)
