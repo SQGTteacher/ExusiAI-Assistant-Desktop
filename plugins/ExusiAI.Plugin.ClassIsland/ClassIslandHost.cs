@@ -29,6 +29,9 @@ internal sealed class ClassIslandHost : IDisposable
     internal bool IsAvailable => File.Exists(Path.Combine(nativeDirectory, "ClassIsland.Desktop.dll")) &&
         File.Exists(Path.Combine(nativeDirectory, "ClassIsland.dll"));
 
+    internal string DataDirectory => dataDirectory;
+    internal bool IsStopped => thread is null || !thread.IsAlive;
+
     internal bool IsVisible { get; private set; }
 
     internal bool Start()
@@ -152,8 +155,8 @@ internal sealed class ClassIslandHost : IDisposable
         if (entryPoint is not null)
             try { entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null); }
             catch (TargetInvocationException) { /* The Avalonia dispatcher may already be gone. */ }
-        if (thread is not null && !thread.Join(TimeSpan.FromSeconds(5)))
-            Trace.TraceWarning("Embedded ClassIsland did not stop within five seconds.");
+        if (thread is not null && !thread.Join(TimeSpan.FromSeconds(15)))
+            Trace.TraceWarning("Embedded ClassIsland did not stop within fifteen seconds.");
         AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
     }
 }

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
@@ -22,6 +23,26 @@ internal sealed class ClassIslandPage : UserControl
         Add(buttons, "显示原版信息岛", () => host.Start());
         Add(buttons, "隐藏原版信息岛", () => { host.Hide(); return true; });
         Add(buttons, "打开原版设置", () => { if (!host.Start()) return false; host.OpenSettings(); return true; });
+        var import = new Button { Content = "导入本机 ClassIsland 数据", Margin = new Thickness(0, 0, 10, 10),
+            Padding = new Thickness(14, 8, 14, 8), MinHeight = 40 };
+        import.Click += async (_, _) =>
+        {
+            var dialog = new OpenFolderDialog { Title = "选择原版 ClassIsland 的 Data 文件夹" };
+            var defaultPath = System.IO.Path.Combine(Environment.GetFolderPath(
+                Environment.SpecialFolder.ApplicationData), "ClassIsland", "Data");
+            if (System.IO.Directory.Exists(defaultPath)) dialog.InitialDirectory = defaultPath;
+            if (dialog.ShowDialog() != true) return;
+            import.IsEnabled = false;
+            try
+            {
+                var backup = await ClassIslandDataImporter.ImportAsync(dialog.FolderName,
+                    host.DataDirectory, host.Dispose, () => host.IsStopped);
+                status.Text = $"导入完成。请重启 ExusiAI 以加载原版数据。导入前备份：{backup}";
+            }
+            catch (Exception error) { status.Text = error.GetBaseException().Message; }
+            finally { import.IsEnabled = true; }
+        };
+        buttons.Children.Add(import);
         panel.Children.Add(buttons);
         Content = new ScrollViewer { Content = panel };
         Loaded += (_, _) => Refresh();
