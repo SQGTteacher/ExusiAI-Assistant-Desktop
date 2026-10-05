@@ -290,8 +290,8 @@ public sealed class ClassIslandPresentationService
         var compact = ReadSettingBool(settings.Settings, "IsCompactModeEnabled");
         var prefix = compact ? $"{name} " : $"距离 {name} {connector} ";
         var value = text.StartsWith(prefix, StringComparison.Ordinal) ? text[prefix.Length..] : text;
-        var colorValue = ReadSettingString(settings.Settings, "FontColor", "#FF0000FF");
-        var accent = ClassIslandComponentText.TryParseUpstreamColor(colorValue, out var alpha, out var red, out var green, out var blue)
+        var accent = ClassIslandComponentText.TryReadCountdownColor(settings.Settings,
+            out var alpha, out var red, out var green, out var blue)
             ? Color.FromArgb(alpha, red, green, blue) : Colors.Red;
         var foreground = appearance.Settings.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight
             ? Brushes.Black : Brushes.White;
@@ -311,7 +311,7 @@ public sealed class ClassIslandPresentationService
             : new SolidColorBrush(light ? Color.FromRgb(82, 127, 152) : Color.FromRgb(100, 190, 235));
         if (progress is not null) progress.Stroke = progressBrush;
         if (bar is not null) bar.Foreground = progressBrush;
-        if (!ClassIslandComponentText.TryGetCountdownWindow(settings.Settings, now, out var start, out var end) || end <= start)
+        if (!ClassIslandComponentText.TryGetCountdownWindow(settings.Settings, now, timetable, out var start, out var end) || end <= start)
         { if (progress is not null) progress.Data = Geometry.Empty; if (bar is not null) bar.Value = 0; return; }
         var fraction = Math.Clamp((ReadSettingBool(settings.Settings, "IsProgressInverted") ? end - now : now - start).TotalSeconds / (end - start).TotalSeconds, 0, .9999);
         if (bar is not null) bar.Value = fraction * 100;

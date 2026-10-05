@@ -64,7 +64,7 @@ public static class ClassIslandComponentText
         }
         if (id == new Guid("7C645D35-8151-48BA-B4AC-15017460D994"))
         {
-            if (!TryGetCountdownWindow(component.Settings, now, out var start, out var end)) return null;
+            if (!TryGetCountdownWindow(component.Settings, now, timetable, out var start, out var end)) return null;
             var remaining = end - now;
             if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
             var total = end - start;
@@ -88,7 +88,11 @@ public static class ClassIslandComponentText
         return null;
     }
 
-    public static bool TryGetCountdownWindow(JsonElement? settings, DateTime now, out DateTime start, out DateTime end)
+    public static bool TryGetCountdownWindow(JsonElement? settings, DateTime now, out DateTime start, out DateTime end) =>
+        TryGetCountdownWindow(settings, now, null, out start, out end);
+
+    public static bool TryGetCountdownWindow(JsonElement? settings, DateTime now, ClassIslandTimetableService? timetable,
+        out DateTime start, out DateTime end)
     {
         start = default;
         end = default;
@@ -113,6 +117,9 @@ public static class ClassIslandComponentText
                 end = start + duration;
                 break;
             case 2:
+                var natureMode = ReadInt(settings, "NatureTimeUseMode");
+                if (natureMode != 1 && timetable?.TryGetDayTimeRange(now, out start, out end) == true) break;
+                if (natureMode == 2) { start = end = DateTime.MinValue; break; }
                 start = now.Date; end = start.AddDays(1); break;
             case 3:
                 var weekStart = ReadInt(settings, "WeekCountdownStartDay", 1);
@@ -135,6 +142,30 @@ public static class ClassIslandComponentText
             !byte.TryParse(hex.AsSpan(3, 2), style, culture, out green) ||
             !byte.TryParse(hex.AsSpan(5, 2), style, culture, out blue)) return false;
         return hex.Length == 7 || byte.TryParse(hex.AsSpan(7, 2), style, culture, out alpha);
+    }
+
+    public static bool TryReadCountdownColor(JsonElement? settings, out byte alpha, out byte red, out byte green, out byte blue)
+    {
+        if (settings is { ValueKind: JsonValueKind.Object } source &&
+            source.TryGetProperty("FontColor", out var color))
+        {
+            if (color.ValueKind == JsonValueKind.String)
+                return TryParseUpstreamColor(color.GetString(), out alpha, out red, out green, out blue);
+            if (color.ValueKind == JsonValueKind.Object)
+            {
+                static bool Channel(JsonElement value, string name, out byte channel)
+                {
+                    channel = 0;
+                    if (!value.TryGetProperty(name, out var field) || field.ValueKind != JsonValueKind.Number ||
+                        !field.TryGetInt32(out var number) || number is < 0 or > 255) return false;
+                    channel = (byte)number;
+                    return true;
+                }
+                if (Channel(color, "A", out alpha) && Channel(color, "R", out red) &&
+                    Channel(color, "G", out green) && Channel(color, "B", out blue)) return true;
+            }
+        }
+        return TryParseUpstreamColor("#FF0000FF", out alpha, out red, out green, out blue);
     }
 
     private static string? ResolveWeather(JsonElement? settings, JsonElement? weather)

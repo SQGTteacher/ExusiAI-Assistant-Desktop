@@ -357,9 +357,9 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) &&
         value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
-    private static double CountdownProgress(ClassIslandComponentSettings component, DateTime now)
+    private double CountdownProgress(ClassIslandComponentSettings component, DateTime now)
     {
-        if (!ClassIslandComponentText.TryGetCountdownWindow(component.Settings, now, out var start, out var end) || end <= start)
+        if (!ClassIslandComponentText.TryGetCountdownWindow(component.Settings, now, timetable, out var start, out var end) || end <= start)
             return 0;
         var elapsed = ReadBool(component.Settings, "IsProgressInverted") ? end - now : now - start;
         return Math.Clamp(elapsed.TotalSeconds / (end - start).TotalSeconds, 0, .999999);
@@ -466,8 +466,8 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             name.Text = title;
             connector.Text = compact ? " " : $" {joiner} ";
             value.Text = text.StartsWith(heading, StringComparison.Ordinal) ? text[heading.Length..] : text;
-            var colorValue = ReadString(component.Settings, "FontColor") ?? "#FF0000FF";
-            IBrush accent = ClassIslandComponentText.TryParseUpstreamColor(colorValue, out var alpha, out var red, out var green, out var blue)
+            IBrush accent = ClassIslandComponentText.TryReadCountdownColor(component.Settings,
+                out var alpha, out var red, out var green, out var blue)
                 ? new SolidColorBrush(Color.FromArgb(alpha, red, green, blue))
                 : new SolidColorBrush(Colors.Red);
             var connectorInk = ReadBool(component.Settings, "IsConnectorColorEmphasized") ? accent : ink;

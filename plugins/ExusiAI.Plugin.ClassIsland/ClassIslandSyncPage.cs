@@ -237,7 +237,13 @@ internal sealed class ClassIslandSyncPage : UserControl
 
         var name = Input("倒计时名称"); name.Text = ReadText("CountDownName", "倒计时");
         var connector = Input("连接文字"); connector.Text = ReadText("CountDownConnector", "还有");
-        var color = Input("#RRGGBBAA"); color.Text = ReadText("FontColor", "#FF0000FF");
+        var originalColorIsObject = settings is { ValueKind: JsonValueKind.Object } colorSettings &&
+            colorSettings.TryGetProperty("FontColor", out var storedColor) && storedColor.ValueKind == JsonValueKind.Object;
+        ClassIslandComponentText.TryReadCountdownColor(settings, out var colorAlpha, out var colorRed, out var colorGreen, out var colorBlue);
+        var displayedColor = originalColorIsObject
+            ? $"#{colorRed:X2}{colorGreen:X2}{colorBlue:X2}{colorAlpha:X2}"
+            : ReadText("FontColor", "#FF0000FF");
+        var color = Input("#RRGGBBAA"); color.Text = displayedColor;
         var fontSize = Numeric(ReadNumber("FontSize", 16));
         stack.Children.Add(Field("名称", name)); stack.Children.Add(Field("连接文字", connector));
         stack.Children.Add(Field("强调颜色（#RRGGBBAA）", color)); stack.Children.Add(Field("名称和数值字号", fontSize));
@@ -279,7 +285,8 @@ internal sealed class ClassIslandSyncPage : UserControl
             {
                 values["CountDownName"] = name.Text ?? "";
                 values["CountDownConnector"] = connector.Text ?? "";
-                values["FontColor"] = color.Text;
+                if (!originalColorIsObject || !string.Equals(color.Text, displayedColor, StringComparison.OrdinalIgnoreCase))
+                    values["FontColor"] = color.Text;
                 values["FontSize"] = int.TryParse(fontSize.Text, out var parsedFont) ? Math.Clamp(parsedFont, 8, 72) : 16;
                 values["IsCompactModeEnabled"] = compact.IsChecked == true;
                 values["IsConnectorColorEmphasized"] = connectorColor.IsChecked == true;

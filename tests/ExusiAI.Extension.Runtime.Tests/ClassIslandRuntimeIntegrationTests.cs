@@ -278,6 +278,56 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task DailyCountdownUsesTheFirstAndLastTimetableEntries()
+    {
+        using var root = new TemporaryDirectory();
+        var profiles = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await profiles.InitializeAsync();
+        var layoutId = Guid.NewGuid();
+        var profile = new ClassIslandProfile
+        {
+            TimeLayouts = { [layoutId] = new()
+            {
+                Layouts =
+                {
+                    new() { TimeType = 0, StartTime = TimeSpan.FromHours(8), EndTime = TimeSpan.FromHours(8.75) },
+                    new() { TimeType = 1, StartTime = TimeSpan.FromHours(9), EndTime = TimeSpan.FromHours(10) }
+                }
+            } },
+            ClassPlans = { [Guid.NewGuid()] = new()
+            {
+                TimeLayoutId = layoutId, TimeRule = new() { WeekDay = 1 }
+            } }
+        };
+        await profiles.SaveAsync(profile);
+        var timetable = new ClassIslandTimetableService(profiles);
+        var monday = new DateTime(2026, 9, 28, 9, 0, 0);
+        var settings = System.Text.Json.JsonSerializer.SerializeToElement(new { CountdownSource = 2 });
+        Assert.True(ClassIslandComponentText.TryGetCountdownWindow(settings, monday, timetable, out var start, out var end));
+        Assert.Equal(monday.Date.AddHours(8), start);
+        Assert.Equal(monday.Date.AddHours(10), end);
+        var natural = System.Text.Json.JsonSerializer.SerializeToElement(new { CountdownSource = 2, NatureTimeUseMode = 1 });
+        Assert.True(ClassIslandComponentText.TryGetCountdownWindow(natural, monday, timetable, out start, out end));
+        Assert.Equal(monday.Date, start);
+        Assert.Equal(monday.Date.AddDays(1), end);
+    }
+
+    [Fact]
+    public void LegacyCountdownColorObjectRetainsChannels()
+    {
+        var settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            FontColor = new { A = 128, R = 255, G = 32, B = 0 }
+        });
+        Assert.True(ClassIslandComponentText.TryReadCountdownColor(settings,
+            out var alpha, out var red, out var green, out var blue));
+        Assert.Equal((128, 255, 32, 0), ((int)alpha, (int)red, (int)green, (int)blue));
+        var component = new ClassIslandComponentSettings { Settings = settings };
+        component.UpdateSettings(values => values["CountDownName"] = "编辑后");
+        Assert.Equal(JsonValueKind.Object, component.Settings!.Value.GetProperty("FontColor").ValueKind);
+    }
+
+    [Fact]
     public void CyclicCountdownUsesConfiguredDurations()
     {
         var settings = System.Text.Json.JsonSerializer.SerializeToElement(new
