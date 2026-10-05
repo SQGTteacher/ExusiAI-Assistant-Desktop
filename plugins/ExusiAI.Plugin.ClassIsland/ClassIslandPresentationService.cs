@@ -214,7 +214,7 @@ public sealed class ClassIslandPresentationService
                     ring.Children.Add(progress); content.Children.Add(ring);
                 }
             }
-            var label = new TextBlock { FontSize = ReadSettingInt(component.Settings, "FontSize", 16),
+            var label = new TextBlock { FontSize = component.MainWindowBodyFontSize,
                 FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             content.Children.Add(label);
             countdownViews.Add((component, label, progress, bar));
@@ -290,20 +290,25 @@ public sealed class ClassIslandPresentationService
         var compact = ReadSettingBool(settings.Settings, "IsCompactModeEnabled");
         var prefix = compact ? $"{name} " : $"距离 {name} {connector} ";
         var value = text.StartsWith(prefix, StringComparison.Ordinal) ? text[prefix.Length..] : text;
-        Color accent;
-        try { accent = (Color)ColorConverter.ConvertFromString(ReadSettingString(settings.Settings, "FontColor", "#FFFF0000")); }
-        catch (FormatException) { accent = Colors.Red; }
+        var colorValue = ReadSettingString(settings.Settings, "FontColor", "#FF0000FF");
+        var accent = ClassIslandComponentText.TryParseUpstreamColor(colorValue, out var alpha, out var red, out var green, out var blue)
+            ? Color.FromArgb(alpha, red, green, blue) : Colors.Red;
         var foreground = appearance.Settings.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight
             ? Brushes.Black : Brushes.White;
         label.Inlines.Clear();
         var connectorBrush = ReadSettingBool(settings.Settings, "IsConnectorColorEmphasized") ? new SolidColorBrush(accent) : foreground;
         if (!compact) label.Inlines.Add(new Run("距离 ") { Foreground = connectorBrush });
-        label.Inlines.Add(new Run(name) { Foreground = new SolidColorBrush(accent) });
+        label.Inlines.Add(new Run(name) { Foreground = new SolidColorBrush(accent),
+            FontSize = ReadSettingInt(settings.Settings, "FontSize", 16) });
         if (!compact) label.Inlines.Add(new Run($" {connector} ") { Foreground = connectorBrush });
         else label.Inlines.Add(new Run(" ") { Foreground = foreground });
-        label.Inlines.Add(new Run(value) { Foreground = new SolidColorBrush(accent) });
+        label.Inlines.Add(new Run(value) { Foreground = new SolidColorBrush(accent),
+            FontSize = ReadSettingInt(settings.Settings, "FontSize", 16) });
         if (progress is null && bar is null) return;
-        var progressBrush = ReadSettingBool(settings.Settings, "UseAccentOnProgressBar", true) ? new SolidColorBrush(accent) : foreground;
+        var light = appearance.Settings.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight;
+        Brush progressBrush = ReadSettingBool(settings.Settings, "UseAccentOnProgressBar", true)
+            ? new SolidColorBrush(accent)
+            : new SolidColorBrush(light ? Color.FromRgb(82, 127, 152) : Color.FromRgb(100, 190, 235));
         if (progress is not null) progress.Stroke = progressBrush;
         if (bar is not null) bar.Foreground = progressBrush;
         if (!ClassIslandComponentText.TryGetCountdownWindow(settings.Settings, now, out var start, out var end) || end <= start)

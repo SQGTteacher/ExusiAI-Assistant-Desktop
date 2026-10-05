@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -202,11 +203,103 @@ internal sealed class ClassIslandSyncPage : UserControl
             var main = new CheckBox { Content = "主要行", IsChecked = line.IsMainLine, HorizontalAlignment = HorizontalAlignment.Right }; main.Checked += async (_, _) => { line.IsMainLine = true; await core.Components.SaveAsync(); }; main.Unchecked += async (_, _) => { line.IsMainLine = false; await core.Components.SaveAsync(); }; DockPanel.SetDock(main, Dock.Right); header.Children.Add(main); panel.Children.Add(header);
             foreach (var component in line.Children)
             {
-                var row = new DockPanel { Margin = new Thickness(0, 9, 0, 0) }; var visible = new CheckBox { Content = "显示", IsChecked = component.IsVisible, Width = 62 }; visible.Checked += async (_, _) => { component.IsVisible = true; await core.Components.SaveAsync(); }; visible.Unchecked += async (_, _) => { component.IsVisible = false; await core.Components.SaveAsync(); }; row.Children.Add(visible); var definition = ClassIslandComponentCatalog.Find(component.Id); row.Children.Add(new TextBlock { Text = definition?.Name ?? (string.IsNullOrWhiteSpace(component.NameCache) ? component.Id : component.NameCache), Foreground = definition is null ? Muted : Ink, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }); panel.Children.Add(row);
+                var row = new DockPanel { Margin = new Thickness(0, 9, 0, 0), LastChildFill = false }; var visible = new CheckBox { Content = "显示", IsChecked = component.IsVisible, Width = 62 }; visible.Checked += async (_, _) => { component.IsVisible = true; await core.Components.SaveAsync(); }; visible.Unchecked += async (_, _) => { component.IsVisible = false; await core.Components.SaveAsync(); }; row.Children.Add(visible); var definition = ClassIslandComponentCatalog.Find(component.Id); row.Children.Add(new TextBlock { Text = definition?.Name ?? (string.IsNullOrWhiteSpace(component.NameCache) ? component.Id : component.NameCache), Foreground = definition is null ? Muted : Ink, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+                if (component.Id.Equals("7c645d35-8151-48ba-b4ac-15017460d994", StringComparison.OrdinalIgnoreCase))
+                {
+                    var configure = Secondary("配置倒计时");
+                    configure.Click += (_, _) => ShowCountdownSettings(component);
+                    DockPanel.SetDock(configure, Dock.Right); row.Children.Add(configure);
+                }
+                panel.Children.Add(row);
             }
             var addRow = new WrapPanel { Margin = new Thickness(0, 9, 0, 0) }; var catalog = new ComboBox { Width = 180, MinHeight = Metric("TouchCompactTargetHeight", 40), ItemsSource = ClassIslandComponentCatalog.BuiltIn, DisplayMemberPath = nameof(ClassIslandComponentDefinition.Name), SelectedIndex = 0 }; var add = Secondary("添加组件"); add.Click += async (_, _) => { if (catalog.SelectedItem is not ClassIslandComponentDefinition selected) return; line.Children.Add(new() { Id = selected.Id.ToString(), NameCache = selected.Name }); await core.Components.SaveAsync(); ShowComponents(); }; addRow.Children.Add(catalog); addRow.Children.Add(add); panel.Children.Add(addRow); card.Child = panel; lines.Children.Add(card);
         }
         var addLine = Primary("新增组件行"); addLine.Click += async (_, _) => { core.Components.CurrentComponents.Lines.Add(new()); await core.Components.SaveAsync(); ShowComponents(); }; stack.Children.Add(lines); stack.Children.Add(addLine); Present(body);
+    }
+
+    private void ShowCountdownSettings(ClassIslandComponentSettings component)
+    {
+        Activate("components");
+        var body = Page("倒计时设置", "编辑组件选项并保留导入配置中的其他字段。", out var stack);
+        var settings = component.Settings;
+        string ReadText(string key, string fallback) =>
+            settings is { ValueKind: JsonValueKind.Object } data &&
+            data.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? fallback : fallback;
+        bool ReadFlag(string key, bool fallback = false) =>
+            settings is { ValueKind: JsonValueKind.Object } data &&
+            data.TryGetProperty(key, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? value.GetBoolean() : fallback;
+        int ReadNumber(string key, int fallback) =>
+            settings is { ValueKind: JsonValueKind.Object } data &&
+            data.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt32(out var number) ? number : fallback;
+
+        var name = Input("倒计时名称"); name.Text = ReadText("CountDownName", "倒计时");
+        var connector = Input("连接文字"); connector.Text = ReadText("CountDownConnector", "还有");
+        var color = Input("#RRGGBBAA"); color.Text = ReadText("FontColor", "#FF0000FF");
+        var fontSize = Numeric(ReadNumber("FontSize", 16));
+        stack.Children.Add(Field("名称", name)); stack.Children.Add(Field("连接文字", connector));
+        stack.Children.Add(Field("强调颜色（#RRGGBBAA）", color)); stack.Children.Add(Field("名称和数值字号", fontSize));
+        var compact = new CheckBox { Content = "紧凑显示", IsChecked = ReadFlag("IsCompactModeEnabled") };
+        var connectorColor = new CheckBox { Content = "连接文字也使用强调色", IsChecked = ReadFlag("IsConnectorColorEmphasized") };
+        var showProgress = new CheckBox { Content = "显示进度", IsChecked = ReadFlag("ShowProgress") };
+        var invert = new CheckBox { Content = "反向进度", IsChecked = ReadFlag("IsProgressInverted") };
+        var coloredProgress = new CheckBox { Content = "进度使用自定义强调色", IsChecked = ReadFlag("UseAccentOnProgressBar", true) };
+        stack.Children.Add(compact); stack.Children.Add(connectorColor); stack.Children.Add(showProgress);
+        stack.Children.Add(invert); stack.Children.Add(coloredProgress);
+        var progressMode = new ComboBox { Width = 180, MinHeight = Metric("TouchCompactTargetHeight", 40),
+            ItemsSource = new[] { "进度环", "进度条" }, SelectedIndex = Math.Clamp(ReadNumber("ProgressBarMode", 0), 0, 1) };
+        stack.Children.Add(Field("进度样式", progressMode));
+
+        var source = ReadNumber("CountdownSource", 0);
+        stack.Children.Add(Section("计时来源", source switch
+        {
+            1 => "周期", 2 => "今天", 3 => "本周", _ => "固定日期"
+        }));
+        var start = Input("开始日期时间"); start.Text = ReadText("StartTime", DateTime.Now.Date.ToString("O"));
+        var end = Input("结束日期时间"); end.Text = ReadText("OverTime", DateTime.Now.Date.AddDays(1).ToString("O"));
+        start.IsEnabled = end.IsEnabled = source == 0;
+        stack.Children.Add(Field("开始时间（固定日期）", start)); stack.Children.Add(Field("结束时间（固定日期）", end));
+        var status = new TextBlock { Foreground = Accent, TextWrapping = TextWrapping.Wrap };
+        var actions = new WrapPanel();
+        var save = Primary("保存组件设置");
+        save.Click += async (_, _) =>
+        {
+            if (!ClassIslandComponentText.TryParseUpstreamColor(color.Text, out _, out _, out _, out _))
+            { status.Text = "颜色格式应为 #RRGGBBAA 或 #RRGGBB。"; return; }
+            DateTime parsedStart = default, parsedEnd = default;
+            if (source == 0 &&
+                (!DateTime.TryParse(start.Text, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out parsedStart) ||
+                 !DateTime.TryParse(end.Text, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out parsedEnd) || parsedEnd <= parsedStart))
+            { status.Text = "固定日期需要有效的开始和结束时间，且结束时间晚于开始时间。"; return; }
+            component.UpdateSettings(values =>
+            {
+                values["CountDownName"] = name.Text ?? "";
+                values["CountDownConnector"] = connector.Text ?? "";
+                values["FontColor"] = color.Text;
+                values["FontSize"] = int.TryParse(fontSize.Text, out var parsedFont) ? Math.Clamp(parsedFont, 8, 72) : 16;
+                values["IsCompactModeEnabled"] = compact.IsChecked == true;
+                values["IsConnectorColorEmphasized"] = connectorColor.IsChecked == true;
+                values["ShowProgress"] = showProgress.IsChecked == true;
+                values["ProgressBarMode"] = progressMode.SelectedIndex;
+                values["IsProgressInverted"] = invert.IsChecked == true;
+                values["UseAccentOnProgressBar"] = coloredProgress.IsChecked == true;
+                if (source == 0)
+                {
+                    values["StartTime"] = parsedStart.ToString("O");
+                    values["OverTime"] = parsedEnd.ToString("O");
+                }
+            });
+            await core.Components.SaveAsync();
+            ShowComponents();
+        };
+        var back = Secondary("返回组件布局"); back.Click += (_, _) => ShowComponents();
+        actions.Children.Add(save); actions.Children.Add(back);
+        stack.Children.Add(actions); stack.Children.Add(status);
+        Present(body);
     }
 
     private void ShowNotifications()

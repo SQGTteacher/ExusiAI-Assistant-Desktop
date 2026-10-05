@@ -44,7 +44,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
     private StackPanel? lines;
     private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text)> textViews = [];
     private readonly List<(Panel Host, int Seconds)> slideViews = [];
-    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Prefix, TextBlock Name, TextBlock Connector, TextBlock Value, ShapePath? Ring, Border? Bar)> countdownViews = [];
+    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Prefix, TextBlock Name, TextBlock Connector, TextBlock Value, ShapePath? Ring, Border? Bar, Border? Track)> countdownViews = [];
     private TextBlock? defaultText;
     private TextBlock? notificationText;
     private DispatcherTimer? timer;
@@ -305,12 +305,14 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         ShapePath? ring = null;
         Border? bar = null;
+        Border? track = null;
         if (ReadBool(component.Settings, "ShowProgress"))
         {
             if (ReadInt(component.Settings, "ProgressBarMode", 0) == 1)
             {
                 bar = new Border { Width = 0, Height = 3, HorizontalAlignment = HorizontalAlignment.Left };
-                var track = new Border { Width = 100, Height = 3, Background = new SolidColorBrush(Color.FromArgb(72, 218, 225, 235)), Child = bar };
+                track = new Border { Height = 3, MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Background = new SolidColorBrush(Color.FromArgb(72, 218, 225, 235)), Child = bar };
                 root.Children.Add(row);
                 root.Children.Add(track);
             }
@@ -328,18 +330,18 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             }
         }
         if (bar is null) root.Children.Add(row);
-        var fontSize = ReadInt(component.Settings, "FontSize", (int)component.MainWindowBodyFontSize);
-        TextBlock Segment() => new() { FontSize = fontSize, FontWeight = FontWeight.SemiBold,
+        var fontSize = ReadInt(component.Settings, "FontSize", 16);
+        TextBlock Segment(double size) => new() { FontSize = size, FontWeight = FontWeight.SemiBold,
             VerticalAlignment = VerticalAlignment.Center };
-        var prefix = Segment();
-        var name = Segment();
-        var connector = Segment();
-        var value = Segment();
+        var prefix = Segment(component.MainWindowBodyFontSize);
+        var name = Segment(fontSize);
+        var connector = Segment(component.MainWindowBodyFontSize);
+        var value = Segment(fontSize);
         row.Children.Add(prefix);
         row.Children.Add(name);
         row.Children.Add(connector);
         row.Children.Add(value);
-        countdownViews.Add((component, prefix, name, connector, value, ring, bar));
+        countdownViews.Add((component, prefix, name, connector, value, ring, bar, track));
         return root;
     }
 
@@ -399,6 +401,9 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty("SlideSeconds", out var seconds)
             && seconds.ValueKind == JsonValueKind.Number && seconds.TryGetInt32(out var value) ? value : 15;
 
+    private static IBrush IslandProgressAccent(bool light) =>
+        new SolidColorBrush(light ? Color.FromRgb(82, 127, 152) : Color.FromRgb(100, 190, 235));
+
     private static IBrush Surface(bool dark)
     {
         var brush = new LinearGradientBrush
@@ -450,7 +455,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             block.Text = ClassIslandComponentText.Resolve(component, timetable, now, weather.Current) ?? "";
             block.Foreground = ink;
         }
-        foreach (var (component, prefix, name, connector, value, ring, bar) in countdownViews)
+        foreach (var (component, prefix, name, connector, value, ring, bar, track) in countdownViews)
         {
             var title = ReadString(component.Settings, "CountDownName") ?? "倒计时";
             var joiner = ReadString(component.Settings, "CountDownConnector") ?? "还有";
@@ -461,9 +466,10 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             name.Text = title;
             connector.Text = compact ? " " : $" {joiner} ";
             value.Text = text.StartsWith(heading, StringComparison.Ordinal) ? text[heading.Length..] : text;
-            IBrush accent;
-            try { accent = new SolidColorBrush(Color.Parse(ReadString(component.Settings, "FontColor") ?? "#FFFF0000")); }
-            catch (FormatException) { accent = new SolidColorBrush(Colors.Red); }
+            var colorValue = ReadString(component.Settings, "FontColor") ?? "#FF0000FF";
+            IBrush accent = ClassIslandComponentText.TryParseUpstreamColor(colorValue, out var alpha, out var red, out var green, out var blue)
+                ? new SolidColorBrush(Color.FromArgb(alpha, red, green, blue))
+                : new SolidColorBrush(Colors.Red);
             var connectorInk = ReadBool(component.Settings, "IsConnectorColorEmphasized") ? accent : ink;
             prefix.Foreground = connectorInk;
             connector.Foreground = connectorInk;
@@ -472,13 +478,13 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             var progress = CountdownProgress(component, now);
             if (ring is not null)
             {
-                ring.Stroke = ReadBool(component.Settings, "UseAccentOnProgressBar", true) ? accent : ink;
+                ring.Stroke = ReadBool(component.Settings, "UseAccentOnProgressBar", true) ? accent : IslandProgressAccent(light);
                 ring.Data = ProgressArc(progress);
             }
             if (bar is not null)
             {
-                bar.Width = progress * 100;
-                bar.Background = ReadBool(component.Settings, "UseAccentOnProgressBar", true) ? accent : ink;
+                bar.Width = progress * Math.Max(0, track?.Bounds.Width ?? 0);
+                bar.Background = ReadBool(component.Settings, "UseAccentOnProgressBar", true) ? accent : IslandProgressAccent(light);
             }
         }
         foreach (var (host, seconds) in slideViews)

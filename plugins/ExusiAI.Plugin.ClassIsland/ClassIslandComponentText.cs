@@ -124,6 +124,19 @@ public static class ClassIslandComponentText
         return true;
     }
 
+    public static bool TryParseUpstreamColor(string? hex, out byte alpha, out byte red, out byte green, out byte blue)
+    {
+        alpha = 255;
+        red = green = blue = 0;
+        if (hex is null || (hex.Length != 9 && hex.Length != 7) || hex[0] != '#') return false;
+        var style = NumberStyles.HexNumber;
+        var culture = CultureInfo.InvariantCulture;
+        if (!byte.TryParse(hex.AsSpan(1, 2), style, culture, out red) ||
+            !byte.TryParse(hex.AsSpan(3, 2), style, culture, out green) ||
+            !byte.TryParse(hex.AsSpan(5, 2), style, culture, out blue)) return false;
+        return hex.Length == 7 || byte.TryParse(hex.AsSpan(7, 2), style, culture, out alpha);
+    }
+
     private static string? ResolveWeather(JsonElement? settings, JsonElement? weather)
     {
         if (weather is not { ValueKind: JsonValueKind.Object } info ||

@@ -225,6 +225,41 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public void ComponentSettingsEditPreservesUnknownCountdownFields()
+    {
+        var component = new ClassIslandComponentSettings
+        {
+            Settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+            {
+                CountDownName = "旧名称",
+                FutureSetting = new { Enabled = true }
+            })
+        };
+        component.UpdateSettings(values =>
+        {
+            values["CountDownName"] = "新名称";
+            values["ShowProgress"] = true;
+        });
+        var saved = component.Settings!.Value;
+        Assert.Equal("新名称", saved.GetProperty("CountDownName").GetString());
+        Assert.True(saved.GetProperty("ShowProgress").GetBoolean());
+        Assert.True(saved.GetProperty("FutureSetting").GetProperty("Enabled").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("#FF0000FF", 255, 255, 0, 0)]
+    [InlineData("#0080FF80", 128, 0, 128, 255)]
+    [InlineData("#336699", 255, 51, 102, 153)]
+    public void ImportedCountdownColorUsesTrailingAlpha(string hex, byte expectedAlpha,
+        byte expectedRed, byte expectedGreen, byte expectedBlue)
+    {
+        Assert.True(ClassIslandComponentText.TryParseUpstreamColor(hex,
+            out var alpha, out var red, out var green, out var blue));
+        Assert.Equal((expectedAlpha, expectedRed, expectedGreen, expectedBlue), (alpha, red, green, blue));
+        Assert.False(ClassIslandComponentText.TryParseUpstreamColor("#XYZ", out _, out _, out _, out _));
+    }
+
+    [Fact]
     public void WeeklyCountdownPreservesEightDayFallback()
     {
         var settings = System.Text.Json.JsonSerializer.SerializeToElement(new
