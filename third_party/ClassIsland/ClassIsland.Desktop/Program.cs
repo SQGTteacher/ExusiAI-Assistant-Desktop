@@ -1,4 +1,4 @@
-﻿#if Platforms_Windows
+#if Platforms_Windows
 using ClassIsland.Platform.Windows;
 using ClassIsland.Platform.Windows.Helpers;
 using ClassIsland.Platform.Windows.Services;
@@ -15,6 +15,7 @@ using Avalonia.Controls;
 using Avalonia.Logging;
 using Avalonia.Media;
 using ClassIsland.Core;
+using ClassIsland.Core.Abstractions.Services;
 using ClassIsland.Core.Services;
 using ClassIsland.Extensions;
 using ClassIsland.Models;
@@ -51,6 +52,20 @@ public class Program
     {
         if (Volatile.Read(ref embeddedApp) is not null)
             App.GetService<SettingsWindowNew>().Open("general");
+    });
+
+    /// <summary>
+    /// Aligns the embedded island with the host shell's theme variant and accent.
+    /// Only these two properties cross the boundary: the upstream FluentAvalonia
+    /// design language and the XAML theme pack stay untouched, so the embedded UI
+    /// keeps looking like upstream ClassIsland.
+    /// </summary>
+    public static void SetEmbeddedTheme(bool isDark, string accentHex) => Dispatcher.UIThread.Post(() =>
+    {
+        if (Volatile.Read(ref embeddedApp) is null) return;
+        if (!Color.TryParse(accentHex, out var accent)) return;
+        // ThemeService.SetTheme: 0 follows the system, 1 is light, 2 is dark.
+        App.GetService<IThemeService>().SetTheme(isDark ? 2 : 1, accent);
     });
 
     /// <summary>

@@ -2,6 +2,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Loader;
+using ExusiAI.Extension.Wpf;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
@@ -16,6 +17,7 @@ internal sealed class ClassIslandHost : IDisposable
     private readonly TaskCompletionSource<bool> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Thread? thread;
     private Type? entryPoint;
+    private HostTheme? pendingTheme;
     private bool disposed;
     private int stopRequested;
     internal string? LastStartupError { get; private set; }
@@ -94,6 +96,29 @@ internal sealed class ClassIslandHost : IDisposable
             entryPoint?.GetMethod("OpenEmbeddedSettings")?.Invoke(null, null);
     }
 
+    /// <summary>
+    /// Keeps the embedded island on the shell's theme variant and accent. A theme
+    /// that arrives before Avalonia is ready is retained and applied on startup.
+    /// </summary>
+    internal void ApplyTheme(HostTheme theme)
+    {
+        pendingTheme = theme;
+        if (ready.Task.IsCompletedSuccessfully && ready.Task.Result) InvokeTheme(theme);
+    }
+
+    private void InvokeTheme(HostTheme theme)
+    {
+        try
+        {
+            entryPoint?.GetMethod("SetEmbeddedTheme")?.Invoke(null, [theme.IsDark, theme.Accent]);
+        }
+        catch (Exception exception)
+        {
+            // The theme is cosmetic. A host that rejects it must not fail the plugin.
+            Trace.TraceError("Embedded ClassIsland could not apply the host theme: {0}", exception);
+        }
+    }
+
     private Assembly? ResolveAssembly(AssemblyLoadContext context, AssemblyName name)
     {
         if (name.Name is null) return null;
@@ -117,6 +142,7 @@ internal sealed class ClassIslandHost : IDisposable
                 started.AddEventHandler(app, new EventHandler((_, _) =>
                 {
                     ready.TrySetResult(true);
+                    if (pendingTheme is { } theme) InvokeTheme(theme);
                     if (Volatile.Read(ref stopRequested) != 0)
                         entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null);
                 }));

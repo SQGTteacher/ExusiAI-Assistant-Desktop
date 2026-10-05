@@ -16,7 +16,9 @@ its output is packaged by the ExusiAI ClassIsland plugin's Release build.
 The source is GPL-3.0. Its own `LICENSE` and third-party notices remain in this
 directory. The modifications for ExusiAI are intentionally limited to the
 application boundary: `EmbeddedHostOptions`, `Program.AppEntry`,
-`ClassIsland.Desktop.Program.RunEmbedded`, `App` startup/restart, and the
+`ClassIsland.Desktop.Program.RunEmbedded` and its embedded control surface
+(`SetEmbeddedVisible`, `SetEmbeddedTheme`, `OpenEmbeddedSettings`,
+`StopEmbedded`), `App` startup/restart, and the
 directory/global-storage services. Embedded mode receives a private data root,
 does not create ClassIsland's global mutex, change the host working directory or
 process priority, start an updater/IPC server, or restart ExusiAI's executable.

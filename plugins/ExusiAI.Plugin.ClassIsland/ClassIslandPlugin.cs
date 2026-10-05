@@ -5,7 +5,7 @@ using ExusiAI.Extension.Wpf;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
-public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExtension
+public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExtension, IWpfHostThemeExtension
 {
     private ClassIslandHost host = null!;
 
@@ -30,6 +30,16 @@ public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExten
     {
         host.Dispose();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Forwards the shell theme to the embedded island. The host keeps the last
+    /// value and applies it once Avalonia finishes starting, so a theme pushed
+    /// during startup is not dropped.
+    /// </summary>
+    public void ApplyHostTheme(HostTheme theme)
+    {
+        if (host is not null) host.ApplyTheme(theme);
     }
 
     public IReadOnlyCollection<WpfNavigationPage> GetNavigationPages() =>
