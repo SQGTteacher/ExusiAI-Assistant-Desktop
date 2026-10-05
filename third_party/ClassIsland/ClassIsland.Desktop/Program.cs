@@ -88,7 +88,7 @@ public class Program
             .AfterPlatformServicesSetup(_ =>
             {
                 var assembly = typeof(App).Assembly;
-                var directory = Path.GetDirectoryName(assembly.Location) ?? options.PackageDirectory;
+                var directory = options.PackageDirectory;
                 BindAssetLoader(new OverlayAssetLoader(
                     new StandardAssetLoader(assembly), assembly,
                     assemblyName: assembly.GetName().Name!,

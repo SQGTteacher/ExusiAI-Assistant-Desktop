@@ -13,6 +13,12 @@ public interface IExtensionContext
     IExtensionLogger Logger { get; }
 }
 
+// Optional package location for plugins that load files alongside their assemblies.
+public interface IExtensionPackageContext : IExtensionContext
+{
+    string PackageDirectory { get; }
+}
+
 public interface IExusiAIPlugin
 {
     Task InitializeAsync(IExtensionContext context, CancellationToken cancellationToken);

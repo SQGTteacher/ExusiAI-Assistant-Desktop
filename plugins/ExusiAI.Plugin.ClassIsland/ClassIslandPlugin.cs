@@ -11,7 +11,8 @@ public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExten
     public override async Task InitializeAsync(IExtensionContext context, CancellationToken cancellationToken)
     {
         await base.InitializeAsync(context, cancellationToken);
-        core = new ClassIslandCoreService(context.Logger);
+        core = new ClassIslandCoreService(context.Logger,
+            packageDirectory: (context as IExtensionPackageContext)?.PackageDirectory);
         await core.InitializeAsync(cancellationToken);
         context.Logger.Information($"ClassIsland native plugin initialized. Misha baseline={ClassIslandRuntimeDescriptor.MishaBaselineCommit}.");
     }

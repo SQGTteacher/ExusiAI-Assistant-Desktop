@@ -205,7 +205,7 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             ?? throw new InvalidOperationException("The entry point requires a public parameterless constructor.");
         slot.Snapshot = slot.Snapshot with { State = PackageState.Loaded, Instance = plugin };
         EntriesChanged?.Invoke(this, EventArgs.Empty);
-        await plugin.InitializeAsync(new ExtensionContext(package.Manifest.Id, new ExtensionLogger(logger, package.Manifest.Id)), cancellationToken).ConfigureAwait(false);
+        await plugin.InitializeAsync(new ExtensionContext(package.Manifest.Id, new ExtensionLogger(logger, package.Manifest.Id), package.RootPath), cancellationToken).ConfigureAwait(false);
         slot.Snapshot = slot.Snapshot with { State = PackageState.Initialized };
         EntriesChanged?.Invoke(this, EventArgs.Empty);
         await plugin.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -291,7 +291,7 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         public PackageLoadContext? LoadContext { get; set; }
     }
 
-    private sealed record ExtensionContext(string PackageId, IExtensionLogger Logger) : IExtensionContext;
+    private sealed record ExtensionContext(string PackageId, IExtensionLogger Logger, string PackageDirectory) : IExtensionPackageContext;
 
     private sealed class ExtensionLogger(ILogger logger, string packageId) : IExtensionLogger
     {

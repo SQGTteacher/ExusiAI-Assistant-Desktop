@@ -10,7 +10,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
     private CancellationTokenSource? lifetime;
 
-    public ClassIslandCoreService(IExtensionLogger logger, string? dataDirectory = null)
+    public ClassIslandCoreService(IExtensionLogger logger, string? dataDirectory = null, string? packageDirectory = null)
     {
         this.logger = logger;
         DataDirectory = Path.GetFullPath(dataDirectory ?? Path.Combine(
@@ -22,7 +22,7 @@ public sealed class ClassIslandCoreService : IAsyncDisposable
         Notifications = new();
         Appearance = new(DataDirectory);
         Weather = new(DataDirectory);
-        Presentation = new(Timetable, Components, Appearance, Notifications, Weather, Settings, DataDirectory);
+        Presentation = new(Timetable, Components, Appearance, Notifications, Weather, Settings, DataDirectory, packageDirectory);
     }
 
     public string DataDirectory { get; }
