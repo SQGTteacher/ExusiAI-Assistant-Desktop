@@ -3,19 +3,12 @@
     <AssemblyName>ExusiAI.Plugin.ClassIsland</AssemblyName>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <Description>Native ClassIsland profile, timetable, component and notification services for ExusiAI.</Description>
+    <Description>In-process host for the original ClassIsland Avalonia UI.</Description>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <EnableClassIslandNative Condition="'$(EnableClassIslandNative)' == '' and '$(Configuration)' == 'Release'">true</EnableClassIslandNative>
   </PropertyGroup>
   <ItemGroup>
-    <Using Remove="System.Windows.Forms" />
-    <Using Remove="System.Drawing" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Avalonia.Desktop" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Abstractions\ExusiAI.Extension.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.SDK\ExusiAI.Extension.SDK.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
@@ -25,25 +18,18 @@
     <None Include="README.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-  <!-- Fail at packaging time if Avalonia is missing, rather than shipping a plugin
-       that cannot be loaded by the extension runtime. -->
-  <Target Name="VerifyClassIslandPluginDependencies" AfterTargets="Build">
-    <Error Condition="!Exists('$(TargetDir)Avalonia.Controls.dll')"
-           Text="ClassIsland plugin output is missing Avalonia.Controls.dll. Restore packages and rebuild before packaging." />
-  </Target>
-  <!-- Build the original app in a separate dotnet process so its pinned .NET 9 SDK
-       is honored even when ExusiAI is built directly with .NET 8. -->
   <Target Name="PackageNativeClassIsland" AfterTargets="Build"
           Condition="'$(EnableClassIslandNative)' == 'true'">
     <Exec WorkingDirectory="$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland"
           Command="dotnet build ClassIsland.Desktop\ClassIsland.Desktop.csproj --configuration $(Configuration) -p:PublishBuilding=true -p:PublishPlatform=windows -p:ClassIsland_PlatformTarget=x64 -p:UseAppHost=false -maxcpucount:1 -nodeReuse:false" />
+    <PropertyGroup>
+      <NativeOutput>$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland\ClassIsland.Desktop\bin\$(Configuration)\net8.0-windows10.0.19041.0\</NativeOutput>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(NativeOutput)ClassIsland.Desktop.dll') Or !Exists('$(NativeOutput)ClassIsland.dll')"
+           Text="The bundled original ClassIsland runtime is incomplete." />
     <ItemGroup>
-      <NativeClassIslandFiles Include="$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland\ClassIsland.Desktop\bin\$(Configuration)\net8.0-windows10.0.19041.0\**\*" />
+      <NativeClassIslandFiles Include="$(NativeOutput)**\*" />
     </ItemGroup>
-    <Error Condition="!Exists('$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland\ClassIsland.Desktop\bin\$(Configuration)\net8.0-windows10.0.19041.0\ClassIsland.Desktop.dll') Or !Exists('$(MSBuildProjectDirectory)\..\..\third_party\ClassIsland\ClassIsland.Desktop\bin\$(Configuration)\net8.0-windows10.0.19041.0\ClassIsland.dll')"
-           Text="ClassIsland.Desktop output is missing required native host assemblies." />
-    <Error Condition="'@(NativeClassIslandFiles)' == ''"
-           Text="ClassIsland.Desktop produced no Windows runtime files." />
     <Copy SourceFiles="@(NativeClassIslandFiles)"
           DestinationFolder="$(TargetDir)NativeClassIsland\%(RecursiveDir)"
           SkipUnchangedFiles="true" />
