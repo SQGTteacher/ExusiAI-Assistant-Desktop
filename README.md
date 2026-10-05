@@ -29,7 +29,7 @@ ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市
 
 ## 构建与运行
 
-需要 Windows 10/11 和 .NET 8 SDK：
+需要 Windows 10/11、.NET 8 SDK 和 .NET 9 SDK（ClassIsland 原版源码构建）：
 
 ```powershell
 dotnet restore ExusiAI.sln

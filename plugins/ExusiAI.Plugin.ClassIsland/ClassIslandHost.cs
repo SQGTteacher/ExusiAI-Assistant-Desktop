@@ -9,7 +9,7 @@ namespace ExusiAI.Plugin.ClassIsland;
 /// Starts the original ClassIsland Avalonia application inside the ExusiAI process.
 /// Its assemblies must be built from the checked-in source and packaged locally.
 /// </summary>
-internal sealed class ClassIslandOriginalHost : IDisposable
+internal sealed class ClassIslandHost : IDisposable
 {
     private readonly string dataDirectory;
     private readonly string nativeDirectory;
@@ -17,12 +17,13 @@ internal sealed class ClassIslandOriginalHost : IDisposable
     private Thread? thread;
     private Type? entryPoint;
     private bool disposed;
+    private int stopRequested;
     internal string? LastStartupError { get; private set; }
 
-    internal ClassIslandOriginalHost(string dataDirectory, string? packageDirectory)
+    internal ClassIslandHost(string dataDirectory, string packageDirectory)
     {
         this.dataDirectory = dataDirectory;
-        nativeDirectory = Path.Combine(Path.GetFullPath(packageDirectory ?? AppContext.BaseDirectory), "NativeClassIsland");
+        nativeDirectory = Path.Combine(Path.GetFullPath(packageDirectory), "NativeClassIsland");
     }
 
     internal bool IsAvailable => File.Exists(Path.Combine(nativeDirectory, "ClassIsland.Desktop.dll")) &&
@@ -32,7 +33,11 @@ internal sealed class ClassIslandOriginalHost : IDisposable
 
     internal bool Start()
     {
-        if (disposed) return false;
+        if (disposed)
+        {
+            LastStartupError = "ClassIsland 已停止，需要重新启动 ExusiAI。";
+            return false;
+        }
         if (!IsAvailable)
         {
             LastStartupError = $"Native ClassIsland assemblies are missing from {nativeDirectory}.";
@@ -57,7 +62,9 @@ internal sealed class ClassIslandOriginalHost : IDisposable
         }
         try
         {
-            entryPoint?.GetMethod("SetEmbeddedVisible")?.Invoke(null, [true]);
+            (entryPoint?.GetMethod("SetEmbeddedVisible")
+                ?? throw new MissingMethodException("ClassIsland.Desktop.Program.SetEmbeddedVisible"))
+                .Invoke(null, [true]);
             IsVisible = true;
             LastStartupError = null;
             return true;
@@ -70,7 +77,7 @@ internal sealed class ClassIslandOriginalHost : IDisposable
         }
     }
 
-    internal void Stop()
+    internal void Hide()
     {
         IsVisible = false;
         if (ready.Task.IsCompletedSuccessfully && ready.Task.Result)
@@ -104,11 +111,28 @@ internal sealed class ClassIslandOriginalHost : IDisposable
             {
                 var started = app.GetType().GetEvent("AppStarted")
                     ?? throw new MissingMemberException("ClassIsland.App.AppStarted");
-                started.AddEventHandler(app, new EventHandler((_, _) => ready.TrySetResult(true)));
+                started.AddEventHandler(app, new EventHandler((_, _) =>
+                {
+                    ready.TrySetResult(true);
+                    if (Volatile.Read(ref stopRequested) != 0)
+                        entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null);
+                }));
+                app.GetType().GetEvent("EmbeddedRestartRequested")?.AddEventHandler(app,
+                    new EventHandler((_, _) =>
+                    {
+                        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                        dispatcher?.BeginInvoke((Action)(() => System.Windows.MessageBox.Show(
+                            "ClassIsland 的这项设置需要重启 ExusiAI 后生效。",
+                            "需要重启 ExusiAI", System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Information)));
+                    }));
             };
             entryPoint!.GetMethod("RunEmbedded")!.Invoke(null, [options, created]);
-            LastStartupError = "Native ClassIsland exited during startup.";
-            ready.TrySetResult(false);
+            if (!ready.Task.IsCompleted)
+            {
+                LastStartupError = "Native ClassIsland exited during startup.";
+                ready.TrySetResult(false);
+            }
         }
         catch (Exception exception)
         {
@@ -123,8 +147,9 @@ internal sealed class ClassIslandOriginalHost : IDisposable
     {
         if (disposed) return;
         disposed = true;
-        Stop();
-        if (ready.Task.IsCompletedSuccessfully && ready.Task.Result)
+        Interlocked.Exchange(ref stopRequested, 1);
+        Hide();
+        if (entryPoint is not null)
             try { entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null); }
             catch (TargetInvocationException) { /* The Avalonia dispatcher may already be gone. */ }
         if (thread is not null && !thread.Join(TimeSpan.FromSeconds(5)))

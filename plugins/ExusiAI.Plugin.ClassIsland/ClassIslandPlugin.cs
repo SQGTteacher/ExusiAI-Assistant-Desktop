@@ -1,3 +1,4 @@
+using System.IO;
 using ExusiAI.Extension.Abstractions;
 using ExusiAI.Extension.SDK;
 using ExusiAI.Extension.Wpf;
@@ -6,27 +7,33 @@ namespace ExusiAI.Plugin.ClassIsland;
 
 public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExtension
 {
-    private ClassIslandCoreService core = null!;
+    private ClassIslandHost host = null!;
 
     public override async Task InitializeAsync(IExtensionContext context, CancellationToken cancellationToken)
     {
         await base.InitializeAsync(context, cancellationToken);
-        core = new ClassIslandCoreService(context.Logger,
-            packageDirectory: (context as IExtensionPackageContext)?.PackageDirectory);
-        await core.InitializeAsync(cancellationToken);
-        context.Logger.Information($"ClassIsland native plugin initialized. Misha baseline={ClassIslandRuntimeDescriptor.MishaBaselineCommit}.");
+        var packageDirectory = (context as IExtensionPackageContext)?.PackageDirectory
+            ?? throw new InvalidOperationException("ClassIsland 需要插件包目录。");
+        var dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ExusiAI", "ClassIsland");
+        host = new ClassIslandHost(dataDirectory, packageDirectory);
     }
 
-    public override Task StartAsync(CancellationToken cancellationToken) => core.StartAsync(cancellationToken);
-
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    public override async Task StartAsync(CancellationToken cancellationToken)
     {
-        await core.StopAsync(cancellationToken);
-        Context.Logger.Information("ClassIsland native plugin stopped.");
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!await Task.Run(host.Start, cancellationToken))
+            Context.Logger.Warning($"原版 ClassIsland 无法启动：{host.LastStartupError}");
+    }
+
+    public override Task StopAsync(CancellationToken cancellationToken)
+    {
+        host.Dispose();
+        return Task.CompletedTask;
     }
 
     public IReadOnlyCollection<WpfNavigationPage> GetNavigationPages() =>
     [
-        new("classisland.core", "ClassIsland", "◫", () => new ClassIslandSyncPage(core))
+        new("classisland.core", "ClassIsland", "◫", () => new ClassIslandPage(host))
     ];
 }

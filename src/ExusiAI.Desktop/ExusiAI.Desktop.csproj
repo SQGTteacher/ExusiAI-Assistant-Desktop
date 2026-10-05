@@ -43,6 +43,7 @@
     <PropertyGroup>
       <ClassIslandPackageDir>$(TargetDir)packages\exusiai.classisland</ClassIslandPackageDir>
     </PropertyGroup>
+    <RemoveDir Directories="$(ClassIslandPackageDir)" />
     <MakeDir Directories="$(ClassIslandPackageDir)" />
     <ItemGroup><ClassIslandBuiltFiles Include="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\**\*" /></ItemGroup>
     <Copy SourceFiles="@(ClassIslandBuiltFiles)" DestinationFolder="$(ClassIslandPackageDir)\%(RecursiveDir)" SkipUnchangedFiles="true" />
@@ -65,6 +66,7 @@
   </Target>
   <Target Name="CopyClassIslandPackageToPublish" AfterTargets="Publish">
     <PropertyGroup><ClassIslandPublishPackageDir>$(PublishDir)packages\exusiai.classisland</ClassIslandPublishPackageDir></PropertyGroup>
+    <RemoveDir Directories="$(ClassIslandPublishPackageDir)" />
     <MakeDir Directories="$(ClassIslandPublishPackageDir)" />
     <ItemGroup><ClassIslandPublishFiles Include="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\bin\$(Configuration)\net8.0-windows\**\*" /></ItemGroup>
     <Copy SourceFiles="@(ClassIslandPublishFiles)" DestinationFolder="$(ClassIslandPublishPackageDir)\%(RecursiveDir)" SkipUnchangedFiles="true" />
