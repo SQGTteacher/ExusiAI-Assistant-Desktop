@@ -17,6 +17,7 @@ internal sealed class ClassIslandHost : IDisposable
     private Thread? thread;
     private Type? entryPoint;
     private bool disposed;
+    private int stopRequested;
     internal string? LastStartupError { get; private set; }
 
     internal ClassIslandHost(string dataDirectory, string packageDirectory)
@@ -110,7 +111,12 @@ internal sealed class ClassIslandHost : IDisposable
             {
                 var started = app.GetType().GetEvent("AppStarted")
                     ?? throw new MissingMemberException("ClassIsland.App.AppStarted");
-                started.AddEventHandler(app, new EventHandler((_, _) => ready.TrySetResult(true)));
+                started.AddEventHandler(app, new EventHandler((_, _) =>
+                {
+                    ready.TrySetResult(true);
+                    if (Volatile.Read(ref stopRequested) != 0)
+                        entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null);
+                }));
                 app.GetType().GetEvent("EmbeddedRestartRequested")?.AddEventHandler(app,
                     new EventHandler((_, _) =>
                     {
@@ -141,8 +147,9 @@ internal sealed class ClassIslandHost : IDisposable
     {
         if (disposed) return;
         disposed = true;
+        Interlocked.Exchange(ref stopRequested, 1);
         Hide();
-        if (ready.Task.IsCompletedSuccessfully && ready.Task.Result)
+        if (entryPoint is not null)
             try { entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null); }
             catch (TargetInvocationException) { /* The Avalonia dispatcher may already be gone. */ }
         if (thread is not null && !thread.Join(TimeSpan.FromSeconds(5)))
