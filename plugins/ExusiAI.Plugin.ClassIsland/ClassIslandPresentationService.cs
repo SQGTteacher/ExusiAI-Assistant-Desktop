@@ -65,6 +65,8 @@ public sealed class ClassIslandPresentationService
 
     public bool IsOriginalHostAvailable => originalHost.IsAvailable;
 
+    public string? OriginalHostError => originalHost.LastStartupError;
+
     public void OpenOriginalSettings() => originalHost.OpenSettings();
 
     public void Start()

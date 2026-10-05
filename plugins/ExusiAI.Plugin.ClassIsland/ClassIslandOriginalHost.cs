@@ -17,6 +17,7 @@ internal sealed class ClassIslandOriginalHost : IDisposable
     private Thread? thread;
     private Type? entryPoint;
     private bool disposed;
+    internal string? LastStartupError { get; private set; }
 
     internal ClassIslandOriginalHost(string dataDirectory, string? packageDirectory)
     {
@@ -31,7 +32,12 @@ internal sealed class ClassIslandOriginalHost : IDisposable
 
     internal bool Start()
     {
-        if (disposed || !IsAvailable) return false;
+        if (disposed) return false;
+        if (!IsAvailable)
+        {
+            LastStartupError = $"Native ClassIsland assemblies are missing from {nativeDirectory}.";
+            return false;
+        }
         if (thread is null)
         {
             AssemblyLoadContext.Default.Resolving += ResolveAssembly;
@@ -39,14 +45,29 @@ internal sealed class ClassIslandOriginalHost : IDisposable
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
         }
-        if (!ready.Task.Wait(TimeSpan.FromSeconds(15)) || !ready.Task.Result || thread.IsAlive == false) return false;
+        if (!ready.Task.Wait(TimeSpan.FromSeconds(30)))
+        {
+            LastStartupError = "Native ClassIsland did not finish starting within 30 seconds.";
+            return false;
+        }
+        if (!ready.Task.Result || !thread.IsAlive)
+        {
+            LastStartupError ??= "Native ClassIsland stopped before its window was ready.";
+            return false;
+        }
         try
         {
             entryPoint?.GetMethod("SetEmbeddedVisible")?.Invoke(null, [true]);
             IsVisible = true;
+            LastStartupError = null;
             return true;
         }
-        catch (TargetInvocationException) { return false; }
+        catch (Exception exception)
+        {
+            LastStartupError = exception.GetBaseException().Message;
+            Trace.TraceError("Embedded ClassIsland could not show its window: {0}", exception);
+            return false;
+        }
     }
 
     internal void Stop()
@@ -86,10 +107,12 @@ internal sealed class ClassIslandOriginalHost : IDisposable
                 started.AddEventHandler(app, new EventHandler((_, _) => ready.TrySetResult(true)));
             };
             entryPoint!.GetMethod("RunEmbedded")!.Invoke(null, [options, created]);
+            LastStartupError = "Native ClassIsland exited during startup.";
             ready.TrySetResult(false);
         }
         catch (Exception exception)
         {
+            LastStartupError = exception.GetBaseException().Message;
             Trace.TraceError("Embedded ClassIsland failed: {0}", exception);
             ready.TrySetResult(false);
         }
