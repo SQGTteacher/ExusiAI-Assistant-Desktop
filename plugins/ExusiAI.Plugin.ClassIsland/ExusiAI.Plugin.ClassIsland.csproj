@@ -28,8 +28,9 @@
     <Error Condition="!Exists('$(NativeOutput)ClassIsland.Desktop.dll') Or !Exists('$(NativeOutput)ClassIsland.dll')"
            Text="The bundled original ClassIsland runtime is incomplete." />
     <ItemGroup>
-      <NativeClassIslandFiles Include="$(NativeOutput)**\*" />
+      <NativeClassIslandFiles Include="$(NativeOutput)**\*" Exclude="$(NativeOutput)**\*.exe" />
     </ItemGroup>
+    <Delete Files="$(TargetDir)NativeClassIsland\ClassIsland.Desktop.exe;$(TargetDir)NativeClassIsland\ClassIsland.exe" />
     <Copy SourceFiles="@(NativeClassIslandFiles)"
           DestinationFolder="$(TargetDir)NativeClassIsland\%(RecursiveDir)"
           SkipUnchangedFiles="true" />
