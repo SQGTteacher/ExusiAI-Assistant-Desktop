@@ -324,7 +324,7 @@ public sealed class ClassIslandRuntimeIntegrationTests
         Assert.Equal((128, 255, 32, 0), ((int)alpha, (int)red, (int)green, (int)blue));
         var component = new ClassIslandComponentSettings { Settings = settings };
         component.UpdateSettings(values => values["CountDownName"] = "编辑后");
-        Assert.Equal(JsonValueKind.Object, component.Settings!.Value.GetProperty("FontColor").ValueKind);
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, component.Settings!.Value.GetProperty("FontColor").ValueKind);
     }
 
     [Fact]
