@@ -118,7 +118,7 @@ public static class ClassIslandComponentText
                 var weekStart = ReadInt(settings, "WeekCountdownStartDay", 1);
                 if (weekStart is < 0 or > 6) weekStart = 1;
                 start = now.Date.AddDays(-(((int)now.DayOfWeek - weekStart + 7) % 7));
-                end = now.Date.AddDays(ReadInt(settings, "NatureTimeUseMode") == 1 ? 8 : 7); break;
+                end = now.Date.AddDays(8); break;
             default: return false;
         }
         return true;

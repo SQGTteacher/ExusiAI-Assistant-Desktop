@@ -296,9 +296,10 @@ public sealed class ClassIslandPresentationService
         var foreground = appearance.Settings.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight
             ? Brushes.Black : Brushes.White;
         label.Inlines.Clear();
-        if (!compact) label.Inlines.Add(new Run("距离 ") { Foreground = foreground });
+        var connectorBrush = ReadSettingBool(settings.Settings, "IsConnectorColorEmphasized") ? new SolidColorBrush(accent) : foreground;
+        if (!compact) label.Inlines.Add(new Run("距离 ") { Foreground = connectorBrush });
         label.Inlines.Add(new Run(name) { Foreground = new SolidColorBrush(accent) });
-        if (!compact) label.Inlines.Add(new Run($" {connector} ") { Foreground = foreground });
+        if (!compact) label.Inlines.Add(new Run($" {connector} ") { Foreground = connectorBrush });
         else label.Inlines.Add(new Run(" ") { Foreground = foreground });
         label.Inlines.Add(new Run(value) { Foreground = new SolidColorBrush(accent) });
         if (progress is null && bar is null) return;
@@ -328,6 +329,12 @@ public sealed class ClassIslandPresentationService
     private void OnTouchDown(object? sender, TouchEventArgs e)
     {
         if (window is null || dragTouch is not null) return;
+        if (notificationOverlay?.Visibility == Visibility.Visible && notifications.Current is { } request)
+        {
+            request.Cancel();
+            e.Handled = true;
+            return;
+        }
         dragTouch = e.TouchDevice;
         dragStartScreen = window.PointToScreen(e.GetTouchPoint(window).Position);
         dragStartWindow = new Point(window.Left, window.Top);

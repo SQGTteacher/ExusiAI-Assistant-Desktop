@@ -225,7 +225,7 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
-    public void WeeklyCountdownFollowsUpstreamDayBasedEnd()
+    public void WeeklyCountdownPreservesEightDayFallback()
     {
         var settings = System.Text.Json.JsonSerializer.SerializeToElement(new
         {
@@ -236,10 +236,10 @@ public sealed class ClassIslandRuntimeIntegrationTests
         var tuesday = monday.AddDays(1);
         Assert.True(ClassIslandComponentText.TryGetCountdownWindow(settings, monday, out var start, out var end));
         Assert.Equal(new DateTime(2026, 9, 28), start);
-        Assert.Equal(new DateTime(2026, 10, 5), end);
+        Assert.Equal(new DateTime(2026, 10, 6), end);
         Assert.True(ClassIslandComponentText.TryGetCountdownWindow(settings, tuesday, out var nextStart, out var nextEnd));
         Assert.Equal(start, nextStart);
-        Assert.Equal(new DateTime(2026, 10, 6), nextEnd);
+        Assert.Equal(new DateTime(2026, 10, 7), nextEnd);
     }
 
     [Fact]

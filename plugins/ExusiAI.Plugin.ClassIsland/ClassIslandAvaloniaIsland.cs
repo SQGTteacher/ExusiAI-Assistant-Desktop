@@ -44,7 +44,7 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
     private StackPanel? lines;
     private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text)> textViews = [];
     private readonly List<(Panel Host, int Seconds)> slideViews = [];
-    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Label, ShapePath? Ring, Border? Bar)> countdownViews = [];
+    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Prefix, TextBlock Name, TextBlock Connector, TextBlock Value, ShapePath? Ring, Border? Bar)> countdownViews = [];
     private TextBlock? defaultText;
     private TextBlock? notificationText;
     private DispatcherTimer? timer;
@@ -238,7 +238,8 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         notificationText = notificationLabel;
         notificationLabel.PointerPressed += (_, e) =>
         {
-            if (notifications.Current is not { } request || !e.GetCurrentPoint(notificationLabel).Properties.IsLeftButtonPressed) return;
+            if (notifications.Current is not { } request ||
+                !(e.Pointer.Type == PointerType.Touch || e.GetCurrentPoint(notificationLabel).Properties.IsLeftButtonPressed)) return;
             request.Cancel();
             e.Handled = true;
         };
@@ -295,6 +296,12 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
     {
         if (ClassIslandComponentText.Resolve(component, timetable, DateTime.Now) is null) return null;
         var root = new StackPanel { Orientation = Orientation.Vertical, Opacity = component.Opacity };
+        if (component.IsFixedWidthEnabled) root.Width = Math.Max(40, component.FixedWidth);
+        else
+        {
+            if (component.IsMinWidthEnabled) root.MinWidth = Math.Max(0, component.MinWidth);
+            if (component.IsMaxWidthEnabled) root.MaxWidth = Math.Max(40, component.MaxWidth);
+        }
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         ShapePath? ring = null;
         Border? bar = null;
@@ -321,13 +328,18 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             }
         }
         if (bar is null) root.Children.Add(row);
-        var label = new TextBlock
-        {
-            FontSize = ReadInt(component.Settings, "FontSize", (int)component.MainWindowBodyFontSize),
-            FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center
-        };
-        row.Children.Add(label);
-        countdownViews.Add((component, label, ring, bar));
+        var fontSize = ReadInt(component.Settings, "FontSize", (int)component.MainWindowBodyFontSize);
+        TextBlock Segment() => new() { FontSize = fontSize, FontWeight = FontWeight.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center };
+        var prefix = Segment();
+        var name = Segment();
+        var connector = Segment();
+        var value = Segment();
+        row.Children.Add(prefix);
+        row.Children.Add(name);
+        row.Children.Add(connector);
+        row.Children.Add(value);
+        countdownViews.Add((component, prefix, name, connector, value, ring, bar));
         return root;
     }
 
@@ -438,13 +450,25 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
             block.Text = ClassIslandComponentText.Resolve(component, timetable, now, weather.Current) ?? "";
             block.Foreground = ink;
         }
-        foreach (var (component, label, ring, bar) in countdownViews)
+        foreach (var (component, prefix, name, connector, value, ring, bar) in countdownViews)
         {
-            label.Text = ClassIslandComponentText.Resolve(component, timetable, now) ?? "";
+            var title = ReadString(component.Settings, "CountDownName") ?? "倒计时";
+            var joiner = ReadString(component.Settings, "CountDownConnector") ?? "还有";
+            var compact = ReadBool(component.Settings, "IsCompactModeEnabled");
+            var text = ClassIslandComponentText.Resolve(component, timetable, now) ?? "";
+            var heading = compact ? $"{title} " : $"距离 {title} {joiner} ";
+            prefix.Text = compact ? "" : "距离 ";
+            name.Text = title;
+            connector.Text = compact ? " " : $" {joiner} ";
+            value.Text = text.StartsWith(heading, StringComparison.Ordinal) ? text[heading.Length..] : text;
             IBrush accent;
             try { accent = new SolidColorBrush(Color.Parse(ReadString(component.Settings, "FontColor") ?? "#FFFF0000")); }
             catch (FormatException) { accent = new SolidColorBrush(Colors.Red); }
-            label.Foreground = accent;
+            var connectorInk = ReadBool(component.Settings, "IsConnectorColorEmphasized") ? accent : ink;
+            prefix.Foreground = connectorInk;
+            connector.Foreground = connectorInk;
+            name.Foreground = accent;
+            value.Foreground = accent;
             var progress = CountdownProgress(component, now);
             if (ring is not null)
             {
