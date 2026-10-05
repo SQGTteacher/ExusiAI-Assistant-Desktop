@@ -193,7 +193,14 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         };
         island.PointerPressed += (_, e) =>
         {
-            if (window is null || !e.GetCurrentPoint(island).Properties.IsLeftButtonPressed) return;
+            if (window is null ||
+                !(e.Pointer.Type == PointerType.Touch || e.GetCurrentPoint(island).Properties.IsLeftButtonPressed)) return;
+            if (notifications.Current is { } request)
+            {
+                request.Cancel();
+                e.Handled = true;
+                return;
+            }
             dragging = true;
             window.BeginMoveDrag(e);
         };
@@ -236,13 +243,6 @@ internal sealed class ClassIslandAvaloniaIsland : IDisposable
         }
         var notificationLabel = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, IsVisible = false };
         notificationText = notificationLabel;
-        notificationLabel.PointerPressed += (_, e) =>
-        {
-            if (notifications.Current is not { } request ||
-                !(e.Pointer.Type == PointerType.Touch || e.GetCurrentPoint(notificationLabel).Properties.IsLeftButtonPressed)) return;
-            request.Cancel();
-            e.Handled = true;
-        };
         lines.Children.Add(notificationText);
     }
 
