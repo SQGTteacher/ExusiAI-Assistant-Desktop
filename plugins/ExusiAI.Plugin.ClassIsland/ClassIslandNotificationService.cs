@@ -91,6 +91,7 @@ public sealed class ClassIslandNotificationService : IAsyncDisposable
     public IReadOnlyList<ClassIslandNotification> History { get { lock (sync) return history.ToArray(); } }
     public event EventHandler<ClassIslandNotification>? Published;
     public event EventHandler<ClassIslandNotificationRequest>? RequestStarted;
+    public event EventHandler<ClassIslandNotificationRequest>? RequestUpdated;
     public event EventHandler<ClassIslandNotificationRequest>? RequestCompleted;
 
     public void Start(CancellationToken cancellationToken = default)
@@ -150,6 +151,8 @@ public sealed class ClassIslandNotificationService : IAsyncDisposable
                 request.State = ClassIslandNotificationState.Playing; RequestStarted?.Invoke(this, request);
                 if (!request.MaskSession.IsCompleted)
                     await PlayAsync(request.MaskContent, request.MaskSession, request, cancellationToken).ConfigureAwait(false);
+                if (request.OverlayContent is not null && !request.CancellationToken.IsCancellationRequested)
+                    RequestUpdated?.Invoke(this, request);
                 if (request.OverlayContent is { } overlay && !request.OverlaySession.IsCompleted)
                     await PlayAsync(overlay, request.OverlaySession, request, cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();

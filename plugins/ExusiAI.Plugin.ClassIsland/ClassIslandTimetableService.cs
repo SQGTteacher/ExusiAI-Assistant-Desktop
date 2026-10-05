@@ -37,6 +37,20 @@ public sealed class ClassIslandTimetableService
         return result;
     }
 
+    public bool TryGetDayTimeRange(DateTime now, out DateTime start, out DateTime end)
+    {
+        start = end = default;
+        var plan = ResolvePlan(now);
+        if (plan is null || profiles.Current is not { } profile ||
+            !profile.TimeLayouts.TryGetValue(plan.TimeLayoutId, out var layout)) return false;
+        var valid = layout.Layouts.Where(x => (x.TimeType is 0 or 1) && x.EndTime > x.StartTime)
+            .OrderBy(x => x.StartTime).ToArray();
+        if (valid.Length == 0) return false;
+        start = now.Date + valid[0].StartTime;
+        end = now.Date + valid.Max(x => x.EndTime);
+        return end > start;
+    }
+
     public IReadOnlyList<ClassIslandScheduleItem> GetScheduleItems(DateTime now, DateOnly? rotationAnchor = null)
     {
         var profile = profiles.Current;

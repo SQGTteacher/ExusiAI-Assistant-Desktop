@@ -42,7 +42,7 @@ public sealed class ClassIslandPresentationService
     private Grid? defaultContent;
     private StackPanel? componentContent;
     private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text)> componentTexts = [];
-    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text, ShapePath? Progress)> countdownViews = [];
+    private readonly List<(ClassIslandComponentSettings Settings, TextBlock Text, ShapePath? Progress, ProgressBar? Bar)> countdownViews = [];
     private readonly List<(Grid Host, int Seconds)> slideHosts = [];
     private DispatcherTimer? timer;
     private TouchDevice? dragTouch;
@@ -55,6 +55,7 @@ public sealed class ClassIslandPresentationService
         avaloniaIsland = new(timetable, components, appearance, notifications, weather, settings);
         originalHost = new(dataDirectory);
         notifications.RequestStarted += (_, request) => ShowNotification(request);
+        notifications.RequestUpdated += (_, request) => ShowNotification(request);
         notifications.RequestCompleted += (_, request) => HideNotification(request);
         components.ComponentsChanged += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
         weather.Changed += (_, _) => Application.Current?.Dispatcher.BeginInvoke((Action)RebuildComponents);
@@ -145,6 +146,12 @@ public sealed class ClassIslandPresentationService
             HorizontalAlignment = HorizontalAlignment.Center, FontSize = 16, FontWeight = FontWeights.SemiBold };
         notificationOverlay = new Border { Padding = new Thickness(18, 8, 18, 8), Visibility = Visibility.Collapsed,
             Child = notificationText };
+        notificationOverlay.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (notifications.Current is not { } request) return;
+            request.Cancel();
+            e.Handled = true;
+        };
         layers.Children.Add(notificationOverlay);
         island.Child = layers; window.Content = island;
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -187,18 +194,30 @@ public sealed class ClassIslandPresentationService
             return new Border { Width = 1, Height = 20, Background = new SolidColorBrush(Color.FromArgb(100, 240, 245, 255)) };
         if (id == new Guid("7C645D35-8151-48BA-B4AC-15017460D994"))
         {
-            var line = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            var line = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Center, Opacity = component.Opacity };
+            var content = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            line.Children.Add(content);
             ShapePath? progress = null;
+            ProgressBar? bar = null;
             if (ReadSettingBool(component.Settings, "ShowProgress"))
             {
-                var ring = new Grid { Width = 22, Height = 22, Margin = new Thickness(0, 0, 6, 0) };
-                ring.Children.Add(new Ellipse { Stroke = new SolidColorBrush(Color.FromArgb(72, 218, 225, 235)), StrokeThickness = 2.6 });
-                progress = new ShapePath { Stroke = Brushes.Red, StrokeThickness = 3.1, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
-                ring.Children.Add(progress); line.Children.Add(ring);
+                if (ReadSettingInt(component.Settings, "ProgressBarMode", 0) == 1)
+                {
+                    bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 3, MinWidth = 60 };
+                    line.Children.Add(bar);
+                }
+                else
+                {
+                    var ring = new Grid { Width = 22, Height = 22, Margin = new Thickness(0, 0, 6, 0) };
+                    ring.Children.Add(new Ellipse { Stroke = new SolidColorBrush(Color.FromArgb(72, 218, 225, 235)), StrokeThickness = 2.6 });
+                    progress = new ShapePath { StrokeThickness = 3.1, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
+                    ring.Children.Add(progress); content.Children.Add(ring);
+                }
             }
-            var label = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-            line.Children.Add(label);
-            countdownViews.Add((component, label, progress));
+            var label = new TextBlock { FontSize = component.MainWindowBodyFontSize,
+                FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            content.Children.Add(label);
+            countdownViews.Add((component, label, progress, bar));
             return line;
         }
         var group = id == new Guid("C911D762-107F-40C6-84CC-0146AB3C86B1");
@@ -255,14 +274,15 @@ public sealed class ClassIslandPresentationService
         settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) &&
         value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : fallback;
 
-    private static bool ReadSettingBool(JsonElement? settings, string key) =>
-        settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.True;
+    private static bool ReadSettingBool(JsonElement? settings, string key, bool fallback = false) =>
+        settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) &&
+        value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : fallback;
 
     private static string ReadSettingString(JsonElement? settings, string key, string fallback) =>
         settings is { ValueKind: JsonValueKind.Object } && settings.Value.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? fallback : fallback;
 
-    private void UpdateCountdown(ClassIslandComponentSettings settings, TextBlock label, ShapePath? progress, DateTime now)
+    private void UpdateCountdown(ClassIslandComponentSettings settings, TextBlock label, ShapePath? progress, ProgressBar? bar, DateTime now)
     {
         var text = ClassIslandComponentText.Resolve(settings, timetable, now) ?? "";
         var name = ReadSettingString(settings.Settings, "CountDownName", "倒计时");
@@ -270,23 +290,32 @@ public sealed class ClassIslandPresentationService
         var compact = ReadSettingBool(settings.Settings, "IsCompactModeEnabled");
         var prefix = compact ? $"{name} " : $"距离 {name} {connector} ";
         var value = text.StartsWith(prefix, StringComparison.Ordinal) ? text[prefix.Length..] : text;
-        Color accent;
-        try { accent = (Color)ColorConverter.ConvertFromString(ReadSettingString(settings.Settings, "FontColor", "#FFFF0000")); }
-        catch (FormatException) { accent = Colors.Red; }
+        var accent = ClassIslandComponentText.TryReadCountdownColor(settings.Settings,
+            out var alpha, out var red, out var green, out var blue)
+            ? Color.FromArgb(alpha, red, green, blue) : Colors.Red;
         var foreground = appearance.Settings.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight
             ? Brushes.Black : Brushes.White;
         label.Inlines.Clear();
-        if (!compact) label.Inlines.Add(new Run("距离 ") { Foreground = foreground });
-        label.Inlines.Add(new Run(name) { Foreground = new SolidColorBrush(accent) });
-        if (!compact) label.Inlines.Add(new Run($" {connector} ") { Foreground = foreground });
+        var connectorBrush = ReadSettingBool(settings.Settings, "IsConnectorColorEmphasized") ? new SolidColorBrush(accent) : foreground;
+        if (!compact) label.Inlines.Add(new Run("距离 ") { Foreground = connectorBrush });
+        label.Inlines.Add(new Run(name) { Foreground = new SolidColorBrush(accent),
+            FontSize = ReadSettingInt(settings.Settings, "FontSize", 16) });
+        if (!compact) label.Inlines.Add(new Run($" {connector} ") { Foreground = connectorBrush });
         else label.Inlines.Add(new Run(" ") { Foreground = foreground });
-        label.Inlines.Add(new Run(value) { Foreground = new SolidColorBrush(accent) });
+        label.Inlines.Add(new Run(value) { Foreground = new SolidColorBrush(accent),
+            FontSize = ReadSettingInt(settings.Settings, "FontSize", 16) });
+        if (progress is null && bar is null) return;
+        var light = appearance.Settings.IslandTheme is ClassIslandIslandTheme.LightGlass or ClassIslandIslandTheme.SqgtLiquidGlassLight;
+        Brush progressBrush = ReadSettingBool(settings.Settings, "UseAccentOnProgressBar", true)
+            ? new SolidColorBrush(accent)
+            : new SolidColorBrush(light ? Color.FromRgb(82, 127, 152) : Color.FromRgb(100, 190, 235));
+        if (progress is not null) progress.Stroke = progressBrush;
+        if (bar is not null) bar.Foreground = progressBrush;
+        if (!ClassIslandComponentText.TryGetCountdownWindow(settings.Settings, now, timetable, out var start, out var end) || end <= start)
+        { if (progress is not null) progress.Data = Geometry.Empty; if (bar is not null) bar.Value = 0; return; }
+        var fraction = Math.Clamp((ReadSettingBool(settings.Settings, "IsProgressInverted") ? end - now : now - start).TotalSeconds / (end - start).TotalSeconds, 0, .9999);
+        if (bar is not null) bar.Value = fraction * 100;
         if (progress is null) return;
-        progress.Stroke = new SolidColorBrush(accent);
-        if (!DateTime.TryParse(ReadSettingString(settings.Settings, "StartTime", ""), CultureInfo.InvariantCulture, DateTimeStyles.None, out var start) ||
-            !DateTime.TryParse(ReadSettingString(settings.Settings, "OverTime", ""), CultureInfo.InvariantCulture, DateTimeStyles.None, out var end) || end <= start)
-        { progress.Data = Geometry.Empty; return; }
-        var fraction = Math.Clamp((now - start).TotalSeconds / (end - start).TotalSeconds, 0, .9999);
         var angle = fraction * 2 * Math.PI - Math.PI / 2;
         var figure = new PathFigure { StartPoint = new Point(11, 1), IsClosed = false };
         figure.Segments.Add(new ArcSegment(new Point(11 + 10 * Math.Cos(angle), 11 + 10 * Math.Sin(angle)),
@@ -305,6 +334,12 @@ public sealed class ClassIslandPresentationService
     private void OnTouchDown(object? sender, TouchEventArgs e)
     {
         if (window is null || dragTouch is not null) return;
+        if (notificationOverlay?.Visibility == Visibility.Visible && notifications.Current is { } request)
+        {
+            request.Cancel();
+            e.Handled = true;
+            return;
+        }
         dragTouch = e.TouchDevice;
         dragStartScreen = window.PointToScreen(e.GetTouchPoint(window).Position);
         dragStartWindow = new Point(window.Left, window.Top);
@@ -360,8 +395,8 @@ public sealed class ClassIslandPresentationService
         var now = DateTime.Now.AddSeconds(settings.TimeOffsetSeconds);
         foreach (var (component, text) in componentTexts)
             text.Text = ClassIslandComponentText.Resolve(component, timetable, now, weather.Current) ?? "";
-        foreach (var (settings, text, progress) in countdownViews)
-            UpdateCountdown(settings, text, progress, now);
+        foreach (var (settings, text, progress, bar) in countdownViews)
+            UpdateCountdown(settings, text, progress, bar, now);
         foreach (var (host, seconds) in slideHosts)
         {
             var active = (int)((now.Ticks / TimeSpan.TicksPerSecond / seconds) % host.Children.Count);
@@ -392,8 +427,9 @@ public sealed class ClassIslandPresentationService
         if (dispatcher is null) return;
         dispatcher.BeginInvoke(() =>
         {
-            if (notificationOverlay is null || notificationText is null) return;
-            notificationText.Text = $"{request.MaskContent.Content}  {request.OverlayContent?.Content}".Trim();
+            if (notificationOverlay is null || notificationText is null || !ReferenceEquals(notifications.Current, request)) return;
+            notificationText.Text = (request.MaskSession.IsCompleted && request.OverlayContent is { } overlay
+                ? overlay.Content : request.MaskContent.Content)?.ToString() ?? "";
             notificationOverlay.Visibility = Visibility.Visible;
             ApplyAppearance();
         });

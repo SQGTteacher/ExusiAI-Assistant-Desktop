@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
@@ -21,6 +22,14 @@ public sealed class ClassIslandComponentSettings : ClassIslandVisualSettings
     public string Id { get => id; set => id = value?.ToLowerInvariant() ?? ""; }
     public string NameCache { get; set; } = "";
     public JsonElement? Settings { get; set; }
+    public void UpdateSettings(Action<JsonObject> update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        var values = Settings is { ValueKind: JsonValueKind.Object } existing
+            ? JsonNode.Parse(existing.GetRawText())!.AsObject() : new JsonObject();
+        update(values);
+        Settings = JsonSerializer.SerializeToElement(values);
+    }
     public int RelativeLineNumber { get; set; }
     public bool IsMinWidthEnabled { get; set; }
     public double MinWidth { get; set; } = 100;

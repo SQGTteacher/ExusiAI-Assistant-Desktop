@@ -64,36 +64,7 @@ public static class ClassIslandComponentText
         }
         if (id == new Guid("7C645D35-8151-48BA-B4AC-15017460D994"))
         {
-            DateTime start, end;
-            switch (ReadInt(component.Settings, "CountdownSource"))
-            {
-                case 0:
-                    if (!TryReadDate(component.Settings, "OverTime", out end)) return null;
-                    TryReadDate(component.Settings, "StartTime", out start);
-                    break;
-                case 1:
-                    if (!TryReadDate(component.Settings, "CycleStartTime", out var cycleStart)) return null;
-                    var duration = ReadDuration(component.Settings, "CycleDuration", TimeSpan.FromDays(1));
-                    var before = ReadBool(component.Settings, "IsAdvancedCycleTimingEnabled") ? ReadDuration(component.Settings, "CycleBeforeDuration", TimeSpan.Zero) : TimeSpan.Zero;
-                    var after = ReadBool(component.Settings, "IsAdvancedCycleTimingEnabled") ? ReadDuration(component.Settings, "CycleAfterDuration", TimeSpan.Zero) : TimeSpan.Zero;
-                    var cycle = before + duration + after;
-                    if (cycle <= TimeSpan.Zero) { start = cycleStart; end = cycleStart; break; }
-                    var cycles = Math.Floor((now - cycleStart).Ticks / (double)cycle.Ticks);
-                    if (ReadBool(component.Settings, "IsCycleCountLimited")) cycles = Math.Min(cycles, ReadInt(component.Settings, "CycleCountLimit", 2));
-                    // Keep the calculation bounded for malformed or very old imported profiles.
-                    cycles = Math.Clamp(cycles, -100000, 100000);
-                    start = cycleStart + TimeSpan.FromTicks((long)(cycles * cycle.Ticks)) + before;
-                    end = start + duration;
-                    break;
-                case 2:
-                    start = now.Date; end = start.AddDays(1); break;
-                case 3:
-                    var weekStart = ReadInt(component.Settings, "WeekCountdownStartDay", 1);
-                    if (weekStart is < 0 or > 6) weekStart = 1;
-                    start = now.Date.AddDays(-(((int)now.DayOfWeek - weekStart + 7) % 7));
-                    end = now.Date.AddDays(8); break;
-                default: return null;
-            }
+            if (!TryGetCountdownWindow(component.Settings, now, timetable, out var start, out var end)) return null;
             var remaining = end - now;
             if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
             var total = end - start;
@@ -115,6 +86,86 @@ public static class ClassIslandComponentText
             return ReadBool(component.Settings, "IsCompactModeEnabled") ? $"{name} {value}" : $"距离 {name} {ReadString(component.Settings, "CountDownConnector") ?? "还有"} {value}";
         }
         return null;
+    }
+
+    public static bool TryGetCountdownWindow(JsonElement? settings, DateTime now, out DateTime start, out DateTime end) =>
+        TryGetCountdownWindow(settings, now, null, out start, out end);
+
+    public static bool TryGetCountdownWindow(JsonElement? settings, DateTime now, ClassIslandTimetableService? timetable,
+        out DateTime start, out DateTime end)
+    {
+        start = default;
+        end = default;
+        switch (ReadInt(settings, "CountdownSource"))
+        {
+            case 0:
+                if (!TryReadDate(settings, "OverTime", out end)) return false;
+                TryReadDate(settings, "StartTime", out start);
+                break;
+            case 1:
+                if (!TryReadDate(settings, "CycleStartTime", out var cycleStart)) return false;
+                var duration = ReadDuration(settings, "CycleDuration", TimeSpan.FromDays(1));
+                var before = ReadBool(settings, "IsAdvancedCycleTimingEnabled") ? ReadDuration(settings, "CycleBeforeDuration", TimeSpan.Zero) : TimeSpan.Zero;
+                var after = ReadBool(settings, "IsAdvancedCycleTimingEnabled") ? ReadDuration(settings, "CycleAfterDuration", TimeSpan.Zero) : TimeSpan.Zero;
+                var cycle = before + duration + after;
+                if (cycle <= TimeSpan.Zero) { start = cycleStart; end = cycleStart; break; }
+                var cycles = Math.Floor((now - cycleStart).Ticks / (double)cycle.Ticks);
+                if (ReadBool(settings, "IsCycleCountLimited")) cycles = Math.Min(cycles, ReadInt(settings, "CycleCountLimit", 2));
+                // Keep the calculation bounded for malformed or very old imported profiles.
+                cycles = Math.Clamp(cycles, -100000, 100000);
+                start = cycleStart + TimeSpan.FromTicks((long)(cycles * cycle.Ticks)) + before;
+                end = start + duration;
+                break;
+            case 2:
+                var natureMode = ReadInt(settings, "NatureTimeUseMode");
+                if (natureMode != 1 && timetable?.TryGetDayTimeRange(now, out start, out end) == true) break;
+                if (natureMode == 2) { start = end = DateTime.MinValue; break; }
+                start = now.Date; end = start.AddDays(1); break;
+            case 3:
+                var weekStart = ReadInt(settings, "WeekCountdownStartDay", 1);
+                if (weekStart is < 0 or > 6) weekStart = 1;
+                start = now.Date.AddDays(-(((int)now.DayOfWeek - weekStart + 7) % 7));
+                end = now.Date.AddDays(8); break;
+            default: return false;
+        }
+        return true;
+    }
+
+    public static bool TryParseUpstreamColor(string? hex, out byte alpha, out byte red, out byte green, out byte blue)
+    {
+        alpha = 255;
+        red = green = blue = 0;
+        if (hex is null || (hex.Length != 9 && hex.Length != 7) || hex[0] != '#') return false;
+        var style = NumberStyles.HexNumber;
+        var culture = CultureInfo.InvariantCulture;
+        if (!byte.TryParse(hex.AsSpan(1, 2), style, culture, out red) ||
+            !byte.TryParse(hex.AsSpan(3, 2), style, culture, out green) ||
+            !byte.TryParse(hex.AsSpan(5, 2), style, culture, out blue)) return false;
+        return hex.Length == 7 || byte.TryParse(hex.AsSpan(7, 2), style, culture, out alpha);
+    }
+
+    public static bool TryReadCountdownColor(JsonElement? settings, out byte alpha, out byte red, out byte green, out byte blue)
+    {
+        if (settings is { ValueKind: JsonValueKind.Object } source &&
+            source.TryGetProperty("FontColor", out var color))
+        {
+            if (color.ValueKind == JsonValueKind.String)
+                return TryParseUpstreamColor(color.GetString(), out alpha, out red, out green, out blue);
+            if (color.ValueKind == JsonValueKind.Object)
+            {
+                static bool Channel(JsonElement value, string name, out byte channel)
+                {
+                    channel = 0;
+                    if (!value.TryGetProperty(name, out var field) || field.ValueKind != JsonValueKind.Number ||
+                        !field.TryGetInt32(out var number) || number is < 0 or > 255) return false;
+                    channel = (byte)number;
+                    return true;
+                }
+                if (Channel(color, "A", out alpha) && Channel(color, "R", out red) &&
+                    Channel(color, "G", out green) && Channel(color, "B", out blue)) return true;
+            }
+        }
+        return TryParseUpstreamColor("#FF0000FF", out alpha, out red, out green, out blue);
     }
 
     private static string? ResolveWeather(JsonElement? settings, JsonElement? weather)
