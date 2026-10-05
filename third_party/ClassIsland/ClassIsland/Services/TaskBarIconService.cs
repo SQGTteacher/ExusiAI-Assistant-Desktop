@@ -34,6 +34,7 @@ public class TaskBarIconService : IHostedService, ITaskBarIconService
     } = new()
     {
         Icon = new WindowIcon(OperatingSystem.IsMacOS() ? "../Resources/Assets/AppLogo_Monochrome.png" : "Assets/AppLogo.png"),
+        IsVisible = false,
         ToolTipText = "ClassIsland"
     };
 
