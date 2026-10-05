@@ -49,11 +49,11 @@ public sealed class ClassIslandPresentationService
     private Point dragStartScreen;
     private Point dragStartWindow;
 
-    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications, ClassIslandWeatherService weather, ClassIslandSettingsService settings, string dataDirectory)
+    public ClassIslandPresentationService(ClassIslandTimetableService timetable, ClassIslandComponentService components, ClassIslandAppearanceService appearance, ClassIslandNotificationService notifications, ClassIslandWeatherService weather, ClassIslandSettingsService settings, string dataDirectory, string? packageDirectory = null)
     {
         this.timetable = timetable; this.components = components; this.appearance = appearance; this.notifications = notifications; this.weather = weather; this.settings = settings;
         avaloniaIsland = new(timetable, components, appearance, notifications, weather, settings);
-        originalHost = new(dataDirectory);
+        originalHost = new(dataDirectory, packageDirectory);
         notifications.RequestStarted += (_, request) => ShowNotification(request);
         notifications.RequestUpdated += (_, request) => ShowNotification(request);
         notifications.RequestCompleted += (_, request) => HideNotification(request);

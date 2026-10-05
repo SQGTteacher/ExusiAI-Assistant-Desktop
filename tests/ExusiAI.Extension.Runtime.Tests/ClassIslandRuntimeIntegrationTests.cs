@@ -313,6 +313,68 @@ public sealed class ClassIslandRuntimeIntegrationTests
     }
 
     [Fact]
+    public async Task EmbeddedHostUsesPluginPackageDirectory()
+    {
+        using var root = new TemporaryDirectory();
+        var package = Path.Combine(root.Path, "plugin");
+        var native = Path.Combine(package, "NativeClassIsland");
+        Directory.CreateDirectory(native);
+        await File.WriteAllTextAsync(Path.Combine(native, "ClassIsland.Desktop.dll"), "");
+        await File.WriteAllTextAsync(Path.Combine(native, "ClassIsland.dll"), "");
+        await using var core = new ClassIslandCoreService(new NullExtensionLogger(),
+            Path.Combine(root.Path, "data"), package);
+        Assert.True(core.Presentation.IsOriginalHostAvailable);
+    }
+
+    [Fact]
+    public async Task WeeklyCountdownUsesCourseTimeAndForcedMode()
+    {
+        using var root = new TemporaryDirectory();
+        var profiles = new ClassIslandProfileService(Path.Combine(root.Path, "Profiles"));
+        await profiles.InitializeAsync();
+        var layoutId = Guid.NewGuid();
+        var profile = new ClassIslandProfile
+        {
+            TimeLayouts = { [layoutId] = new()
+            {
+                Layouts = { new() { TimeType = 0, StartTime = TimeSpan.FromHours(8), EndTime = TimeSpan.FromHours(9) } }
+            } },
+            ClassPlans = { [Guid.NewGuid()] = new()
+            {
+                TimeLayoutId = layoutId, TimeRule = new() { WeekDay = 1 }
+            } }
+        };
+        await profiles.SaveAsync(profile);
+        var timetable = new ClassIslandTimetableService(profiles);
+        var monday = new DateTime(2026, 9, 28, 12, 0, 0);
+        var settings = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountdownSource = 3, WeekCountdownStartDay = 1
+        });
+        Assert.True(ClassIslandComponentText.TryGetCountdownWindow(settings, monday, timetable, out var start, out var end));
+        Assert.Equal(monday.Date.AddHours(8), start);
+        Assert.Equal(monday.Date.AddHours(9), end);
+
+        var natural = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountdownSource = 3, WeekCountdownStartDay = 1, NatureTimeUseMode = 1
+        });
+        Assert.True(ClassIslandComponentText.TryGetCountdownWindow(natural, monday, timetable, out start, out end));
+        Assert.Equal(monday.Date, start);
+        Assert.Equal(monday.Date.AddDays(8), end);
+
+        var forced = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            CountdownSource = 3, WeekCountdownStartDay = 1, NatureTimeUseMode = 2
+        });
+        Assert.True(ClassIslandComponentText.TryGetCountdownWindow(forced, monday.AddDays(1),
+            new ClassIslandTimetableService(new ClassIslandProfileService(Path.Combine(root.Path, "empty"))),
+            out start, out end));
+        Assert.Equal(DateTime.MinValue, start);
+        Assert.Equal(start, end);
+    }
+
+    [Fact]
     public void LegacyCountdownColorObjectRetainsChannels()
     {
         var settings = System.Text.Json.JsonSerializer.SerializeToElement(new

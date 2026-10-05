@@ -122,10 +122,24 @@ public static class ClassIslandComponentText
                 if (natureMode == 2) { start = end = DateTime.MinValue; break; }
                 start = now.Date; end = start.AddDays(1); break;
             case 3:
+                var weeklyNatureMode = ReadInt(settings, "NatureTimeUseMode");
                 var weekStart = ReadInt(settings, "WeekCountdownStartDay", 1);
                 if (weekStart is < 0 or > 6) weekStart = 1;
                 start = now.Date.AddDays(-(((int)now.DayOfWeek - weekStart + 7) % 7));
-                end = now.Date.AddDays(8); break;
+                end = now.Date.AddDays(8);
+                if (weeklyNatureMode != 1 && timetable is not null)
+                {
+                    DateTime first = default, last = default;
+                    for (var day = start; day < start.AddDays(7); day = day.AddDays(1))
+                    {
+                        if (!timetable.TryGetDayTimeRange(day, out var dayStart, out var dayEnd)) continue;
+                        if (first == default || dayStart < first) first = dayStart;
+                        if (dayEnd > last) last = dayEnd;
+                    }
+                    if (last > first) { start = first; end = last; }
+                    else if (weeklyNatureMode == 2) start = end = DateTime.MinValue;
+                }
+                break;
             default: return false;
         }
         return true;

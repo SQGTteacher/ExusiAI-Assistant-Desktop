@@ -18,10 +18,10 @@ internal sealed class ClassIslandOriginalHost : IDisposable
     private Type? entryPoint;
     private bool disposed;
 
-    internal ClassIslandOriginalHost(string dataDirectory)
+    internal ClassIslandOriginalHost(string dataDirectory, string? packageDirectory)
     {
         this.dataDirectory = dataDirectory;
-        nativeDirectory = Path.Combine(Path.GetDirectoryName(typeof(ClassIslandPlugin).Assembly.Location)!, "NativeClassIsland");
+        nativeDirectory = Path.Combine(Path.GetFullPath(packageDirectory ?? AppContext.BaseDirectory), "NativeClassIsland");
     }
 
     internal bool IsAvailable => File.Exists(Path.Combine(nativeDirectory, "ClassIsland.Desktop.dll")) &&

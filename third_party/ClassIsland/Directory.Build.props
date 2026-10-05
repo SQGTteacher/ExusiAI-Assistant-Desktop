@@ -2,5 +2,8 @@
   <!-- Keep upstream's own project settings separate from ExusiAI's build defaults. -->
   <PropertyGroup>
     <DefineConstants>$(DefineConstants);EXUSIAI_EMBEDDED_SOURCE</DefineConstants>
+    <!-- Baseline diagnostics in the vendored source. Keep dependency conflicts and
+         other diagnostic codes visible; this does not affect ExusiAI projects. -->
+    <NoWarn>$(NoWarn);CS8767;CA1416;CS1998;AVLN3001;CS8618;CS0108;CS0414</NoWarn>
   </PropertyGroup>
 </Project>
