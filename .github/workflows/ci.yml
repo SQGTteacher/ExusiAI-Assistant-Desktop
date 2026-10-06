@@ -42,8 +42,16 @@ jobs:
           foreach ($relative in @("libvlc/win-x64/libvlc.dll", "libvlc/win-x64/libvlccore.dll", "libvlc/win-x64/plugins/codec/libavcodec_plugin.dll", "licenses/LibVLC-LGPL-2.1.txt")) {
             if (!(Test-Path (Join-Path $viewerDir $relative))) { throw "Missing viewer dependency: $relative" }
           }
-          foreach ($relative in @("ExusiAI.FileViewer.BinaryOffice.dll", "b2xtranslator.dll", "licenses/b2xtranslator-BSD-3-Clause.txt", "NPOI.dll", "NPOI.ScratchPad.HWPF.dll", "System.Configuration.ConfigurationManager.dll", "ICSharpCode.SharpZipLib.dll", "BouncyCastle.Crypto.dll")) {
+          foreach ($relative in @("ExusiAI.FileViewer.BinaryOffice.dll", "b2xtranslator.dll", "licenses/b2xtranslator-BSD-3-Clause.txt", "NPOI.dll", "NPOI.ScratchPad.HWPF.dll", "ICSharpCode.SharpZipLib.dll", "BouncyCastle.Crypto.dll")) {
             if (!(Test-Path (Join-Path $viewerDir $relative))) { throw "Missing in-process Office dependency: $relative" }
+          }
+          # WPF supplies ConfigurationManager from its declared shared framework in framework-dependent builds.
+          # Self-contained publication must include the framework DLL; native DOC tests exercise its actual loading.
+          $runtime = Get-Content (Join-Path $viewerDir "ExusiAI.FileViewer.Desktop.runtimeconfig.json") -Raw | ConvertFrom-Json
+          $frameworks = @($runtime.runtimeOptions.frameworks) + @($runtime.runtimeOptions.framework)
+          $usesDesktopFramework = @($frameworks | Where-Object { $_ -and $_.name -eq "Microsoft.WindowsDesktop.App" }).Count -gt 0
+          if (!$usesDesktopFramework -and !(Test-Path (Join-Path $viewerDir "System.Configuration.ConfigurationManager.dll"))) {
+            throw "ConfigurationManager is neither packaged nor provided by a declared Windows desktop framework"
           }
           $foreignExecutables = @(Get-ChildItem $viewerDir -Recurse -File -Filter *.exe | Where-Object {
             $_.FullName -ne (Join-Path (Resolve-Path $viewerDir).Path "ExusiAI.FileViewer.Desktop.exe")
