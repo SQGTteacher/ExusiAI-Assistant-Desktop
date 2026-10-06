@@ -36,7 +36,10 @@ internal sealed class ClassIslandPage : UserControl
         var buttons = new WrapPanel { Margin = new Thickness(0, 18, 0, 0) };
         Add(buttons, "显示原版信息岛", () => host.Start());
         Add(buttons, "隐藏原版信息岛", () => { host.Hide(); return true; });
-        Add(buttons, "打开原版设置", () => { if (!host.Start()) return false; host.OpenSettings(); return true; });
+        Add(buttons, "打开原版设置", host.OpenSettings);
+        Add(buttons, "编辑原版课表", () => host.OpenPage("profile"));
+        Add(buttons, "编辑信息岛组件", () => host.OpenPage("edit"));
+        Add(buttons, "临时换课", () => host.OpenPage("class-swap"));
         var import = new Button { Content = "导入本机 ClassIsland 数据", Margin = new Thickness(0, 0, 10, 10),
             Padding = new Thickness(14, 8, 14, 8), MinHeight = 40 };
         import.Click += async (_, _) =>

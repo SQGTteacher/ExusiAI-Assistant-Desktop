@@ -15,13 +15,14 @@ internal sealed class ClassIslandHost : IDisposable
     private readonly string dataDirectory;
     private readonly string nativeDirectory;
     private readonly TaskCompletionSource<bool> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly object lifecycleGate = new();
     private Thread? thread;
     private Type? entryPoint;
     private HostTheme? pendingTheme;
     private readonly object themeGate = new();
     private readonly string themePreferencePath;
     private bool followHostTheme;
-    private bool disposed;
+    private volatile bool disposed;
     private int stopRequested;
     internal string? LastStartupError { get; private set; }
 
@@ -47,67 +48,126 @@ internal sealed class ClassIslandHost : IDisposable
     internal string DataDirectory => dataDirectory;
     internal bool IsStopped => thread is null || !thread.IsAlive;
 
-    internal bool IsVisible { get; private set; }
-
-    internal bool Start()
+    internal bool IsVisible
     {
-        if (disposed)
+        get
         {
-            LastStartupError = "ClassIsland 已停止，需要重新启动 ExusiAI。";
-            return false;
+            lock (lifecycleGate)
+            {
+                if (disposed || thread is not { IsAlive: true } || !ready.Task.IsCompletedSuccessfully || !ready.Task.Result)
+                    return false;
+                try { return InvokeControl("GetEmbeddedVisible") is true; }
+                catch (Exception exception)
+                {
+                    Trace.TraceWarning("ClassIsland visibility could not be read: {0}", exception.GetBaseException().Message);
+                    return false;
+                }
+            }
         }
-        if (!IsAvailable)
+    }
+
+    internal bool Start() => EnsureStarted(showIsland: true);
+
+    private bool EnsureStarted(bool showIsland)
+    {
+        Thread runningThread;
+        lock (lifecycleGate)
         {
-            LastStartupError = $"Native ClassIsland assemblies are missing from {nativeDirectory}.";
-            return false;
-        }
-        if (thread is null)
-        {
-            AssemblyLoadContext.Default.Resolving += ResolveAssembly;
-            thread = new Thread(Run) { IsBackground = true, Name = "ClassIsland original Avalonia host" };
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
+            if (disposed)
+            {
+                LastStartupError = "ClassIsland 已停止，需要重新启动 ExusiAI。";
+                return false;
+            }
+            if (!IsAvailable)
+            {
+                LastStartupError = $"Native ClassIsland assemblies are missing from {nativeDirectory}.";
+                return false;
+            }
+            if (thread is null)
+            {
+                AssemblyLoadContext.Default.Resolving += ResolveAssembly;
+                try
+                {
+                    thread = new Thread(Run) { IsBackground = true, Name = "ClassIsland original Avalonia host" };
+                    thread.SetApartmentState(ApartmentState.STA);
+                    thread.Start();
+                }
+                catch (Exception exception)
+                {
+                    AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
+                    LastStartupError = exception.GetBaseException().Message;
+                    ready.TrySetResult(false);
+                    disposed = true;
+                    thread = null;
+                    return false;
+                }
+            }
+            runningThread = thread;
         }
         if (!ready.Task.Wait(TimeSpan.FromSeconds(30)))
         {
             LastStartupError = "Native ClassIsland did not finish starting within 30 seconds.";
             return false;
         }
-        if (!ready.Task.Result || !thread.IsAlive)
+        lock (lifecycleGate)
         {
-            LastStartupError ??= "Native ClassIsland stopped before its window was ready.";
-            return false;
-        }
-        try
-        {
-            (entryPoint?.GetMethod("SetEmbeddedVisible")
-                ?? throw new MissingMethodException("ClassIsland.Desktop.Program.SetEmbeddedVisible"))
-                .Invoke(null, [true]);
-            IsVisible = true;
-            LastStartupError = null;
-            return true;
-        }
-        catch (Exception exception)
-        {
-            LastStartupError = exception.GetBaseException().Message;
-            Trace.TraceError("Embedded ClassIsland could not show its window: {0}", exception);
-            return false;
+            if (disposed || !ready.Task.Result || !runningThread.IsAlive)
+            {
+                LastStartupError ??= "Native ClassIsland stopped before its window was ready.";
+                return false;
+            }
+            try
+            {
+                if (showIsland) InvokeControl("SetEmbeddedVisible", [true]);
+                LastStartupError = null;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                LastStartupError = exception.GetBaseException().Message;
+                Trace.TraceError("Embedded ClassIsland command failed: {0}", exception);
+                return false;
+            }
         }
     }
 
     internal void Hide()
     {
-        IsVisible = false;
-        if (ready.Task.IsCompletedSuccessfully && ready.Task.Result)
-            try { entryPoint?.GetMethod("SetEmbeddedVisible")?.Invoke(null, [false]); }
-            catch (TargetInvocationException) { /* Host shutdown can race with UI dispatch. */ }
+        lock (lifecycleGate)
+        {
+            if (disposed) return;
+            if (ready.Task.IsCompletedSuccessfully && ready.Task.Result)
+                InvokeControl("SetEmbeddedVisible", [false]);
+        }
     }
 
-    internal void OpenSettings()
+    internal bool OpenSettings() => OpenPage("settings");
+
+    internal bool OpenPage(string page)
     {
-        if (ready.Task.IsCompletedSuccessfully && ready.Task.Result)
-            entryPoint?.GetMethod("OpenEmbeddedSettings")?.Invoke(null, null);
+        if (page is not ("settings" or "profile" or "edit" or "class-swap"))
+            throw new ArgumentException("Unsupported ClassIsland page.", nameof(page));
+        if (!EnsureStarted(showIsland: false)) return false;
+        lock (lifecycleGate)
+        {
+            if (disposed) return false;
+            try
+            {
+                InvokeControl("OpenEmbeddedPage", [page]);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                LastStartupError = exception.GetBaseException().Message;
+                return false;
+            }
+        }
     }
+
+    private object? InvokeControl(string method, object?[]? arguments = null) =>
+        (entryPoint?.GetMethod(method)
+            ?? throw new MissingMethodException($"ClassIsland.Desktop.Program.{method}"))
+        .Invoke(null, arguments);
 
     internal bool FollowHostTheme { get { lock (themeGate) return followHostTheme; } }
 
@@ -207,20 +267,28 @@ internal sealed class ClassIslandHost : IDisposable
             Trace.TraceError("Embedded ClassIsland failed: {0}", exception);
             ready.TrySetResult(false);
         }
-        finally { IsVisible = false; }
+        finally
+        {
+            AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
+        }
     }
 
     public void Dispose()
     {
-        if (disposed) return;
-        disposed = true;
-        Interlocked.Exchange(ref stopRequested, 1);
-        Hide();
-        if (entryPoint is not null)
-            try { entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null); }
-            catch (TargetInvocationException) { /* The Avalonia dispatcher may already be gone. */ }
-        if (thread is not null && !thread.Join(TimeSpan.FromSeconds(15)))
+        Thread? stoppingThread;
+        lock (lifecycleGate)
+        {
+            if (disposed) return;
+            disposed = true;
+            Interlocked.Exchange(ref stopRequested, 1);
+            stoppingThread = thread;
+            if (entryPoint is not null)
+                try { InvokeControl("StopEmbedded"); }
+                catch (TargetInvocationException) { /* The dispatcher may already be gone. */ }
+        }
+        // Never join while holding the gate: concurrent commands must observe stopped state.
+        if (stoppingThread is not null && !stoppingThread.Join(TimeSpan.FromSeconds(15)))
             Trace.TraceWarning("Embedded ClassIsland did not stop within fifteen seconds.");
-        AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
+        // Run removes the resolver only when Avalonia really exits, including after a timeout.
     }
 }

@@ -343,14 +343,23 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         TutorialService.BeginNotCompletedTutorials("classisland.getStarted.welcome/init");
     }
 
+    private bool embeddedShowInitialized;
+
     public override void Show()
     {
+        if (AppBase.Current is App { EmbeddedOptions: not null } && embeddedShowInitialized)
+        {
+            base.Show();
+            UpdateWindowPos();
+            return;
+        }
         XamlThemeService.LoadAllThemes();
         IAppHost.GetService<ISplashService>().SetDetailedStatus("正在加载界面主题（2）");
         UpdateTheme();
         base.Show();
         UpdateWindowPos();
         Win32Properties.AddWndProcHookCallback(this, ProcWnd);
+        embeddedShowInitialized = true;
         Dispatcher.UIThread.InvokeAsync(PostInit, DispatcherPriority.ApplicationIdle);
     }
 

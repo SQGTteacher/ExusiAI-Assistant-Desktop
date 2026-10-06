@@ -17,12 +17,14 @@ The source is GPL-3.0. Its own `LICENSE` and third-party notices remain in this
 directory. The modifications for ExusiAI are intentionally limited to the
 application boundary: `EmbeddedHostOptions`, `Program.AppEntry`,
 `ClassIsland.Desktop.Program.RunEmbedded` and its embedded control surface
-(`SetEmbeddedVisible`, `SetEmbeddedTheme`, `OpenEmbeddedSettings`,
+(`SetEmbeddedVisible`, `GetEmbeddedVisible`, `SetEmbeddedTheme`, `OpenEmbeddedPage`, `OpenEmbeddedSettings`,
 `StopEmbedded`), `App` startup/restart, and the
 directory/global-storage services. Embedded mode receives a private data root,
 does not create ClassIsland's global mutex, change the host working directory or
 process priority, start an updater/IPC server, or restart ExusiAI's executable.
 The original Avalonia views, component implementations, services, data models,
 and settings pages remain in the imported source. `ThemeService` additionally supports a
-reversible host variant/accent override; independent theming is the default. The native entry point is
+reversible host variant/accent override; independent theming is the default.
+Embedded `MainWindow.Show` skips repeated hook/URI registration when restoring a
+previously initialized window. Standalone startup and navigation remain upstream. The native entry point is
 called from the ExusiAI plugin; a Windows launch and visual check remains.

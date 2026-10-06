@@ -37,22 +37,38 @@ public class Program
 
     public static bool IsEmbeddedRunning => Volatile.Read(ref embeddedApp) is not null;
 
-    public static void SetEmbeddedVisible(bool visible) => Dispatcher.UIThread.Post(() =>
+    public static void SetEmbeddedVisible(bool visible) => Dispatcher.UIThread.Invoke(() =>
     {
-        var window = Volatile.Read(ref embeddedApp)?.MainWindow;
+        var app = Volatile.Read(ref embeddedApp);
+        var window = app?.MainWindow;
         if (window is null) return;
-        if (visible) window.Show();
-        else window.Hide();
+        App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible = visible;
+        // MainWindow.Show also installs hooks and schedules PostInit. Do not run it
+        // again when a host command targets an already visible native window.
+        if (visible && !window.IsVisible) window.Show();
+        else if (!visible && window.IsVisible) window.Hide();
     });
+
+    public static bool GetEmbeddedVisible() => Dispatcher.UIThread.Invoke(() =>
+        Volatile.Read(ref embeddedApp)?.MainWindow is { IsVisible: true } &&
+        App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible);
+
+    public static void OpenEmbeddedPage(string page)
+    {
+        if (page is not ("settings" or "profile" or "edit" or "class-swap"))
+            throw new ArgumentException("Unsupported embedded page.", nameof(page));
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            if (Volatile.Read(ref embeddedApp) is null) return;
+            if (page is "edit" or "class-swap") SetEmbeddedVisible(true);
+            App.GetService<IUriNavigationService>().Navigate(new Uri($"classisland://app/{page}"));
+        }, DispatcherPriority.ApplicationIdle);
+    }
 
     public static void StopEmbedded() => Dispatcher.UIThread.Post(() =>
         Volatile.Read(ref embeddedApp)?.Stop());
 
-    public static void OpenEmbeddedSettings() => Dispatcher.UIThread.Post(() =>
-    {
-        if (Volatile.Read(ref embeddedApp) is not null)
-            App.GetService<SettingsWindowNew>().Open("general");
-    });
+    public static void OpenEmbeddedSettings() => OpenEmbeddedPage("settings");
 
     /// <summary>
     /// Aligns the embedded island with the host shell's theme variant and accent.
