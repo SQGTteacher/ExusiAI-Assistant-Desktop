@@ -15,16 +15,7 @@
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="HotAvalonia" Version="3.0.2" PrivateAssets="All" Publish="True"/>
-        <!-- HotAvalonia.Core 3.0.2 requires System.Reflection.Metadata >= 9.0.3, whose
-             net8.0 group depends on System.Collections.Immutable 9.x (assembly 9.0.0.0).
-             The net8.0 shared framework already ships Immutable 8.0.0.0, so both end up
-             in the compile-time reference set and MSB3277 fires. Pinning Immutable back
-             to the framework copy unifies the closure; the downgrade is intentional and
-             therefore acknowledged below. Re-evaluate when the TFM moves to net9.0. -->
-        <PackageReference Include="System.Collections.Immutable" Version="8.0.0" />
+        <!-- Honor HotAvalonia.Core/Metadata's declared minimum on net8.0. -->
+        <PackageReference Include="System.Collections.Immutable" Version="9.0.3" />
     </ItemGroup>
-    <!-- Narrowed to NU1605 only: the Immutable pin above is a deliberate downgrade. -->
-    <PropertyGroup>
-        <NoWarn>$(NoWarn);NU1605</NoWarn>
-    </PropertyGroup>
 </Project>
