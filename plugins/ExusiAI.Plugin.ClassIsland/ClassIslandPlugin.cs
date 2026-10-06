@@ -5,7 +5,7 @@ using ExusiAI.Extension.Wpf;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
-public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExtension, IWpfHostThemeExtension
+public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExtension, IWpfHostThemeExtension, IWpfTrayExtension
 {
     private ClassIslandHost host = null!;
 
@@ -41,6 +41,24 @@ public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExten
     {
         if (host is not null) host.ApplyTheme(theme);
     }
+
+    public IReadOnlyCollection<WpfTrayCommand> GetTrayCommands() =>
+    [
+        Command("class-swap", "临时换课", () => host.OpenPage("class-swap")),
+        Command("profile", "编辑课表", () => host.OpenPage("profile")),
+        Command("edit", "编辑信息岛组件", () => host.OpenPage("edit")),
+        Command("settings", "原版设置", () => host.OpenSettings()),
+        Command("show", "显示信息岛", () => host.Start()),
+        Command("hide", "隐藏信息岛", () => { host.Hide(); return true; })
+    ];
+
+    private WpfTrayCommand Command(string id, string title, Func<bool> action) => new(id, title,
+        async cancellationToken =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!await Task.Run(action, cancellationToken))
+                throw new InvalidOperationException(host.LastStartupError ?? "ClassIsland 当前无法执行此操作。");
+        });
 
     public IReadOnlyCollection<WpfNavigationPage> GetNavigationPages() =>
     [

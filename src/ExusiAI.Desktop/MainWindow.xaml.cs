@@ -7,6 +7,8 @@ using System.Windows.Media.Animation;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 using ExusiAI.Theme;
+using ExusiAI.Extension.Wpf;
+using Microsoft.Extensions.Logging;
 
 namespace ExusiAI.Desktop;
 
@@ -15,16 +17,24 @@ public partial class MainWindow : Window
     private readonly IThemeService theme;
     private readonly IWindowBackdropService backdrop;
     private readonly Forms.NotifyIcon trayIcon;
+    private readonly WpfTrayRegistry trayRegistry;
+    private readonly ILogger<MainWindow> logger;
+    private readonly CancellationTokenSource trayCancellation = new();
+    private readonly List<Forms.ToolStripItem> trayExtensionItems = [];
     private bool exitRequested;
     private NavigationItem? previousNavigationItem;
 
-    public MainWindow(IThemeService theme, IWindowBackdropService backdrop)
+    public MainWindow(IThemeService theme, IWindowBackdropService backdrop, WpfTrayRegistry trayRegistry, ILogger<MainWindow> logger)
     {
         this.theme = theme;
         this.backdrop = backdrop;
+        this.trayRegistry = trayRegistry;
+        this.logger = logger;
         InitializeComponent();
         DataContextChanged += MainWindow_OnDataContextChanged;
         trayIcon = CreateTrayIcon();
+        trayRegistry.Changed += TrayRegistry_OnChanged;
+        RefreshTrayMenu();
         SourceInitialized += (_, _) =>
         {
             ApplyWindowAppearance();
@@ -36,6 +46,10 @@ public partial class MainWindow : Window
         {
             theme.Changed -= Appearance_OnChanged;
             backdrop.Changed -= Appearance_OnChanged;
+            trayRegistry.Changed -= TrayRegistry_OnChanged;
+            trayCancellation.Cancel();
+            trayCancellation.Dispose();
+            trayIcon.ContextMenuStrip?.Dispose();
             trayIcon.Visible = false;
             trayIcon.Dispose();
         };
@@ -113,6 +127,71 @@ public partial class MainWindow : Window
         };
         icon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
         return icon;
+    }
+
+    private void TrayRegistry_OnChanged(object? sender, EventArgs e) =>
+        Dispatcher.InvokeAsync(RefreshTrayMenu);
+
+    private void RefreshTrayMenu()
+    {
+        var menu = trayIcon.ContextMenuStrip;
+        if (exitRequested || menu is null || menu.IsDisposed) return;
+        foreach (var item in trayExtensionItems)
+        {
+            menu.Items.Remove(item);
+            item.Dispose();
+        }
+        trayExtensionItems.Clear();
+        foreach (var contribution in trayRegistry.Menus.Where(menu => menu.Commands.Count > 0))
+        {
+            var group = new Forms.ToolStripMenuItem(contribution.Title);
+            foreach (var command in contribution.Commands)
+            {
+                var item = new Forms.ToolStripMenuItem(command.Title);
+                item.Click += async (_, _) => await ExecuteTrayCommandAsync(contribution.PackageId, command, item);
+                group.DropDownItems.Add(item);
+            }
+            menu.Items.Insert(menu.Items.Count - 1, group);
+            trayExtensionItems.Add(group);
+        }
+        if (trayExtensionItems.Count > 0)
+        {
+            var separator = new Forms.ToolStripSeparator();
+            menu.Items.Insert(menu.Items.Count - 1, separator);
+            trayExtensionItems.Add(separator);
+        }
+    }
+
+    private async Task ExecuteTrayCommandAsync(string packageId, WpfTrayCommand command, Forms.ToolStripMenuItem item)
+    {
+        if (exitRequested || !trayRegistry.IsRegistered(packageId, command)) return;
+        item.Enabled = false;
+        var token = trayCancellation.Token;
+        try
+        {
+            await Task.Run(async () =>
+            {
+                token.ThrowIfCancellationRequested();
+                if (trayRegistry.IsRegistered(packageId, command)) await command.ExecuteAsync(token);
+            }, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Tray command {CommandId} from {PackageId} failed.", command.Id, packageId);
+            if (!Dispatcher.HasShutdownStarted) _ = Dispatcher.InvokeAsync(() =>
+            {
+                if (!exitRequested) MessageBox.Show(exception.GetBaseException().Message,
+                    command.Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            });
+        }
+        finally
+        {
+            if (!Dispatcher.HasShutdownStarted) _ = Dispatcher.InvokeAsync(() =>
+            {
+                if (!exitRequested && !item.IsDisposed) item.Enabled = true;
+            });
+        }
     }
 
     private void HideToTray()

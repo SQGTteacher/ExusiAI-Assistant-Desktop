@@ -9,3 +9,5 @@ To reuse local ClassIsland courses and settings, choose **导入本机 ClassIsla
 ClassIsland uses its independent upstream theme by default. Enable **跟随 ExusiAI 深浅色与强调色** on the plugin page to follow the shell. Disable it to immediately restore upstream settings. The choice persists separately from imported ClassIsland data; theme packs remain managed by ClassIsland.
 
 The host page opens upstream course/profile editing, island component editing, and temporary lesson swapping through the original URI navigation handlers. Opening settings or the profile editor leaves a hidden island hidden; component editing and lesson swapping reveal it because those upstream flows use the island as their editing surface or dialog owner. Showing a previously initialized embedded window does not register its hooks and navigation handlers again.
+
+When enabled, ClassIsland contributes a submenu to the existing ExusiAI tray icon: temporary lesson swapping, profile editing, component editing, upstream settings, and island show/hide. Disabling or uninstalling the plugin removes the contribution. No second tray icon is created.

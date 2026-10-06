@@ -9,10 +9,12 @@ namespace ExusiAI.Desktop;
 public sealed class WpfExtensionCoordinator(
     ExtensionRuntime runtime,
     WpfNavigationRegistry registry,
+    WpfTrayRegistry trayRegistry,
     IThemeService theme,
     ILogger<WpfExtensionCoordinator> logger) : IDisposable
 {
     private readonly HashSet<string> attachedPackages = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> attachedTrayPackages = new(StringComparer.OrdinalIgnoreCase);
     private bool started;
 
     public void Start()
@@ -31,6 +33,8 @@ public sealed class WpfExtensionCoordinator(
         theme.Changed -= Theme_OnChanged;
         foreach (var packageId in attachedPackages.ToArray()) registry.Unregister(packageId);
         attachedPackages.Clear();
+        foreach (var packageId in attachedTrayPackages) trayRegistry.Unregister(packageId);
+        attachedTrayPackages.Clear();
         started = false;
         GC.SuppressFinalize(this);
     }
@@ -64,7 +68,33 @@ public sealed class WpfExtensionCoordinator(
             }
         }
 
+        SynchronizeTray();
         PushHostTheme();
+    }
+
+    private void SynchronizeTray()
+    {
+        var running = runtime.Entries
+            .Where(entry => entry.State == PackageState.Running && entry.Instance is IWpfTrayExtension)
+            .ToDictionary(entry => entry.Package.Manifest.Id, StringComparer.OrdinalIgnoreCase);
+        foreach (var packageId in attachedTrayPackages.Where(id => !running.ContainsKey(id)).ToArray())
+        {
+            trayRegistry.Unregister(packageId);
+            attachedTrayPackages.Remove(packageId);
+        }
+        foreach (var (packageId, entry) in running.Where(entry => !attachedTrayPackages.Contains(entry.Key)))
+        {
+            try
+            {
+                trayRegistry.Register(packageId, entry.Package.Manifest.DisplayName,
+                    ((IWpfTrayExtension)entry.Instance!).GetTrayCommands());
+                attachedTrayPackages.Add(packageId);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Tray contributions from {PackageId} were rejected.", packageId);
+            }
+        }
     }
 
     /// <summary>
