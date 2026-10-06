@@ -37,7 +37,7 @@ public sealed class PdfFileViewerProvider : IFileViewerProvider
     }
 }
 
-internal sealed class PdfDocument : ViewerDocument, IPagedPreviewDocument
+internal sealed class PdfDocument : ViewerDocument, IPagedPreviewDocument, IPageTextDocument
 {
     private readonly IDocReader reader;
     private readonly int cacheLimit;
@@ -54,7 +54,7 @@ internal sealed class PdfDocument : ViewerDocument, IPagedPreviewDocument
             file.Name,
             "PDF 分页文档",
             file.Length,
-            ViewerCapabilities.Pages,
+            ViewerCapabilities.Pages | ViewerCapabilities.Search,
             true,
             ImmutableArray.Create(
                 "页面由本地 PDFium 按需渲染；不会执行 JavaScript、启动附件或访问外部内容。",
@@ -115,6 +115,23 @@ internal sealed class PdfDocument : ViewerDocument, IPagedPreviewDocument
             throw new InvalidDataException("PDFium returned an unexpected page buffer size.");
         return new(pageNumber, width, height, checked(width * 4), DocumentPixelFormat.Bgra32,
             pixels, page.GetText() ?? string.Empty);
+    }
+
+    public async ValueTask<string> ReadPageTextAsync(int pageNumber, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (pageNumber < 1 || pageNumber > PageCount) throw new ArgumentOutOfRangeException(nameof(pageNumber));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            return await Task.Run(() =>
+            {
+                using var page = reader.GetPageReader(pageNumber - 1);
+                return page.GetText() ?? string.Empty;
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        finally { gate.Release(); }
     }
 
     private void Touch(int pageNumber)

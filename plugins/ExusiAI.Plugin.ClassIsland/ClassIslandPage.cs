@@ -19,10 +19,27 @@ internal sealed class ClassIslandPage : UserControl
         panel.Children.Add(new TextBlock { Text = "原版信息岛和设置在 ExusiAI 进程内运行。",
             Margin = new Thickness(0, 8, 0, 18) });
         panel.Children.Add(status);
+        var followTheme = new CheckBox { Content = "跟随 ExusiAI 深浅色与强调色",
+            IsChecked = host.FollowHostTheme, Margin = new Thickness(0, 18, 0, 0) };
+        followTheme.Click += (_, _) =>
+        {
+            try { host.SetFollowHostTheme(followTheme.IsChecked == true); }
+            catch (Exception error)
+            {
+                followTheme.IsChecked = host.FollowHostTheme;
+                status.Text = $"主题选项保存失败：{error.GetBaseException().Message}";
+            }
+        };
+        panel.Children.Add(followTheme);
+        panel.Children.Add(new TextBlock { Text = "默认使用 ClassIsland 独立主题；关闭跟随即可恢复原版主题设置。",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) });
         var buttons = new WrapPanel { Margin = new Thickness(0, 18, 0, 0) };
         Add(buttons, "显示原版信息岛", () => host.Start());
         Add(buttons, "隐藏原版信息岛", () => { host.Hide(); return true; });
-        Add(buttons, "打开原版设置", () => { if (!host.Start()) return false; host.OpenSettings(); return true; });
+        Add(buttons, "打开原版设置", host.OpenSettings);
+        Add(buttons, "编辑原版课表", () => host.OpenPage("profile"));
+        Add(buttons, "编辑信息岛组件", () => host.OpenPage("edit"));
+        Add(buttons, "临时换课", () => host.OpenPage("class-swap"));
         var import = new Button { Content = "导入本机 ClassIsland 数据", Margin = new Thickness(0, 0, 10, 10),
             Padding = new Thickness(14, 8, 14, 8), MinHeight = 40 };
         import.Click += async (_, _) =>

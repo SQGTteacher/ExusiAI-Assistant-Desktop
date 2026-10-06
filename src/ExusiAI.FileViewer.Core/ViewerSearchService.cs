@@ -6,7 +6,8 @@ public enum ViewerSearchLocationKind
 {
     Text,
     Row,
-    Slide
+    Slide,
+    Page
 }
 
 public sealed record ViewerSearchHit(
@@ -30,11 +31,33 @@ public static class ViewerSearchService
 
         return document switch
         {
+            IPageTextDocument pages => await SearchPagesAsync(pages, query, maximumResults, cancellationToken).ConfigureAwait(false),
             ITextPreviewDocument text => await SearchTextAsync(text, query, maximumResults, cancellationToken).ConfigureAwait(false),
             ITabularPreviewDocument table => await SearchTableAsync(table, query, maximumResults, cancellationToken).ConfigureAwait(false),
             ISlidePreviewDocument slides => await SearchSlidesAsync(slides, query, maximumResults, cancellationToken).ConfigureAwait(false),
             _ => ImmutableArray<ViewerSearchHit>.Empty
         };
+    }
+
+    private static async Task<ImmutableArray<ViewerSearchHit>> SearchPagesAsync(
+        IPageTextDocument document, string query, int maximumResults, CancellationToken cancellationToken)
+    {
+        var hits = ImmutableArray.CreateBuilder<ViewerSearchHit>();
+        for (var number = 1; number <= document.PageCount; number++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var text = await document.ReadPageTextAsync(number, cancellationToken).ConfigureAwait(false);
+            var start = 0;
+            while (start <= text.Length - query.Length)
+            {
+                var match = text.IndexOf(query, start, StringComparison.OrdinalIgnoreCase);
+                if (match < 0) break;
+                hits.Add(new(ViewerSearchLocationKind.Page, number, match, CreateSnippet(text, match, query.Length)));
+                if (hits.Count >= maximumResults) return hits.ToImmutable();
+                start = match + query.Length;
+            }
+        }
+        return hits.ToImmutable();
     }
 
     private static async Task<ImmutableArray<ViewerSearchHit>> SearchTextAsync(

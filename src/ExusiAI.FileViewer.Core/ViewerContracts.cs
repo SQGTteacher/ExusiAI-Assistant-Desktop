@@ -33,12 +33,14 @@ public sealed record ViewerOpenOptions
     public int MaximumPresentationSlides { get; init; } = 2_000;
     public int MaximumPresentationTextCharactersPerSlide { get; init; } = 2 * 1024 * 1024;
     public int MaximumPresentationImageBytes { get; init; } = 8 * 1024 * 1024;
+    public int MaximumPresentationVideoBytes { get; init; } = 64 * 1024 * 1024;
     public int MaximumRichTextBytes { get; init; } = 8 * 1024 * 1024;
     public int MaximumCachedSlides { get; init; } = 4;
     public int MaximumCachedDocumentPages { get; init; } = 3;
     public int PdfRenderWidth { get; init; } = 1280;
     public int MaximumPdfPages { get; init; } = 100_000;
     public int MaximumLegacyWordBytes { get; init; } = 16 * 1024 * 1024;
+    public int MaximumLegacyPresentationBytes { get; init; } = 16 * 1024 * 1024;
     public int MaximumLegacyWordCharacters { get; init; } = 16 * 1024 * 1024;
     public int MaximumArchiveEntries { get; init; } = 4096;
     public long MaximumArchiveEntryBytes { get; init; } = 256L * 1024 * 1024;
@@ -49,6 +51,7 @@ public sealed record ViewerOpenOptions
     internal void Validate()
     {
         if (MaximumFileBytes <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumFileBytes));
+        if (MaximumLegacyPresentationBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumLegacyPresentationBytes));
         if (TextChunkCharacters is < 1024 or > 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(TextChunkCharacters));
         if (InitialDocumentPages is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(InitialDocumentPages));
         if (PagePrefetchRadius is < 0 or > 50) throw new ArgumentOutOfRangeException(nameof(PagePrefetchRadius));
@@ -62,6 +65,7 @@ public sealed record ViewerOpenOptions
         if (MaximumPresentationSlides is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationSlides));
         if (MaximumPresentationTextCharactersPerSlide is < 1 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationTextCharactersPerSlide));
         if (MaximumPresentationImageBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationImageBytes));
+        if (MaximumPresentationVideoBytes is < 1 or > 256 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationVideoBytes));
         if (MaximumRichTextBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumRichTextBytes));
         if (MaximumCachedSlides is < 1 or > 128) throw new ArgumentOutOfRangeException(nameof(MaximumCachedSlides));
         if (MaximumCachedDocumentPages is < 1 or > 32) throw new ArgumentOutOfRangeException(nameof(MaximumCachedDocumentPages));
@@ -127,6 +131,12 @@ public interface IPagedPreviewDocument
     ValueTask<DocumentPagePreview> ReadPageAsync(int pageNumber, CancellationToken cancellationToken = default);
 }
 
+public interface IPageTextDocument
+{
+    int PageCount { get; }
+    ValueTask<string> ReadPageTextAsync(int pageNumber, CancellationToken cancellationToken = default);
+}
+
 public interface IEditableTextDocument : ITextPreviewDocument
 {
     ValueTask SaveTextAsync(
@@ -184,7 +194,17 @@ public sealed record SlideVisualPreview(
     double Width,
     double Height,
     ImmutableArray<SlideElementPreview> Elements,
-    ImmutableArray<SlideImagePreview> Images = default);
+    ImmutableArray<SlideImagePreview> Images = default,
+    ImmutableArray<SlideVideoPreview> Videos = default);
+
+public sealed record SlideVideoPreview(string PartName, double X, double Y, double Width, double Height, int ZIndex);
+
+public interface IEmbeddedVideoDocument
+{
+    ValueTask<byte[]> ReadVideoAsync(string partName, CancellationToken cancellationToken = default);
+}
+
+public sealed record SlideImageCrop(double Left, double Top, double Right, double Bottom);
 
 public sealed record SlideImagePreview(
     ImmutableArray<byte> Data,
@@ -194,7 +214,10 @@ public sealed record SlideImagePreview(
     double Width,
     double Height,
     double Rotation = 0,
-    int ZIndex = 0);
+    int ZIndex = 0,
+    SlideImageCrop? Crop = null,
+    bool FlipHorizontal = false,
+    bool FlipVertical = false);
 
 public sealed record SlidePreview(
     int SlideNumber,

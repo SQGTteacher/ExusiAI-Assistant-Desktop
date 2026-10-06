@@ -18,11 +18,12 @@
     <ProjectReference Include="..\ExusiAI.Infrastructure\ExusiAI.Infrastructure.csproj" />
     <ProjectReference Include="..\ExusiAI.Marketplace\ExusiAI.Marketplace.csproj" />
     <ProjectReference Include="..\ExusiAI.Theme\ExusiAI.Theme.csproj" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ClassIsland\ExusiAI.Plugin.ClassIsland.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ArkPets\ExusiAI.Plugin.ArkPets.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\ExusiAI.FileViewer.Desktop\ExusiAI.FileViewer.Desktop.csproj" ReferenceOutputAssembly="false" />
+    <!-- Build these projects, but publish their assets through the dedicated package targets below. -->
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ClassIsland\ExusiAI.Plugin.ClassIsland.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ArkPets\ExusiAI.Plugin.ArkPets.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\ExusiAI.FileViewer.Desktop\ExusiAI.FileViewer.Desktop.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
@@ -31,6 +32,13 @@
   </ItemGroup>
   <Target Name="RemoveLegacySamplePackage" BeforeTargets="Build;Publish">
     <RemoveDir Directories="$(TargetDir)packages\exusiai.sample;$(PublishDir)packages\exusiai.sample;$(TargetDir)packages\exusiai.misha-showcase;$(PublishDir)packages\exusiai.misha-showcase" />
+  </Target>
+  <Target Name="RemovePreviouslyBundledExternalTools" BeforeTargets="Build;Publish">
+    <ItemGroup>
+      <OldExternalRuntimeParts Include="$(TargetDir)Runtime\ArkPets-v3.13.1.zip.part*;$(PublishDir)Runtime\ArkPets-v3.13.1.zip.part*;$(TargetDir)packages\exusiai.ark-pets\Runtime\ArkPets-v3.13.1.zip.part*;$(PublishDir)packages\exusiai.ark-pets\Runtime\ArkPets-v3.13.1.zip.part*" />
+    </ItemGroup>
+    <Delete Files="@(OldExternalRuntimeParts)" />
+    <Delete Files="$(PublishDir)createdump.exe;$(PublishDir)ExusiAI.FileViewer.Desktop.exe" Condition="'$(PublishDir)' != ''" />
   </Target>
   <Target Name="CopyFileViewerPackage" AfterTargets="Build">
     <PropertyGroup><FileViewerPackageDir>$(TargetDir)packages\exusiai.file-viewer</FileViewerPackageDir></PropertyGroup>
@@ -75,14 +83,46 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\README.md;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.ClassIsland\THIRD_PARTY_NOTICES.md" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(ClassIslandPublishPackageDir)" SkipUnchangedFiles="true" />
   </Target>
-  <Target Name="CopyFileViewerPackageToPublish" AfterTargets="Publish">
+  <Target Name="PublishFileViewerRuntime">
+    <PropertyGroup>
+      <FileViewerRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</FileViewerRuntimeIdentifier>
+      <FileViewerRuntimeIdentifier Condition="'$(FileViewerRuntimeIdentifier)' == ''">win-x64</FileViewerRuntimeIdentifier>
+      <FileViewerRuntimeSelfContained Condition="'$(SelfContained)' == 'true'">true</FileViewerRuntimeSelfContained>
+      <FileViewerRuntimeSelfContained Condition="'$(FileViewerRuntimeSelfContained)' == ''">false</FileViewerRuntimeSelfContained>
+      <FileViewerRuntimePublishDir>$([System.IO.Path]::GetFullPath('$(PublishDir)viewer'))\</FileViewerRuntimePublishDir>
+      <FileViewerRuntimeProject>$(MSBuildProjectDirectory)\..\ExusiAI.FileViewer.Desktop\ExusiAI.FileViewer.Desktop.csproj</FileViewerRuntimeProject>
+      <FileViewerRuntimeProperties>Configuration=$(Configuration);RuntimeIdentifier=$(FileViewerRuntimeIdentifier);SelfContained=$(FileViewerRuntimeSelfContained);PublishSingleFile=false;PublishDir=$(FileViewerRuntimePublishDir);UseAppHost=true</FileViewerRuntimeProperties>
+    </PropertyGroup>
+    <Error Condition="'$(PublishDir)' == ''" Text="PublishDir is required to publish the file viewer runtime." />
+    <Error Condition="'$(FileViewerRuntimeIdentifier)' != 'win-x64'" Text="The bundled file viewer currently supports the Windows x64 runtime only." />
+    <!-- Remove stale runtime/foreign executable files rather than overlay a previous viewer package. -->
+    <RemoveDir Directories="$(FileViewerRuntimePublishDir)" />
+    <MSBuild Projects="$(FileViewerRuntimeProject)" Targets="Restore"
+             Properties="$(FileViewerRuntimeProperties)"
+             RemoveProperties="TargetFramework;OutputPath;BaseOutputPath;IntermediateOutputPath;BaseIntermediateOutputPath;NoBuild;RuntimeIdentifiers" />
+    <MSBuild Projects="$(FileViewerRuntimeProject)" Targets="Publish"
+             Properties="$(FileViewerRuntimeProperties)"
+             RemoveProperties="TargetFramework;OutputPath;BaseOutputPath;IntermediateOutputPath;BaseIntermediateOutputPath;NoBuild;RuntimeIdentifiers" />
+    <Error Condition="!Exists('$(FileViewerRuntimePublishDir)ExusiAI.FileViewer.Desktop.exe')" Text="The published file viewer entry point is missing." />
+    <Error Condition="'$(FileViewerRuntimeSelfContained)' == 'true' And !Exists('$(FileViewerRuntimePublishDir)coreclr.dll')" Text="The self-contained file viewer runtime is incomplete." />
+    <ItemGroup>
+      <FileViewerForeignExecutables Include="$(FileViewerRuntimePublishDir)**\*.exe" Exclude="$(FileViewerRuntimePublishDir)ExusiAI.FileViewer.Desktop.exe" />
+    </ItemGroup>
+    <Error Condition="'@(FileViewerForeignExecutables)' != ''" Text="External executables are forbidden in the viewer package: @(FileViewerForeignExecutables)" />
+  </Target>
+  <!-- Self-contained .NET adds this optional external diagnostic tool to the host as well. -->
+  <Target Name="ExcludeExternalCrashDumpHelper" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'createdump.exe'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="CopyFileViewerPackageToPublish" AfterTargets="Publish" DependsOnTargets="PublishFileViewerRuntime">
     <PropertyGroup><FileViewerPublishPackageDir>$(PublishDir)packages\exusiai.file-viewer</FileViewerPublishPackageDir></PropertyGroup>
     <MakeDir Directories="$(FileViewerPublishPackageDir)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\bin\$(Configuration)\net8.0-windows\ExusiAI.Plugin.FileViewer.dll" DestinationFolder="$(FileViewerPublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\package.json;$(MSBuildProjectDirectory)\..\..\plugins\ExusiAI.Plugin.FileViewer\README.md" DestinationFolder="$(FileViewerPublishPackageDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\ExusiAI.Extension.SDK\bin\$(Configuration)\net8.0\ExusiAI.Extension.SDK.dll" DestinationFolder="$(FileViewerPublishPackageDir)" SkipUnchangedFiles="true" />
-    <ItemGroup><FileViewerDesktopPublishFiles Include="$(MSBuildProjectDirectory)\..\ExusiAI.FileViewer.Desktop\bin\$(Configuration)\net8.0-windows\**\*" /></ItemGroup>
-    <Copy SourceFiles="@(FileViewerDesktopPublishFiles)" DestinationFolder="$(PublishDir)viewer\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyArkPetsPackageToPublish" AfterTargets="Publish">
     <PropertyGroup><ArkPetsPublishPackageDir>$(PublishDir)packages\exusiai.ark-pets</ArkPetsPublishPackageDir></PropertyGroup>

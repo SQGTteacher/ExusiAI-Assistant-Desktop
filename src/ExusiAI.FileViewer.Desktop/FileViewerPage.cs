@@ -40,8 +40,19 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         new CsvFileViewerProvider(),
         new DocxFileViewerProvider(),
         new XlsxFileViewerProvider(),
-        new PptxFileViewerProvider()
+        new PptxFileViewerProvider(),
+        new LegacyPptFileViewerProvider(),
+        new VideoFileViewerProvider()
     });
+
+    private readonly VideoPreviewControl videoPreview = new() { Visibility = Visibility.Collapsed };
+    private string? embeddedVideoPath;
+    private bool embeddedVideoLoading;
+    private Task? activeOpenOperation;
+    private bool shuttingDown;
+    private int openGeneration;
+    private bool pdfViewportLoading;
+    private bool pdfViewportPending;
 
     private readonly RecentFilesStore recentFilesStore = new();
     private readonly ViewerSettings settings;
@@ -72,7 +83,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         FontSize = 11,
         Opacity = 0.72,
-        Text = "TXT · Markdown · RTF · CSV · DOCX · XLSX · PPTX",
+        Text = "TXT · Markdown · RTF · CSV · DOC/DOCX · XLSX · PPT/PPTX · PDF · 视频",
         TextTrimming = TextTrimming.CharacterEllipsis,
         VerticalAlignment = VerticalAlignment.Center
     };
@@ -313,6 +324,11 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     public FileViewerPage(ViewerSettings settings)
     {
         this.settings = settings;
+        videoPreview.BackRequested += (_, _) =>
+        {
+            CloseVideo();
+            slideScroll.Visibility = Visibility.Visible;
+        };
         zoom.Value = Math.Clamp(15 * settings.DefaultZoomPercent / 100d, zoom.Minimum, zoom.Maximum);
         SetResourceReference(BackgroundProperty, "AppBackgroundBrush");
 
@@ -327,6 +343,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         {
             if (args.VerticalOffset + args.ViewportHeight >= args.ExtentHeight - 900)
                 await LoadNextPdfBatchAsync();
+            await RefreshPdfViewportAsync();
         };
 
         tablePreview = new ListBox
@@ -716,6 +733,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         documentCanvas = canvas;
 
         var contentGrid = new Grid();
+        contentGrid.Children.Add(videoPreview);
         contentGrid.Children.Add(textPreview);
         contentGrid.Children.Add(markdownPreview);
         contentGrid.Children.Add(pagePreview);
@@ -915,7 +933,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         var picker = new OpenFileDialog
         {
             Title = "选择要预览的文件",
-            Filter = "支持的文件|*.txt;*.md;*.markdown;*.rtf;*.csv;*.doc;*.docx;*.xlsx;*.pptx;*.pdf|纯文本|*.txt|Markdown|*.md;*.markdown|RTF 文档|*.rtf|CSV|*.csv|Word 文档|*.doc;*.docx|Excel Open XML|*.xlsx|PowerPoint Open XML|*.pptx|PDF 文档|*.pdf|计划支持的旧版 Office 文件|*.xls;*.ppt|所有文件|*.*",
+            Filter = "支持的文件|*.txt;*.md;*.markdown;*.rtf;*.csv;*.doc;*.docx;*.xlsx;*.ppt;*.pptx;*.pdf;*.mp4;*.m4v;*.mov;*.mkv;*.webm;*.avi;*.wmv;*.flv;*.mpg;*.mpeg|纯文本|*.txt|Markdown|*.md;*.markdown|RTF 文档|*.rtf|CSV|*.csv|Word 文档|*.doc;*.docx|Excel Open XML|*.xlsx|PowerPoint|*.ppt;*.pptx|PDF 文档|*.pdf|本地视频|*.mp4;*.m4v;*.mov;*.mkv;*.webm;*.avi;*.wmv;*.flv;*.mpg;*.mpeg|计划支持的旧版 Excel 文件|*.xls|所有文件|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -932,7 +950,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         await RefreshWelcomeAsync();
         title.Text = "尚未打开文件";
         documentMeta.Text = "安全只读查看器";
-        status.Text = "TXT · Markdown · RTF · CSV · DOC · DOCX · XLSX · PPTX · PDF";
+        status.Text = "TXT · Markdown · RTF · CSV · DOC/DOCX · XLSX · PPT/PPTX · PDF · 视频";
         DocumentClosed?.Invoke(this, EventArgs.Empty);
         return true;
     }
@@ -995,7 +1013,23 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             : Visibility.Visible;
     }
 
-    private async Task OpenAsync(string filePath, bool skipPendingPrompt = false)
+    private Task OpenAsync(string filePath, bool skipPendingPrompt = false)
+    {
+        if (shuttingDown) return Task.CompletedTask;
+        var previous = activeOpenOperation;
+        var generation = ++openGeneration;
+        if (previous is { IsCompleted: false }) loadCancellation?.Cancel();
+        return activeOpenOperation = OpenQueuedAsync(filePath, skipPendingPrompt, previous, generation);
+    }
+
+    private async Task OpenQueuedAsync(string filePath, bool skipPendingPrompt, Task? previous, int generation)
+    {
+        if (previous is { IsCompleted: false }) await previous;
+        if (shuttingDown || generation != openGeneration) return;
+        await OpenDocumentCoreAsync(filePath, skipPendingPrompt);
+    }
+
+    private async Task OpenDocumentCoreAsync(string filePath, bool skipPendingPrompt)
     {
         if (operationCancellation is not null)
         {
@@ -1069,7 +1103,15 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         try
         {
             var timer = Stopwatch.StartNew();
-            document = await Providers.OpenAsync(filePath, cancellationToken: loadCancellation.Token);
+            status.Text = "正在打开文件…";
+            var openToken = loadCancellation.Token;
+            var opened = await Providers.OpenAsync(filePath, cancellationToken: openToken);
+            if (openToken.IsCancellationRequested || shuttingDown)
+            {
+                await opened.DisposeAsync();
+                throw new OperationCanceledException(openToken);
+            }
+            document = opened;
             timer.Stop();
 
             if (settings.RememberRecentFiles)
@@ -1088,6 +1130,12 @@ internal sealed class FileViewerPage : UserControl, IDisposable
 
             switch (document)
             {
+                case ILocalVideoDocument video:
+                    videoPreview.Visibility = Visibility.Visible;
+                    videoPreview.Open(video.FilePath);
+                    status.Text = "本地视频 · 播放、暂停、拖动进度和音量";
+                    break;
+
                 case IRichTextPreviewDocument richText:
                     var richContent = await richText.ReadAsync(loadCancellation.Token);
                     richTextData = richContent.Data;
@@ -1159,7 +1207,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     pdfPagesPanel.Children.Clear();
                     pdfLastLoadedPage = 0;
                     await LoadNextPdfBatchAsync();
-                    status.Text = $"PDF 连续阅读 · 共 {paged.PageCount:N0} 页 · 页面按需加载";
+                    status.Text = $"{document.Info.FormatName} · 共 {paged.PageCount:N0} 页 · 页面按需加载";
                     break;
 
                 case ITabularPreviewDocument table:
@@ -1469,13 +1517,16 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             pdfLastLoadedPage >= paged.PageCount)
             return;
 
+        var cancellation = loadCancellation.Token;
         pdfBatchLoading = true;
         try
         {
             var finalPage = Math.Min(paged.PageCount, pdfLastLoadedPage + PdfPageBatchSize);
             for (var pageNumber = pdfLastLoadedPage + 1; pageNumber <= finalPage; pageNumber++)
             {
-                var page = await paged.ReadPageAsync(pageNumber, loadCancellation.Token);
+                var page = await paged.ReadPageAsync(pageNumber, cancellation);
+                cancellation.ThrowIfCancellationRequested();
+                if (!ReferenceEquals(paged, document)) return;
                 var bitmap = BitmapSource.Create(page.Width, page.Height, 96, 96, PixelFormats.Bgra32,
                     null, page.Pixels, page.Stride);
                 bitmap.Freeze();
@@ -1493,12 +1544,54 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         finally { pdfBatchLoading = false; }
     }
 
+    private async Task RefreshPdfViewportAsync()
+    {
+        if (document is not IPagedPreviewDocument paged || loadCancellation is null || pdfPageScroll.ActualHeight <= 0) return;
+        if (pdfViewportLoading) { pdfViewportPending = true; return; }
+        var token = loadCancellation.Token;
+        pdfViewportLoading = true;
+        try
+        {
+            foreach (var surface in pdfPagesPanel.Children.OfType<Border>().ToArray())
+            {
+                if (surface.Child is not Image image || surface.Tag is not int number) continue;
+                if (!surface.IsLoaded) continue;
+                var bounds = surface.TransformToAncestor(pdfPageScroll)
+                    .TransformBounds(new Rect(0, 0, surface.ActualWidth, surface.ActualHeight));
+                if (bounds.Bottom < -700 || bounds.Top > pdfPageScroll.ActualHeight + 700)
+                {
+                    image.Source = null; // Keep measured page dimensions, release the offscreen bitmap.
+                    continue;
+                }
+                if (image.Source is not null) continue;
+                var page = await paged.ReadPageAsync(number, token);
+                token.ThrowIfCancellationRequested();
+                if (!ReferenceEquals(document, paged)) return;
+                var bitmap = BitmapSource.Create(page.Width, page.Height, 96, 96, PixelFormats.Bgra32,
+                    null, page.Pixels, page.Stride);
+                bitmap.Freeze();
+                image.Source = bitmap;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        { status.Text = "页面恢复失败：" + exception.Message; }
+        finally { pdfViewportLoading = false; }
+        if (pdfViewportPending)
+        {
+            pdfViewportPending = false;
+            await RefreshPdfViewportAsync();
+        }
+    }
+
     private Border AddPdfPage(int pageNumber, BitmapSource bitmap)
     {
         var image = new Image
         {
             Source = bitmap,
-            Stretch = Stretch.None,
+            Width = bitmap.PixelWidth,
+            Height = bitmap.PixelHeight,
+            Stretch = Stretch.Fill,
             SnapsToDevicePixels = true,
             LayoutTransform = new ScaleTransform(zoom.Value / 15d, zoom.Value / 15d)
         };
@@ -1526,11 +1619,74 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         .Select(border => border.Child)
         .OfType<Image>();
 
+    private async Task PlayEmbeddedVideoAsync(SlideVideoPreview video)
+    {
+        if (document is not IEmbeddedVideoDocument media || loadCancellation is null) return;
+        if (embeddedVideoLoading) return;
+        embeddedVideoLoading = true;
+        var token = loadCancellation.Token;
+        var originalDocument = document;
+        string? temporaryPath = null;
+        try
+        {
+            CloseVideo();
+            var data = await media.ReadVideoAsync(video.PartName, token);
+            token.ThrowIfCancellationRequested();
+            temporaryPath = Path.Combine(Path.GetTempPath(), $"ExusiAI-video-{Guid.NewGuid():N}{Path.GetExtension(video.PartName)}");
+            await File.WriteAllBytesAsync(temporaryPath, data, token);
+            token.ThrowIfCancellationRequested();
+            await using var validated = await new VideoFileViewerProvider().OpenAsync(temporaryPath, ViewerOpenOptions.Default, token);
+            token.ThrowIfCancellationRequested();
+            embeddedVideoPath = temporaryPath;
+            temporaryPath = null;
+            slideScroll.Visibility = Visibility.Collapsed;
+            videoPreview.Visibility = Visibility.Visible;
+            videoPreview.Open(embeddedVideoPath, embedded: true);
+        }
+        catch (OperationCanceledException) { if (ReferenceEquals(originalDocument, document)) CloseVideo(); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (ReferenceEquals(originalDocument, document))
+            {
+                CloseVideo();
+                status.Text = "内嵌视频无法打开：" + exception.Message;
+            }
+        }
+        finally
+        {
+            embeddedVideoLoading = false;
+            if (temporaryPath is not null)
+            {
+                try { File.Delete(temporaryPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+    }
+
+    private void CloseVideo()
+    {
+        videoPreview.Close();
+        videoPreview.Visibility = Visibility.Collapsed;
+        if (embeddedVideoPath is not null)
+        {
+            try { File.Delete(embeddedVideoPath); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            embeddedVideoPath = null;
+        }
+    }
+
     private void RenderSlide(SlidePreview slide)
     {
+        if (embeddedVideoPath is not null)
+        {
+            CloseVideo();
+            slideScroll.Visibility = Visibility.Visible;
+        }
         slideVisualCanvas.Children.Clear();
         if (slide.Visual is { } visual && visual.Width > 0 && visual.Height > 0 &&
-            (visual.Elements.Length > 0 || !visual.Images.IsDefaultOrEmpty))
+            (visual.Elements.Length > 0 || !visual.Images.IsDefaultOrEmpty || !visual.Videos.IsDefaultOrEmpty))
         {
             slideTitle.Visibility = Visibility.Collapsed;
             slideBody.Text = string.Empty;
@@ -1550,17 +1706,31 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     bitmap.StreamSource = stream;
                     bitmap.EndInit();
                     bitmap.Freeze();
-                    var view = new Image
+                    var crop = image.Crop ?? new SlideImageCrop(0, 0, 0, 0);
+                    var brush = new ImageBrush(bitmap)
                     {
-                        Source = bitmap,
-                        Stretch = Stretch.Uniform,
+                        Stretch = Stretch.Fill,
+                        ViewboxUnits = BrushMappingMode.RelativeToBoundingBox,
+                        Viewbox = new Rect(crop.Left, crop.Top,
+                            1 - crop.Left - crop.Right, 1 - crop.Top - crop.Bottom),
+                        TileMode = TileMode.None
+                    };
+                    brush.Freeze();
+                    var transform = new TransformGroup();
+                    transform.Children.Add(new ScaleTransform(image.FlipHorizontal ? -1 : 1,
+                        image.FlipVertical ? -1 : 1));
+                    transform.Children.Add(new RotateTransform(image.Rotation));
+                    transform.Freeze();
+                    var view = new System.Windows.Shapes.Rectangle
+                    {
+                        Fill = brush,
                         Width = Math.Max(1, image.Width * scaleX),
                         Height = Math.Max(1, image.Height * scaleY),
                         RenderTransformOrigin = new Point(0.5, 0.5),
-                        RenderTransform = new RotateTransform(image.Rotation)
+                        RenderTransform = transform
                     };
-                    Canvas.SetLeft(view, Math.Max(0, image.X * scaleX));
-                    Canvas.SetTop(view, Math.Max(0, image.Y * scaleY));
+                    Canvas.SetLeft(view, image.X * scaleX);
+                    Canvas.SetTop(view, image.Y * scaleY);
                     Canvas.SetZIndex(view, image.ZIndex);
                     slideVisualCanvas.Children.Add(view);
                 }
@@ -1569,11 +1739,22 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     // A malformed image degrades to the remaining safe slide content.
                 }
             }
+            foreach (var video in visual.Videos.IsDefault ? ImmutableArray<SlideVideoPreview>.Empty : visual.Videos)
+            {
+                var button = CreateSecondaryButton("▶ 播放内嵌视频");
+                button.Width = Math.Max(1, video.Width * scaleX);
+                button.Height = Math.Max(1, video.Height * scaleY);
+                button.Click += async (_, _) => await PlayEmbeddedVideoAsync(video);
+                Canvas.SetLeft(button, video.X * scaleX);
+                Canvas.SetTop(button, video.Y * scaleY);
+                Canvas.SetZIndex(button, video.ZIndex);
+                slideVisualCanvas.Children.Add(button);
+            }
             foreach (var element in visual.Elements)
             {
                 var box = CreateSlideShape(element, scaleX, scaleY);
-                Canvas.SetLeft(box, Math.Max(0, element.X * scaleX));
-                Canvas.SetTop(box, Math.Max(0, element.Y * scaleY));
+                Canvas.SetLeft(box, element.X * scaleX);
+                Canvas.SetTop(box, element.Y * scaleY);
                 Canvas.SetZIndex(box, element.ZIndex);
                 slideVisualCanvas.Children.Add(box);
             }
@@ -2496,7 +2677,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         previousSearchButton.IsEnabled = searchResults.Count > 0;
         nextSearchButton.IsEnabled = searchResults.Count > 0;
         exportButton.IsEnabled = document is ITextPreviewDocument or ITabularPreviewDocument or ISlidePreviewDocument && operationCancellation is null;
-        printButton.IsEnabled = hasDocument && document is not IPagedPreviewDocument && operationCancellation is null;
+        printButton.IsEnabled = hasDocument && document is not IPagedPreviewDocument and not ILocalVideoDocument && operationCancellation is null;
         goToLineBox.IsEnabled = document is ITextPreviewDocument;
         goToLineBox.Visibility = document is ITextPreviewDocument ? Visibility.Visible : Visibility.Collapsed;
         goToLineButton.IsEnabled = document is ITextPreviewDocument;
@@ -2593,6 +2774,10 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         switch (hit.Kind)
         {
+            case ViewerSearchLocationKind.Page:
+                await NavigateDocumentPageAsync((int)hit.PrimaryIndex, debounce: false);
+                break;
+
             case ViewerSearchLocationKind.Slide:
                 await NavigateSlideAsync(checked((int)hit.PrimaryIndex));
                 break;
@@ -2993,6 +3178,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private async Task CloseDocumentAsync()
     {
         statisticsTimer.Stop();
+        CloseVideo();
         pageNavigationCancellation?.Cancel();
         pageNavigationCancellation?.Dispose();
         pageNavigationCancellation = null;
@@ -3120,10 +3306,21 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         return string.Create(CultureInfo.CurrentCulture, $"{value:0.##} {units[unit]}");
     }
 
+    internal async Task ReleaseResourcesAsync()
+    {
+        shuttingDown = true;
+        loadCancellation?.Cancel();
+        operationCancellation?.Cancel();
+        if (activeOpenOperation is { } pending) await pending;
+        await CloseDocumentAsync();
+        Dispose();
+    }
+
     public void Dispose()
     {
         if (disposed) return;
         disposed = true;
+        CloseVideo();
         loadCancellation?.Cancel();
         loadCancellation?.Dispose();
         loadCancellation = null;
@@ -3138,6 +3335,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     {
         public string DisplayText => Hit.Kind switch
         {
+            ViewerSearchLocationKind.Page => $"第 {Hit.PrimaryIndex:N0} 页  ·  {Hit.Snippet}",
             ViewerSearchLocationKind.Slide => $"幻灯片 {Hit.PrimaryIndex:N0}  ·  {Hit.Snippet}",
             ViewerSearchLocationKind.Row => $"第 {Hit.PrimaryIndex:N0} 行 / 第 {Hit.SecondaryIndex:N0} 列  ·  {Hit.Snippet}",
             _ => $"字符 {Hit.PrimaryIndex + 1:N0}  ·  {Hit.Snippet}"

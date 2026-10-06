@@ -13,11 +13,15 @@
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="package.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="README.md" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="package.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
+    <None Include="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
+    <None Include="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
     <None Include="Runtime\ArkPets-v3.13.1.zip.part*"
-          CopyToOutputDirectory="PreserveNewest"
+          CopyToOutputDirectory="Never" CopyToPublishDirectory="Never"
           TargetPath="Runtime\%(Filename)%(Extension)" />
   </ItemGroup>
+  <Target Name="RemovePreviouslyBundledExternalRuntime" AfterTargets="Build">
+    <ItemGroup><OldBundledRuntimeParts Include="$(TargetDir)Runtime\ArkPets-v3.13.1.zip.part*" /></ItemGroup>
+    <Delete Files="@(OldBundledRuntimeParts)" />
+  </Target>
 </Project>

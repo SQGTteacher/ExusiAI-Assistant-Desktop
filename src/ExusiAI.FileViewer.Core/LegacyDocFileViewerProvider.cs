@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
+using System.Text;
 using NPOI.HWPF;
 using NPOI.HWPF.Extractor;
 
@@ -7,6 +8,8 @@ namespace ExusiAI.FileViewer.Core;
 
 public sealed class LegacyDocFileViewerProvider : IFileViewerProvider
 {
+    // HWPF reads legacy ANSI code pages even when the desktop host has not initialized encodings.
+    static LegacyDocFileViewerProvider() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     private static readonly byte[] CompoundFileHeader = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
     private static readonly IReadOnlySet<string> Extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".doc" };
     public string Id => "exusiai.viewer.doc";

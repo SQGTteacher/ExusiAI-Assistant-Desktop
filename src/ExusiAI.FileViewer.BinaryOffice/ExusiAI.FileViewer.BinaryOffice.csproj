@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>ExusiAI.FileViewer.BinaryOffice</AssemblyName>
+    <RootNamespace>b2xtranslator</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="b2xtranslator" />
+    <Compile Include="../../third_party/b2xtranslator/Ppt/**/*.cs" />
+    <EmbeddedResource Include="../../third_party/b2xtranslator/Ppt/PresentationMLMapping/Defaults/*.xml">
+      <LogicalName>b2xtranslator.PresentationMLMapping.Defaults.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../third_party/b2xtranslator/Ppt/PresentationMLMapping/Defaults/slideLayouts/*.xml">
+      <LogicalName>b2xtranslator.PresentationMLMapping.Defaults.slideLayouts.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

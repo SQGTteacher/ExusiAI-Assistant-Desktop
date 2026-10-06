@@ -235,6 +235,7 @@ public partial class App : Application
         builder.Services.AddSingleton<BundledPackageSynchronizer>();
         builder.Services.AddSingleton<PluginPackageManager>();
         builder.Services.AddSingleton<WpfNavigationRegistry>();
+        builder.Services.AddSingleton<WpfTrayRegistry>();
         builder.Services.AddSingleton<WpfExtensionCoordinator>();
         builder.Services.AddSingleton<SystemThemeProvider>();
         builder.Services.AddSingleton<ISystemThemeProvider>(x => x.GetRequiredService<SystemThemeProvider>());

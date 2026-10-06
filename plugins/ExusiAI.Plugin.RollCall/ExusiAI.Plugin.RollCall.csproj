@@ -12,7 +12,7 @@
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="package.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="README.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="package.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
+    <None Include="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
   </ItemGroup>
 </Project>

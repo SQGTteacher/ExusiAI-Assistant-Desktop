@@ -1,5 +1,6 @@
 using System.Text;
 using System.IO.Compression;
+using System.Xml.Linq;
 using ExusiAI.FileViewer.Core;
 
 namespace ExusiAI.FileViewer.Core.Tests;
@@ -7,6 +8,86 @@ namespace ExusiAI.FileViewer.Core.Tests;
 public sealed class FileViewerTests : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), $"exusiai-viewer-{Guid.NewGuid():N}");
+
+    [Theory]
+    [InlineData(".mp4")]
+    [InlineData(".mkv")]
+    [InlineData(".avi")]
+    public async Task Video_provider_rejects_playlists_disguised_as_video(string extension)
+    {
+        var path = Path.Combine(directory, "playlist" + extension);
+        await File.WriteAllTextAsync(path, "#EXTM3U\nhttps://example.invalid/remote.mp4");
+        await Assert.ThrowsAsync<FileRejectedException>(async () =>
+            await new VideoFileViewerProvider().OpenAsync(path, ViewerOpenOptions.Default, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Page_search_is_bounded_and_does_not_render_bitmaps()
+    {
+        await using var document = new SearchablePages();
+        var hits = await ViewerSearchService.SearchAsync(document, "marker", maximumResults: 2);
+        Assert.Equal(2, hits.Length);
+        Assert.All(hits, hit => Assert.Equal(ViewerSearchLocationKind.Page, hit.Kind));
+        Assert.Equal(2, hits[1].PrimaryIndex);
+        Assert.Equal(2, document.ReadCount);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ViewerSearchService.SearchAsync(document, "marker", cancellationToken: cancellation.Token));
+    }
+
+    private sealed class SearchablePages() : ViewerDocument(new("test.pdf", "test.pdf", "PDF", 0,
+        ViewerCapabilities.Pages | ViewerCapabilities.Search, true, [])), IPageTextDocument, IPagedPreviewDocument
+    {
+        public int PageCount => 1000;
+        public int ReadCount { get; private set; }
+        public ValueTask<string> ReadPageTextAsync(int pageNumber, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ReadCount++;
+            return ValueTask.FromResult("Page marker " + pageNumber);
+        }
+        public ValueTask<DocumentPagePreview> ReadPageAsync(int pageNumber, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Search must not render pages.");
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Pptx_video_reads_only_internal_media_and_honors_byte_budget(bool external)
+    {
+        var path = Path.Combine(directory, "video.pptx");
+        CreatePptx(path);
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = archive.GetEntry("ppt/slides/slide1.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open())) xml = await reader.ReadToEndAsync();
+            entry.Delete();
+            xml = xml.Replace("<p:pic>", "<p:pic><p:nvPicPr><p:nvPr><a:videoFile r:link=\"rIdVideo\"/></p:nvPr></p:nvPicPr>", StringComparison.Ordinal);
+            WriteEntry(archive, "ppt/slides/slide1.xml", xml);
+            var relationships = archive.GetEntry("ppt/slides/_rels/slide1.xml.rels")!;
+            string rels;
+            using (var reader = new StreamReader(relationships.Open())) rels = await reader.ReadToEndAsync();
+            relationships.Delete();
+            rels = rels.Replace("</Relationships>", "<Relationship Id=\"rIdVideo\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/video\" Target=\"" +
+                (external ? "https://example.invalid/video.mp4\" TargetMode=\"External" : "../media/video.mp4") + "\"/></Relationships>", StringComparison.Ordinal);
+            WriteEntry(archive, "ppt/slides/_rels/slide1.xml.rels", rels);
+            WriteBinaryEntry(archive, "ppt/media/video.mp4", [0, 0, 0, 16, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0]);
+        }
+        await using var document = await new PptxFileViewerProvider().OpenAsync(path,
+            ViewerOpenOptions.Default with { MaximumPresentationVideoBytes = 8 }, CancellationToken.None);
+        var slide = await ((ISlidePreviewDocument)document).ReadSlideAsync(1);
+        Assert.NotNull(slide.Visual);
+        if (external) Assert.Empty(slide.Visual!.Videos);
+        else
+        {
+            var video = Assert.Single(slide.Visual!.Videos);
+            Assert.Equal("ppt/media/video.mp4", video.PartName);
+            await Assert.ThrowsAsync<FileRejectedException>(async () => await ((IEmbeddedVideoDocument)document).ReadVideoAsync(video.PartName));
+        }
+        await Assert.ThrowsAsync<FileRejectedException>(async () => await ((IEmbeddedVideoDocument)document).ReadVideoAsync("../outside.mp4"));
+    }
 
     [Fact]
     public void Document_page_window_loads_first_twenty_pages()
@@ -505,6 +586,83 @@ public sealed class FileViewerTests : IDisposable
         new XlsxFileViewerProvider(),
         new PptxFileViewerProvider()
     });
+
+    [Theory]
+    [InlineData("12500", 0.125)]
+    [InlineData("12.5%", 0.125)]
+    [InlineData("-10000", -0.1)]
+    public async Task Pptx_picture_preserves_crop_flip_rotation_and_off_slide_position(string left, double expected)
+    {
+        var path = Path.Combine(directory, "cropped.pptx");
+        CreatePptx(path);
+        UpdatePicture(path, left, "10000", "20000", "15000", flip: true);
+        await using var document = await CreateRegistry().OpenAsync(path);
+        var slide = await ((ISlidePreviewDocument)document).ReadSlideAsync(1);
+        var image = Assert.Single(slide.Visual!.Images);
+        Assert.Equal(expected, image.Crop!.Left, 8);
+        Assert.Equal(0.1, image.Crop.Top, 8);
+        Assert.Equal(0.2, image.Crop.Right, 8);
+        Assert.Equal(0.15, image.Crop.Bottom, 8);
+        Assert.True(image.FlipHorizontal);
+        Assert.True(image.FlipVertical);
+        Assert.Equal(15, image.Rotation);
+        Assert.Equal(-914400, image.X);
+        Assert.Equal(3657600, image.Width);
+    }
+
+    [Theory]
+    [InlineData("NaN", "0")]
+    [InlineData("Infinity", "0")]
+    [InlineData("broken", "0")]
+    [InlineData("100000", "0")]
+    [InlineData("60000", "40000")]
+    [InlineData("200000", "0")]
+    public async Task Pptx_invalid_picture_crop_preserves_remaining_slide_content(string left, string right)
+    {
+        var path = Path.Combine(directory, "bad-crop.pptx");
+        CreatePptx(path);
+        UpdatePicture(path, left, "0", right, "0", flip: false);
+        await using var document = await CreateRegistry().OpenAsync(path);
+        var slide = await ((ISlidePreviewDocument)document).ReadSlideAsync(1);
+        Assert.Empty(slide.Visual!.Images);
+        Assert.Contains("课堂标题", slide.Text);
+        Assert.NotEmpty(slide.Visual.Elements);
+    }
+
+    [Fact]
+    public async Task Pptx_uncropped_picture_has_full_source_rectangle()
+    {
+        var path = Path.Combine(directory, "uncropped.pptx");
+        CreatePptx(path);
+        await using var document = await CreateRegistry().OpenAsync(path);
+        var slide = await ((ISlidePreviewDocument)document).ReadSlideAsync(1);
+        var image = Assert.Single(slide.Visual!.Images);
+        Assert.Equal(new SlideImageCrop(0, 0, 0, 0), image.Crop);
+        Assert.False(image.FlipHorizontal);
+        Assert.False(image.FlipVertical);
+    }
+
+    private static void UpdatePicture(string path, string left, string top, string right, string bottom, bool flip)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Update);
+        var entry = archive.GetEntry("ppt/slides/slide1.xml")!;
+        XDocument xml;
+        using (var stream = entry.Open()) xml = XDocument.Load(stream);
+        XNamespace p = "http://schemas.openxmlformats.org/presentationml/2006/main";
+        XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        var picture = xml.Descendants(p + "pic").Single();
+        picture.Element(p + "blipFill")!.Add(new XElement(a + "srcRect",
+            new XAttribute("l", left), new XAttribute("t", top),
+            new XAttribute("r", right), new XAttribute("b", bottom)));
+        var transform = picture.Descendants(a + "xfrm").Single();
+        transform.SetAttributeValue("flipH", flip ? "1" : "0");
+        transform.SetAttributeValue("flipV", flip ? "true" : "false");
+        transform.SetAttributeValue("rot", "900000");
+        transform.Element(a + "off")!.SetAttributeValue("x", "-914400");
+        entry.Delete();
+        using var target = archive.CreateEntry("ppt/slides/slide1.xml", CompressionLevel.NoCompression).Open();
+        xml.Save(target);
+    }
 
     private static void CreatePptx(string path, bool externalSlide = false)
     {

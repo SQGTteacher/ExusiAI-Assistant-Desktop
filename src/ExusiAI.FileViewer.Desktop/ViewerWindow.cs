@@ -18,6 +18,8 @@ internal sealed class ViewerWindow : Window
     private FileViewerPage? viewer;
     private string? pendingFile;
     private bool initializing;
+    private bool closingResources;
+    private bool resourcesReleased;
     private bool presentationMode;
     private WindowState previousWindowState;
     private WindowStyle previousWindowStyle;
@@ -303,10 +305,21 @@ internal sealed class ViewerWindow : Window
         }
     }
 
-    private void OnClosing(object? sender, CancelEventArgs e)
+    private async void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (viewer is not null && !viewer.ConfirmCanClose())
-            e.Cancel = true;
+        if (resourcesReleased || viewer is null) return;
+        e.Cancel = true;
+        if (closingResources || !viewer.ConfirmCanClose()) return;
+        closingResources = true;
+        IsEnabled = false;
+        try { await viewer.ReleaseResourcesAsync(); }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        { System.Diagnostics.Trace.WriteLine("Viewer cleanup failed: " + exception); }
+        finally
+        {
+            resourcesReleased = true;
+            Close();
+        }
     }
 
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)

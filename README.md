@@ -22,9 +22,9 @@ ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市
 - 插件可在运行时启用、禁用和重试，偏好会跨启动保留；
 - 可搜索的本地资源库、统一插件目录和扩展管理页面；
 - 支持 ZIP 插件安全导入、导出、卸载，也可直接将插件文件夹放入本地目录；
-- 内置 ClassIsland 原生运行集成：随 ExusiAI 离线分发完整 ClassIsland 2.1.0.1 folder 运行时，由 ExusiAI 统一管理进程生命周期；不再仿写 ClassIsland 页面/组件/自动化逻辑，保留 ClassIsland 2.x 备份同步，并跟踪 2.2 Misha 开源分支作为后续原生升级基线；
+- 内置 ClassIsland 源码集成：在 ExusiAI 同一进程运行原版 Avalonia 界面与课表、组件、临时换课逻辑，不打包或启动 ClassIsland.exe；安装/启用插件时同步注册宿主托盘入口，停用时移除；默认保留原版独立主题，可选择跟随宿主；
 - ArkPets 桌宠：保持 ArkPets 的模型 / 行为 / 选项结构，兼容 Ark-Models 全角色模型库与 direct-start 配置；ExusiAI 可自动管理上游便携运行核心、模型下载、localhost IPC 实时控制和随宿主启动，桌宠不会作为独立开机程序常驻；与 ClassIsland 原生运行集成保持独立并提供可选课堂联动；
-- 文件查看器：TXT/Markdown 异步增量预览、CSV 分页解析、DOCX 安全结构化文本预览、XLSX 首工作表分页预览、PPTX 逐页结构化文本预览，默认只读并设资源安全上限；
+- 文件查看器：TXT/Markdown 异步增量预览、CSV 分页解析、DOC/DOCX 受限文本、XLSX 多工作表分页、PPT 程序内源码转换基础预览、PPTX 基础图文与内嵌视频、PDF 分页搜索和程序内 LibVLC DLL 视频解码；不打包或启动第三方格式转换 exe，复杂 Office 排版仍在完善；
 - Windows GitHub Actions 构建及单元测试。
 
 ## 构建与运行
@@ -38,7 +38,7 @@ dotnet test ExusiAI.sln --no-build --configuration Release
 dotnet run --project src/ExusiAI.Desktop
 ```
 
-构建或发布 Desktop 时，ClassIsland、文件查看器、课堂点名器和 ArkPets 桌宠会复制到输出目录的 `packages` 安装源。ClassIsland 最终发布物包含完整 2.1.0.1 原生运行核心；若本地提供 `RuntimeSeed/ClassIsland.exe` 与 `app-2.1.0.1-0.zip` 则直接使用并校验哈希，CI 缺少本地 seed 时仅在构建阶段从固定上游 2.1.0.1 Release 获取并校验，终端用户首次运行不需要再下载运行核心。首次运行或内置插件升级时，它们会安全同步到与外部插件相同的本地插件目录；用户卸载内置插件后不会在下次启动时自动恢复。
+构建或发布 Desktop 时，ClassIsland、文件查看器、课堂点名器和 ArkPets 桌宠会复制到输出目录的 `packages` 安装源。ClassIsland 从 `third_party/ClassIsland` 源码编译并携带同进程运行所需 DLL 与资源，关闭上游 apphost，排除所有上游 exe；不使用 RuntimeSeed 或下载独立 ClassIsland 发行程序。文件查看器携带程序内 PPT 转换、PDF 和视频解码 DLL，不依赖 LibreOffice 服务或外部转换程序。首次运行或内置插件升级时，插件会安全同步到与外部插件相同的本地插件目录；用户卸载内置插件后不会在下次启动时自动恢复。
 
 创建可分发的 Windows x64 目录：
 
@@ -51,7 +51,7 @@ dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
   --output artifacts/ExusiAI-win-x64
 ```
 
-发布目标会自动带上四个内置插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户可在“扩展管理”中导入或导出 ZIP、卸载插件、打开统一插件目录；手动安装时将含 `package.json` 的插件文件夹放入该目录并重启。
+发布目标会自动带上四个内置插件包，并单独发布 `viewer` 子目录：自包含发布时，查看器携带自己的 .NET/WPF 运行库与 Office、PDF、视频 DLL。移除 SDK 自带的可选 `createdump.exe` 崩溃转储工具，查看器目录只允许自身入口 exe；自动生成崩溃转储不属于该包功能。重新发布会先移除旧查看器目录，避免遗留旧依赖或外部 exe。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户可在“扩展管理”中导入或导出 ZIP、卸载插件、打开统一插件目录；手动安装时将含 `package.json` 的插件文件夹放入该目录并重启。
 
 ## 代码边界
 
