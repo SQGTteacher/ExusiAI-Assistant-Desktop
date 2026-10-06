@@ -18,11 +18,12 @@
     <ProjectReference Include="..\ExusiAI.Infrastructure\ExusiAI.Infrastructure.csproj" />
     <ProjectReference Include="..\ExusiAI.Marketplace\ExusiAI.Marketplace.csproj" />
     <ProjectReference Include="..\ExusiAI.Theme\ExusiAI.Theme.csproj" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ClassIsland\ExusiAI.Plugin.ClassIsland.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ArkPets\ExusiAI.Plugin.ArkPets.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\ExusiAI.FileViewer.Desktop\ExusiAI.FileViewer.Desktop.csproj" ReferenceOutputAssembly="false" />
+    <!-- Build these projects, but publish their assets through the dedicated package targets below. -->
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ClassIsland\ExusiAI.Plugin.ClassIsland.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.FileViewer\ExusiAI.Plugin.FileViewer.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.RollCall\ExusiAI.Plugin.RollCall.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\plugins\ExusiAI.Plugin.ArkPets\ExusiAI.Plugin.ArkPets.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\ExusiAI.FileViewer.Desktop\ExusiAI.FileViewer.Desktop.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
@@ -36,7 +37,8 @@
     <ItemGroup>
       <OldExternalRuntimeParts Include="$(TargetDir)Runtime\ArkPets-v3.13.1.zip.part*;$(PublishDir)Runtime\ArkPets-v3.13.1.zip.part*;$(TargetDir)packages\exusiai.ark-pets\Runtime\ArkPets-v3.13.1.zip.part*;$(PublishDir)packages\exusiai.ark-pets\Runtime\ArkPets-v3.13.1.zip.part*" />
     </ItemGroup>
-    <Delete Files="@(OldExternalRuntimeParts);$(PublishDir)createdump.exe" />
+    <Delete Files="@(OldExternalRuntimeParts)" />
+    <Delete Files="$(PublishDir)createdump.exe;$(PublishDir)ExusiAI.FileViewer.Desktop.exe" Condition="'$(PublishDir)' != ''" />
   </Target>
   <Target Name="CopyFileViewerPackage" AfterTargets="Build">
     <PropertyGroup><FileViewerPackageDir>$(TargetDir)packages\exusiai.file-viewer</FileViewerPackageDir></PropertyGroup>
