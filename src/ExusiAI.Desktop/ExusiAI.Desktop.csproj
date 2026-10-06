@@ -32,6 +32,12 @@
   <Target Name="RemoveLegacySamplePackage" BeforeTargets="Build;Publish">
     <RemoveDir Directories="$(TargetDir)packages\exusiai.sample;$(PublishDir)packages\exusiai.sample;$(TargetDir)packages\exusiai.misha-showcase;$(PublishDir)packages\exusiai.misha-showcase" />
   </Target>
+  <Target Name="RemovePreviouslyBundledExternalTools" BeforeTargets="Build;Publish">
+    <ItemGroup>
+      <OldExternalRuntimeParts Include="$(TargetDir)Runtime\ArkPets-v3.13.1.zip.part*;$(PublishDir)Runtime\ArkPets-v3.13.1.zip.part*;$(TargetDir)packages\exusiai.ark-pets\Runtime\ArkPets-v3.13.1.zip.part*;$(PublishDir)packages\exusiai.ark-pets\Runtime\ArkPets-v3.13.1.zip.part*" />
+    </ItemGroup>
+    <Delete Files="@(OldExternalRuntimeParts);$(PublishDir)createdump.exe" />
+  </Target>
   <Target Name="CopyFileViewerPackage" AfterTargets="Build">
     <PropertyGroup><FileViewerPackageDir>$(TargetDir)packages\exusiai.file-viewer</FileViewerPackageDir></PropertyGroup>
     <MakeDir Directories="$(FileViewerPackageDir)" />
