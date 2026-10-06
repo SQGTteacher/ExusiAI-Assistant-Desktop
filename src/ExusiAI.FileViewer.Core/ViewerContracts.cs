@@ -186,6 +186,8 @@ public sealed record SlideVisualPreview(
     ImmutableArray<SlideElementPreview> Elements,
     ImmutableArray<SlideImagePreview> Images = default);
 
+public sealed record SlideImageCrop(double Left, double Top, double Right, double Bottom);
+
 public sealed record SlideImagePreview(
     ImmutableArray<byte> Data,
     string ContentType,
@@ -194,7 +196,10 @@ public sealed record SlideImagePreview(
     double Width,
     double Height,
     double Rotation = 0,
-    int ZIndex = 0);
+    int ZIndex = 0,
+    SlideImageCrop? Crop = null,
+    bool FlipHorizontal = false,
+    bool FlipVertical = false);
 
 public sealed record SlidePreview(
     int SlideNumber,

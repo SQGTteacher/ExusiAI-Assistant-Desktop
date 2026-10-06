@@ -1550,17 +1550,31 @@ internal sealed class FileViewerPage : UserControl, IDisposable
                     bitmap.StreamSource = stream;
                     bitmap.EndInit();
                     bitmap.Freeze();
-                    var view = new Image
+                    var crop = image.Crop ?? new SlideImageCrop(0, 0, 0, 0);
+                    var brush = new ImageBrush(bitmap)
                     {
-                        Source = bitmap,
-                        Stretch = Stretch.Uniform,
+                        Stretch = Stretch.Fill,
+                        ViewboxUnits = BrushMappingMode.RelativeToBoundingBox,
+                        Viewbox = new Rect(crop.Left, crop.Top,
+                            1 - crop.Left - crop.Right, 1 - crop.Top - crop.Bottom),
+                        TileMode = TileMode.None
+                    };
+                    brush.Freeze();
+                    var transform = new TransformGroup();
+                    transform.Children.Add(new ScaleTransform(image.FlipHorizontal ? -1 : 1,
+                        image.FlipVertical ? -1 : 1));
+                    transform.Children.Add(new RotateTransform(image.Rotation));
+                    transform.Freeze();
+                    var view = new System.Windows.Shapes.Rectangle
+                    {
+                        Fill = brush,
                         Width = Math.Max(1, image.Width * scaleX),
                         Height = Math.Max(1, image.Height * scaleY),
                         RenderTransformOrigin = new Point(0.5, 0.5),
-                        RenderTransform = new RotateTransform(image.Rotation)
+                        RenderTransform = transform
                     };
-                    Canvas.SetLeft(view, Math.Max(0, image.X * scaleX));
-                    Canvas.SetTop(view, Math.Max(0, image.Y * scaleY));
+                    Canvas.SetLeft(view, image.X * scaleX);
+                    Canvas.SetTop(view, image.Y * scaleY);
                     Canvas.SetZIndex(view, image.ZIndex);
                     slideVisualCanvas.Children.Add(view);
                 }
@@ -1572,8 +1586,8 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             foreach (var element in visual.Elements)
             {
                 var box = CreateSlideShape(element, scaleX, scaleY);
-                Canvas.SetLeft(box, Math.Max(0, element.X * scaleX));
-                Canvas.SetTop(box, Math.Max(0, element.Y * scaleY));
+                Canvas.SetLeft(box, element.X * scaleX);
+                Canvas.SetTop(box, element.Y * scaleY);
                 Canvas.SetZIndex(box, element.ZIndex);
                 slideVisualCanvas.Children.Add(box);
             }

@@ -48,7 +48,7 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
             ViewerCapabilities.Search | ViewerCapabilities.IncrementalRead | ViewerCapabilities.Slides,
             true,
             ImmutableArray.Create(
-                "当前会按幻灯片坐标和层级呈现内嵌图片、基础形状、文本、纯色填充、边框与旋转；复杂主题效果仍可能降级。",
+                "当前会按幻灯片坐标和层级呈现内嵌图片、基础形状、文本、纯色填充、边框、旋转及图片裁剪/镜像；复杂主题效果仍可能降级。",
                 "图表、SmartArt、动画、转场、音视频、批注、宏、外部链接和嵌入对象不会执行。")))
     {
         this.file = file;
@@ -351,10 +351,35 @@ internal static class PptxPackageReader
             width <= 0 || height <= 0)
             return;
 
+        var sourceRect = picture.Element(XName.Get("blipFill", PresentationNamespace))?.Element(a + "srcRect");
+        if (!TryCropPercentage(sourceRect, "l", out var left) ||
+            !TryCropPercentage(sourceRect, "t", out var top) ||
+            !TryCropPercentage(sourceRect, "r", out var right) ||
+            !TryCropPercentage(sourceRect, "b", out var bottom) ||
+            left + right >= 1 || top + bottom >= 1) return;
+        var crop = new SlideImageCrop(left, top, right, bottom);
         var data = package.ReadRequiredPart(imagePart, options.MaximumPresentationImageBytes);
         var contentType = ResolveImageContentType(imagePart, data);
         if (contentType is null) return;
-        images.Add(new(data.ToImmutableArray(), contentType, x, y, width, height, ReadRotation(transform), zIndex));
+        images.Add(new(data.ToImmutableArray(), contentType, x, y, width, height, ReadRotation(transform), zIndex,
+            crop, ReadBoolean(transform, "flipH"), ReadBoolean(transform, "flipV")));
+    }
+
+    private static bool ReadBoolean(XElement? element, string name) =>
+        element?.Attribute(name)?.Value is { } value &&
+        (value == "1" || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+
+    private static bool TryCropPercentage(XElement? element, string name, out double value)
+    {
+        value = 0;
+        var raw = element?.Attribute(name)?.Value;
+        if (raw is null) return true;
+        var percent = raw.EndsWith('%');
+        if (!double.TryParse(percent ? raw[..^1] : raw, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out value)) return false;
+        value /= percent ? 100d : 100_000d;
+        // Bound source rectangles, including negative margins used for padding.
+        return double.IsFinite(value) && value is >= -1 and <= 1;
     }
 
     private static SlideShapeKind ReadShapeKind(XElement? shapeProperties)
@@ -435,7 +460,7 @@ internal static class PptxPackageReader
 
     private static bool TryNumber(XElement? element, string name, out double value) =>
         double.TryParse(element?.Attribute(name)?.Value, System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out value);
+            System.Globalization.CultureInfo.InvariantCulture, out value) && double.IsFinite(value);
 
     private static double? ReadFontSize(XElement? properties) =>
         int.TryParse(properties?.Attribute("sz")?.Value, out var size) ? size / 100d : null;

@@ -1,5 +1,6 @@
 using System.Text;
 using System.IO.Compression;
+using System.Xml.Linq;
 using ExusiAI.FileViewer.Core;
 
 namespace ExusiAI.FileViewer.Core.Tests;
@@ -505,6 +506,83 @@ public sealed class FileViewerTests : IDisposable
         new XlsxFileViewerProvider(),
         new PptxFileViewerProvider()
     });
+
+    [Theory]
+    [InlineData("12500", 0.125)]
+    [InlineData("12.5%", 0.125)]
+    [InlineData("-10000", -0.1)]
+    public async Task Pptx_picture_preserves_crop_flip_rotation_and_off_slide_position(string left, double expected)
+    {
+        var path = Path.Combine(directory, "cropped.pptx");
+        CreatePptx(path);
+        UpdatePicture(path, left, "10000", "20000", "15000", flip: true);
+        await using var document = await CreateRegistry().OpenAsync(path);
+        var slide = await ((ISlidePreviewDocument)document).ReadSlideAsync(1);
+        var image = Assert.Single(slide.Visual!.Images);
+        Assert.Equal(expected, image.Crop!.Left, 8);
+        Assert.Equal(0.1, image.Crop.Top, 8);
+        Assert.Equal(0.2, image.Crop.Right, 8);
+        Assert.Equal(0.15, image.Crop.Bottom, 8);
+        Assert.True(image.FlipHorizontal);
+        Assert.True(image.FlipVertical);
+        Assert.Equal(15, image.Rotation);
+        Assert.Equal(-914400, image.X);
+        Assert.Equal(3657600, image.Width);
+    }
+
+    [Theory]
+    [InlineData("NaN", "0")]
+    [InlineData("Infinity", "0")]
+    [InlineData("broken", "0")]
+    [InlineData("100000", "0")]
+    [InlineData("60000", "40000")]
+    [InlineData("200000", "0")]
+    public async Task Pptx_invalid_picture_crop_preserves_remaining_slide_content(string left, string right)
+    {
+        var path = Path.Combine(directory, "bad-crop.pptx");
+        CreatePptx(path);
+        UpdatePicture(path, left, "0", right, "0", flip: false);
+        await using var document = await CreateRegistry().OpenAsync(path);
+        var slide = await ((ISlidePreviewDocument)document).ReadSlideAsync(1);
+        Assert.Empty(slide.Visual!.Images);
+        Assert.Contains("课堂标题", slide.Text);
+        Assert.NotEmpty(slide.Visual.Elements);
+    }
+
+    [Fact]
+    public async Task Pptx_uncropped_picture_has_full_source_rectangle()
+    {
+        var path = Path.Combine(directory, "uncropped.pptx");
+        CreatePptx(path);
+        await using var document = await CreateRegistry().OpenAsync(path);
+        var slide = await ((ISlidePreviewDocument)document).ReadSlideAsync(1);
+        var image = Assert.Single(slide.Visual!.Images);
+        Assert.Equal(new SlideImageCrop(0, 0, 0, 0), image.Crop);
+        Assert.False(image.FlipHorizontal);
+        Assert.False(image.FlipVertical);
+    }
+
+    private static void UpdatePicture(string path, string left, string top, string right, string bottom, bool flip)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Update);
+        var entry = archive.GetEntry("ppt/slides/slide1.xml")!;
+        XDocument xml;
+        using (var stream = entry.Open()) xml = XDocument.Load(stream);
+        XNamespace p = "http://schemas.openxmlformats.org/presentationml/2006/main";
+        XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        var picture = xml.Descendants(p + "pic").Single();
+        picture.Element(p + "blipFill")!.Add(new XElement(a + "srcRect",
+            new XAttribute("l", left), new XAttribute("t", top),
+            new XAttribute("r", right), new XAttribute("b", bottom)));
+        var transform = picture.Descendants(a + "xfrm").Single();
+        transform.SetAttributeValue("flipH", flip ? "1" : "0");
+        transform.SetAttributeValue("flipV", flip ? "true" : "false");
+        transform.SetAttributeValue("rot", "900000");
+        transform.Element(a + "off")!.SetAttributeValue("x", "-914400");
+        entry.Delete();
+        using var target = archive.CreateEntry("ppt/slides/slide1.xml", CompressionLevel.NoCompression).Open();
+        xml.Save(target);
+    }
 
     private static void CreatePptx(string path, bool externalSlide = false)
     {
