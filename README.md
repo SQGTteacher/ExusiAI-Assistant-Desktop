@@ -51,7 +51,7 @@ dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj `
   --output artifacts/ExusiAI-win-x64
 ```
 
-发布目标会自动带上四个内置插件包。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户可在“扩展管理”中导入或导出 ZIP、卸载插件、打开统一插件目录；手动安装时将含 `package.json` 的插件文件夹放入该目录并重启。
+发布目标会自动带上四个内置插件包，并单独发布 `viewer` 子目录：自包含发布时，查看器携带自己的 .NET/WPF 运行库与 Office、PDF、视频 DLL。重新发布会先移除旧查看器目录，避免遗留旧依赖或外部 exe。分发时请保留整个 `artifacts/ExusiAI-win-x64` 目录。用户可在“扩展管理”中导入或导出 ZIP、卸载插件、打开统一插件目录；手动安装时将含 `package.json` 的插件文件夹放入该目录并重启。
 
 ## 代码边界
 
