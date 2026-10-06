@@ -23,5 +23,6 @@ directory/global-storage services. Embedded mode receives a private data root,
 does not create ClassIsland's global mutex, change the host working directory or
 process priority, start an updater/IPC server, or restart ExusiAI's executable.
 The original Avalonia views, component implementations, services, data models,
-and settings pages remain in the imported source. The native entry point is
+and settings pages remain in the imported source. `ThemeService` additionally supports a
+reversible host variant/accent override; independent theming is the default. The native entry point is
 called from the ExusiAI plugin; a Windows launch and visual check remains.

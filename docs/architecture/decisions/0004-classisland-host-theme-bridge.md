@@ -30,7 +30,7 @@ into an embedded control would remove every one of those behaviours.
 Keep the two compositors separate and integrate at the theme boundary only.
 
 - The shell theme is already framework-agnostic (`ExusiAI.Theme` has a `net8.0` target and
-  no XAML), so it serves as the single source of truth for both stacks.
+  no XAML), so it can supply the variant and accent when the user enables following.
 - A new opt-in contract, `IWpfHostThemeExtension`, lets a UI extension receive the shell
   theme. `WpfExtensionCoordinator` pushes it on attach and on every theme change.
 - `HostTheme` carries **only** the variant (`IsDark`) and the accent. The rest of the shell
@@ -42,7 +42,7 @@ Flow:
 IThemeService.Changed → WpfExtensionCoordinator.PushHostTheme
   → ClassIslandPlugin.ApplyHostTheme → ClassIslandHost.ApplyTheme
   → reflection: ClassIsland.Desktop.Program.SetEmbeddedTheme(isDark, accent)
-  → ClassIsland.Services.ThemeService.SetTheme(themeMode, primary)
+  → ClassIsland.Services.ThemeService.SetEmbeddedHostTheme(themeMode, primary)
 ```
 
 `ClassIslandHost` retains the last theme and applies it on `AppStarted`, so a theme pushed
@@ -53,10 +53,8 @@ before Avalonia finishes starting is not dropped.
 - **Upstream fidelity is the priority.** Restricting the bridge to variant and accent keeps
   FluentAvalonia's design language and the XAML theme pack untouched. Pushing the whole shell
   palette would silently re-skin ClassIsland away from upstream.
-- **No upstream divergence.** The only change inside `third_party/ClassIsland` is one static
-  entry point on `ClassIsland.Desktop.Program`, next to the existing `SetEmbeddedVisible`,
-  `OpenEmbeddedSettings`, and `StopEmbedded`. It stays inside the application boundary already
-  documented in `third_party/ClassIsland/EXUSIAI_IMPORT.md`, so future upstream merges stay cheap.
+- The native bridge applies a reversible override in `ThemeService`. Upstream settings
+  continue to update the independent theme underneath that override.
 - **The bridge is opt-in and one-way.** Extensions that do not implement the interface are
   unaffected, and an extension cannot push theme back into the shell.
 - **A failing bridge is not fatal.** Theme application is wrapped so a misbehaving extension
@@ -77,16 +75,16 @@ before Avalonia finishes starting is not dropped.
 
 ## Consequences
 
-- The embedded island follows the shell's light/dark variant and accent.
-- ClassIsland's own theme settings page no longer controls either property while it runs embedded.
-  Shell theme wins by design. An opt-out setting is not implemented.
-- The shell theme remains the only colour authority for the two properties that cross over; all
-  other ClassIsland colours stay upstream.
+- Independent upstream theming is the default. The plugin page has a persisted follow-shell
+  option, separate from imported Settings.json. Disabling it immediately restores the latest
+  upstream variant and accent.
+- While following, upstream settings refreshes cannot overwrite the host variant and accent.
+  XAML theme packs remain under ClassIsland control.
 - The island keeps running as a separate top-level window, so this decision does not address
   window chrome, positioning, or DPI coordination. Those remain open.
 
 ## Not verified
 
-The bridge was validated by compilation and the existing unit test suite only. Avalonia runtime
-behaviour — that the embedded island visibly adopts the accent and repaints on a live theme
-change — has not been exercised, because that needs an interactive Windows desktop session.
+The original bridge commit was compiled and tested. This follow-up adds persistence tests,
+but the current Linux environment has no .NET SDK and cannot execute Windows tests.
+Windows CI must validate compilation/tests; visual switching still needs a Windows desktop.

@@ -60,12 +60,17 @@ public class Program
     /// design language and the XAML theme pack stay untouched, so the embedded UI
     /// keeps looking like upstream ClassIsland.
     /// </summary>
-    public static void SetEmbeddedTheme(bool isDark, string accentHex) => Dispatcher.UIThread.Post(() =>
+    public static void SetEmbeddedTheme(bool? isDark, string? accentHex) => Dispatcher.UIThread.Post(() =>
     {
         if (Volatile.Read(ref embeddedApp) is null) return;
+        var service = (ClassIsland.Services.ThemeService)App.GetService<IThemeService>();
+        if (isDark is null)
+        {
+            service.SetEmbeddedHostTheme(null, null);
+            return;
+        }
         if (!Color.TryParse(accentHex, out var accent)) return;
-        // ThemeService.SetTheme: 0 follows the system, 1 is light, 2 is dark.
-        App.GetService<IThemeService>().SetTheme(isDark ? 2 : 1, accent);
+        service.SetEmbeddedHostTheme(isDark.Value ? 2 : 1, accent);
     });
 
     /// <summary>

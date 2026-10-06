@@ -18,6 +18,9 @@ internal sealed class ClassIslandHost : IDisposable
     private Thread? thread;
     private Type? entryPoint;
     private HostTheme? pendingTheme;
+    private readonly object themeGate = new();
+    private readonly string themePreferencePath;
+    private bool followHostTheme;
     private bool disposed;
     private int stopRequested;
     internal string? LastStartupError { get; private set; }
@@ -25,6 +28,16 @@ internal sealed class ClassIslandHost : IDisposable
     internal ClassIslandHost(string dataDirectory, string packageDirectory)
     {
         this.dataDirectory = dataDirectory;
+        themePreferencePath = Path.Combine(dataDirectory, "ExusiAIHostTheme.json");
+        try
+        {
+            if (File.Exists(themePreferencePath))
+                followHostTheme = System.Text.Json.JsonSerializer.Deserialize<bool>(File.ReadAllText(themePreferencePath));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            Trace.TraceWarning("ClassIsland host theme preference could not be read: {0}", error.Message);
+        }
         nativeDirectory = Path.Combine(Path.GetFullPath(packageDirectory), "NativeClassIsland");
     }
 
@@ -96,25 +109,47 @@ internal sealed class ClassIslandHost : IDisposable
             entryPoint?.GetMethod("OpenEmbeddedSettings")?.Invoke(null, null);
     }
 
-    /// <summary>
-    /// Keeps the embedded island on the shell's theme variant and accent. A theme
-    /// that arrives before Avalonia is ready is retained and applied on startup.
-    /// </summary>
-    internal void ApplyTheme(HostTheme theme)
+    internal bool FollowHostTheme { get { lock (themeGate) return followHostTheme; } }
+
+    internal void SetFollowHostTheme(bool follow)
     {
-        pendingTheme = theme;
-        if (ready.Task.IsCompletedSuccessfully && ready.Task.Result) InvokeTheme(theme);
+        lock (themeGate)
+        {
+            // Persist first: a failed save must not leave the UI reporting a saved choice.
+            Directory.CreateDirectory(dataDirectory);
+            var temporary = themePreferencePath + ".tmp";
+            File.WriteAllText(temporary, System.Text.Json.JsonSerializer.Serialize(follow));
+            File.Move(temporary, themePreferencePath, overwrite: true);
+            followHostTheme = follow;
+            if (!disposed && ready.Task.IsCompletedSuccessfully && ready.Task.Result)
+                InvokeTheme();
+        }
     }
 
-    private void InvokeTheme(HostTheme theme)
+    internal void ApplyTheme(HostTheme theme)
+    {
+        lock (themeGate)
+        {
+            pendingTheme = theme;
+            if (!disposed && followHostTheme && ready.Task.IsCompletedSuccessfully && ready.Task.Result)
+                InvokeTheme();
+        }
+    }
+
+    // Called under themeGate, so startup and shell updates dispatch in the same order.
+    private void InvokeTheme()
     {
         try
         {
-            entryPoint?.GetMethod("SetEmbeddedTheme")?.Invoke(null, [theme.IsDark, theme.Accent]);
+            var method = entryPoint?.GetMethod("SetEmbeddedTheme")
+                ?? throw new MissingMethodException("ClassIsland.Desktop.Program.SetEmbeddedTheme");
+            if (followHostTheme && pendingTheme is { } theme)
+                method.Invoke(null, [theme.IsDark, theme.Accent]);
+            else
+                method.Invoke(null, [null, null]);
         }
         catch (Exception exception)
         {
-            // The theme is cosmetic. A host that rejects it must not fail the plugin.
             Trace.TraceError("Embedded ClassIsland could not apply the host theme: {0}", exception);
         }
     }
@@ -141,8 +176,11 @@ internal sealed class ClassIslandHost : IDisposable
                     ?? throw new MissingMemberException("ClassIsland.App.AppStarted");
                 started.AddEventHandler(app, new EventHandler((_, _) =>
                 {
-                    ready.TrySetResult(true);
-                    if (pendingTheme is { } theme) InvokeTheme(theme);
+                    lock (themeGate)
+                    {
+                        ready.TrySetResult(true);
+                        if (followHostTheme) InvokeTheme();
+                    }
                     if (Volatile.Read(ref stopRequested) != 0)
                         entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null);
                 }));

@@ -40,7 +40,28 @@ public class ThemeService : IHostedService, IThemeService
 
     public int CurrentRealThemeMode { get; set; } = 0;
 
+    private int nativeThemeMode;
+    private Color? nativePrimary;
+    private int? hostThemeMode;
+    private Color? hostPrimary;
+
+    // Called on the Avalonia dispatcher only. Preserve upstream choices while
+    // following the shell, so disabling the override restores the current choices.
+    public void SetEmbeddedHostTheme(int? themeMode, Color? primary)
+    {
+        hostThemeMode = themeMode;
+        hostPrimary = primary;
+        ApplyTheme(hostThemeMode ?? nativeThemeMode, hostThemeMode.HasValue ? hostPrimary : nativePrimary);
+    }
+
     public void SetTheme(int themeMode, Color? primary)
+    {
+        nativeThemeMode = themeMode;
+        nativePrimary = primary;
+        ApplyTheme(hostThemeMode ?? themeMode, hostThemeMode.HasValue ? hostPrimary : primary);
+    }
+
+    private void ApplyTheme(int themeMode, Color? primary)
     {
         var faTheme = Application.Current!.Styles
             .OfType<FluentAvaloniaTheme>()

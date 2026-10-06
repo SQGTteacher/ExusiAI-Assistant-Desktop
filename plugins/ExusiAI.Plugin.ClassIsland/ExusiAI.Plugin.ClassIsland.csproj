@@ -9,6 +9,8 @@
     <EnableClassIslandNative Condition="'$(EnableClassIslandNative)' == ''">true</EnableClassIslandNative>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The in-process ClassIsland runtime needs Metadata's Immutable 9.x dependency. -->
+    <PackageReference Include="System.Collections.Immutable" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Abstractions\ExusiAI.Extension.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.SDK\ExusiAI.Extension.SDK.csproj" />
     <ProjectReference Include="..\..\src\ExusiAI.Extension.Wpf\ExusiAI.Extension.Wpf.csproj" />
