@@ -55,7 +55,7 @@ public sealed class OfficeLayoutProvider(string? executablePath = null) : IFileV
         try
         {
             var input = Path.Combine(directory, "document" + extension);
-            await CopyBoundedAsync(file.FullName, input, options.MaximumFileBytes, cancellationToken);
+            await CopyBoundedAsync(file.FullName, input, options.MaximumFileBytes, cancellationToken).ConfigureAwait(false);
             var profile = Path.Combine(directory, "profile");
             Directory.CreateDirectory(Path.Combine(profile, "user"));
             // An empty private profile has no trusted macro locations. Never lower macro security.
@@ -65,7 +65,7 @@ public sealed class OfficeLayoutProvider(string? executablePath = null) : IFileV
                   <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop></item>
                   <item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
                 </oor:items>
-                """, cancellationToken);
+                """, cancellationToken).ConfigureAwait(false);
             var start = new ProcessStartInfo(executable!)
             {
                 UseShellExecute = false, CreateNoWindow = true,
@@ -81,21 +81,31 @@ public sealed class OfficeLayoutProvider(string? executablePath = null) : IFileV
             using var process = Process.Start(start) ?? throw new IOException("无法启动 LibreOffice。");
             var output = DrainAsync(process.StandardOutput);
             var error = DrainAsync(process.StandardError);
-            try { await process.WaitForExitAsync(timeout.Token); }
+            try { await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
             catch (OperationCanceledException)
             {
                 try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
                 catch (InvalidOperationException) { }
-                await process.WaitForExitAsync(CancellationToken.None);
-                await Task.WhenAll(output, error);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                await Task.WhenAll(output, error).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 throw new FileRejectedException("Office 排版转换超过 90 秒，已终止转换进程。");
             }
-            await Task.WhenAll(output, error);
+            await Task.WhenAll(output, error).ConfigureAwait(false);
             var pdf = Path.Combine(directory, "document.pdf");
             if (process.ExitCode != 0 || !File.Exists(pdf))
                 throw new FileRejectedException("Office 排版转换失败：" + await error);
             var rendered = await new PdfFileViewerProvider().OpenAsync(pdf, options, cancellationToken);
+            if (extension == ".ppt" && ((IPagedPreviewDocument)rendered).PageCount > options.MaximumPresentationSlides)
+            {
+                await rendered.DisposeAsync().ConfigureAwait(false);
+                throw new FileRejectedException("PPT 幻灯片数量超过配置上限。");
+            }
+            if (cancellationToken.IsCancellationRequested)
+            {
+                await rendered.DisposeAsync().ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             return new OfficeLayoutDocument(file, rendered, directory, extension);
         }
         catch { DeleteDirectory(directory); throw; }
@@ -108,11 +118,11 @@ public sealed class OfficeLayoutProvider(string? executablePath = null) : IFileV
         var buffer = new byte[64 * 1024];
         long length = 0;
         int count;
-        while ((count = await input.ReadAsync(buffer, token)) > 0)
+        while ((count = await input.ReadAsync(buffer, token).ConfigureAwait(false)) > 0)
         {
             length = checked(length + count);
             if (length > maximumBytes) throw new FileRejectedException("Office 文件在读取时超过大小预算。");
-            await output.WriteAsync(buffer.AsMemory(0, count), token);
+            await output.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
         }
     }
 
@@ -121,7 +131,7 @@ public sealed class OfficeLayoutProvider(string? executablePath = null) : IFileV
         var result = new StringBuilder();
         var buffer = new char[2048];
         int count;
-        while ((count = await reader.ReadAsync(buffer)) > 0)
+        while ((count = await reader.ReadAsync(buffer).ConfigureAwait(false)) > 0)
             if (result.Length < 4096) result.Append(buffer, 0, Math.Min(count, 4096 - result.Length));
         return result.ToString().Trim();
     }
@@ -151,7 +161,7 @@ internal sealed class OfficeLayoutDocument : ViewerDocument, IPagedPreviewDocume
         => ((IPageTextDocument)rendered).ReadPageTextAsync(pageNumber, cancellationToken);
     public override async ValueTask DisposeAsync()
     {
-        try { await rendered.DisposeAsync(); }
+        try { await rendered.DisposeAsync().ConfigureAwait(false); }
         finally { OfficeLayoutProvider.DeleteDirectory(directory); }
     }
 }

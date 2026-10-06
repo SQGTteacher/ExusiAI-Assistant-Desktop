@@ -48,6 +48,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private readonly VideoPreviewControl videoPreview = new() { Visibility = Visibility.Collapsed };
     private string? embeddedVideoPath;
     private bool embeddedVideoLoading;
+    private Task? activeOpenOperation;
+    private bool shuttingDown;
+    private int openGeneration;
     private bool pdfViewportLoading;
     private bool pdfViewportPending;
     private readonly OfficeLayoutProvider officeLayout = new();
@@ -948,7 +951,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         await RefreshWelcomeAsync();
         title.Text = "尚未打开文件";
         documentMeta.Text = "安全只读查看器";
-        status.Text = "TXT · Markdown · RTF · CSV · DOC · DOCX · XLSX · PPTX · PDF";
+        status.Text = "TXT · Markdown · RTF · CSV · DOC/DOCX · XLSX · PPT/PPTX · PDF · 视频";
         DocumentClosed?.Invoke(this, EventArgs.Empty);
         return true;
     }
@@ -1011,7 +1014,23 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             : Visibility.Visible;
     }
 
-    private async Task OpenAsync(string filePath, bool skipPendingPrompt = false)
+    private Task OpenAsync(string filePath, bool skipPendingPrompt = false)
+    {
+        if (shuttingDown) return Task.CompletedTask;
+        var previous = activeOpenOperation;
+        var generation = ++openGeneration;
+        if (previous is { IsCompleted: false }) loadCancellation?.Cancel();
+        return activeOpenOperation = OpenQueuedAsync(filePath, skipPendingPrompt, previous, generation);
+    }
+
+    private async Task OpenQueuedAsync(string filePath, bool skipPendingPrompt, Task? previous, int generation)
+    {
+        if (previous is { IsCompleted: false }) await previous;
+        if (shuttingDown || generation != openGeneration) return;
+        await OpenDocumentCoreAsync(filePath, skipPendingPrompt);
+    }
+
+    private async Task OpenDocumentCoreAsync(string filePath, bool skipPendingPrompt)
     {
         if (operationCancellation is not null)
         {
@@ -1085,12 +1104,19 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         try
         {
             var timer = Stopwatch.StartNew();
-            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            var fileExtension = Path.GetExtension(filePath).ToLowerInvariant();
             status.Text = "正在打开文件…";
-            document = extension == ".ppt" ||
-                (settings.PreferOfficeLayout && officeLayout.IsAvailable && extension is ".doc" or ".docx")
-                ? await officeLayout.OpenAsync(filePath, ViewerOpenOptions.Default, loadCancellation.Token)
-                : await Providers.OpenAsync(filePath, cancellationToken: loadCancellation.Token);
+            var openToken = loadCancellation.Token;
+            var opened = fileExtension == ".ppt" ||
+                (settings.PreferOfficeLayout && officeLayout.IsAvailable && fileExtension is ".doc" or ".docx")
+                ? await officeLayout.OpenAsync(filePath, ViewerOpenOptions.Default, openToken)
+                : await Providers.OpenAsync(filePath, cancellationToken: openToken);
+            if (openToken.IsCancellationRequested || shuttingDown)
+            {
+                await opened.DisposeAsync();
+                throw new OperationCanceledException(openToken);
+            }
+            document = opened;
             timer.Stop();
 
             if (settings.RememberRecentFiles)
@@ -3283,6 +3309,16 @@ internal sealed class FileViewerPage : UserControl, IDisposable
             unit++;
         }
         return string.Create(CultureInfo.CurrentCulture, $"{value:0.##} {units[unit]}");
+    }
+
+    internal async Task ReleaseResourcesAsync()
+    {
+        shuttingDown = true;
+        loadCancellation?.Cancel();
+        operationCancellation?.Cancel();
+        if (activeOpenOperation is { } pending) await pending;
+        await CloseDocumentAsync();
+        Dispose();
     }
 
     public void Dispose()
