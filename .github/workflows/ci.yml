@@ -42,7 +42,7 @@ jobs:
           foreach ($relative in @("libvlc/win-x64/libvlc.dll", "libvlc/win-x64/libvlccore.dll", "libvlc/win-x64/plugins/codec/libavcodec_plugin.dll", "licenses/LibVLC-LGPL-2.1.txt")) {
             if (!(Test-Path (Join-Path $viewerDir $relative))) { throw "Missing viewer dependency: $relative" }
           }
-          foreach ($relative in @("ExusiAI.FileViewer.BinaryOffice.dll", "b2xtranslator.dll", "licenses/b2xtranslator-BSD-3-Clause.txt")) {
+          foreach ($relative in @("ExusiAI.FileViewer.BinaryOffice.dll", "b2xtranslator.dll", "licenses/b2xtranslator-BSD-3-Clause.txt", "NPOI.dll", "NPOI.ScratchPad.HWPF.dll", "System.Configuration.ConfigurationManager.dll", "ICSharpCode.SharpZipLib.dll", "BouncyCastle.Crypto.dll")) {
             if (!(Test-Path (Join-Path $viewerDir $relative))) { throw "Missing in-process Office dependency: $relative" }
           }
           $foreignExecutables = @(Get-ChildItem $viewerDir -Recurse -File -Filter *.exe | Where-Object {
