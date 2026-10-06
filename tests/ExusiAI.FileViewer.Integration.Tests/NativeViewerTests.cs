@@ -1,7 +1,6 @@
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using ExusiAI.FileViewer.Core;
-using ExusiAI.FileViewer.Office;
 using LibVLCSharp.Shared;
 
 namespace ExusiAI.FileViewer.Integration.Tests;
@@ -11,29 +10,45 @@ public sealed class NativeViewerTests : IDisposable
     private readonly string directory = Path.Combine(Path.GetTempPath(), "exusiai-native-tests-" + Guid.NewGuid().ToString("N"));
     public NativeViewerTests() => Directory.CreateDirectory(directory);
 
-    [Theory]
-    [InlineData("sample.ppt")]
-    [InlineData("sample.doc")]
-    public async Task Legacy_office_files_render_searchable_pages_without_modifying_source(string name)
+    [Fact]
+    public async Task Legacy_ppt_converts_in_process_and_renders_slides_without_modifying_source()
     {
-        var path = await ExtractFixtureAsync(name);
+        var path = await ExtractFixtureAsync("sample.ppt");
         var original = await File.ReadAllBytesAsync(path);
-        var provider = new OfficeLayoutProvider();
-        Assert.True(provider.IsAvailable, "Install LibreOffice or set EXUSIAI_LIBREOFFICE_PATH before running integration tests.");
+        var document = await new LegacyPptFileViewerProvider().OpenAsync(path, ViewerOpenOptions.Default, CancellationToken.None);
+        try
+        {
+            Assert.Equal(path, document.Info.FilePath);
+            Assert.Equal(".ppt", Path.GetExtension(document.Info.DisplayName));
+            var slides = Assert.IsAssignableFrom<ISlidePreviewDocument>(document);
+            Assert.True(slides.SlideCount > 0);
+            var slide = await slides.ReadSlideAsync(1);
+            Assert.NotNull(slide.Visual);
+            Assert.False(string.IsNullOrWhiteSpace(slide.Text));
+            Assert.NotEmpty(await ViewerSearchService.SearchAsync(document, slide.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).First()));
+        }
+        finally { await document.DisposeAsync(); }
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => ((ISlidePreviewDocument)document).ReadSlideAsync(1).AsTask());
+        File.Delete(path);
+    }
+
+    [Fact]
+    public async Task Legacy_doc_reads_in_process_without_modifying_source()
+    {
+        var path = await ExtractFixtureAsync("sample.doc");
+        var original = await File.ReadAllBytesAsync(path);
+        var provider = new LegacyDocFileViewerProvider();
         var document = await provider.OpenAsync(path, ViewerOpenOptions.Default, CancellationToken.None);
         try
         {
             Assert.Equal(path, document.Info.FilePath);
-            var pages = Assert.IsAssignableFrom<IPagedPreviewDocument>(document);
-            Assert.True(pages.PageCount > 0);
-            var page = await pages.ReadPageAsync(1);
-            Assert.True(page.Width > 0 && page.Height > 0);
-            Assert.Equal(page.Width * page.Height * 4, page.Pixels.Length);
-            var text = await ((IPageTextDocument)document).ReadPageTextAsync(1);
-            Assert.False(string.IsNullOrWhiteSpace(text));
-            var query = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).First();
+            var text = new System.Text.StringBuilder();
+            await foreach (var chunk in ((ITextPreviewDocument)document).ReadChunksAsync()) text.Append(chunk.Text);
+            Assert.False(string.IsNullOrWhiteSpace(text.ToString()));
+            var query = text.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).First();
             var hits = await ViewerSearchService.SearchAsync(document, query);
-            Assert.Contains(hits, hit => hit.Kind == ViewerSearchLocationKind.Page && hit.PrimaryIndex == 1);
+            Assert.NotEmpty(hits);
         }
         finally { await document.DisposeAsync(); }
         Assert.Equal(original, await File.ReadAllBytesAsync(path));
@@ -41,7 +56,7 @@ public sealed class NativeViewerTests : IDisposable
     }
 
     [Fact]
-    public async Task Docx_layout_preserves_body_and_table_text()
+    public async Task Docx_reads_body_and_table_text_in_process()
     {
         var path = Path.Combine(directory, "layout.docx");
         using (var package = ZipFile.Open(path, ZipArchiveMode.Create))
@@ -56,12 +71,11 @@ public sealed class NativeViewerTests : IDisposable
                 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/><w:sz w:val="36"/></w:rPr><w:t>OfficeLayoutMarker</w:t></w:r></w:p><w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>TableCellMarker</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>
                 """);
         }
-        await using var document = await new OfficeLayoutProvider().OpenAsync(path, ViewerOpenOptions.Default, CancellationToken.None);
-        var text = await ((IPageTextDocument)document).ReadPageTextAsync(1);
-        Assert.Contains("OfficeLayoutMarker", text);
-        Assert.Contains("TableCellMarker", text);
-        var page = await ((IPagedPreviewDocument)document).ReadPageAsync(1);
-        Assert.True(page.Pixels.Length > 0);
+        await using var document = await new DocxFileViewerProvider().OpenAsync(path, ViewerOpenOptions.Default, CancellationToken.None);
+        var text = new System.Text.StringBuilder();
+        await foreach (var chunk in ((ITextPreviewDocument)document).ReadChunksAsync()) text.Append(chunk.Text);
+        Assert.Contains("OfficeLayoutMarker", text.ToString());
+        Assert.Contains("TableCellMarker", text.ToString());
     }
 
     [Theory]

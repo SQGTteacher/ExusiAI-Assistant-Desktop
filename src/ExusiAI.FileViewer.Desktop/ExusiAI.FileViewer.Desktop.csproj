@@ -8,10 +8,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ExusiAI.FileViewer.Core\ExusiAI.FileViewer.Core.csproj" />
-    <ProjectReference Include="..\ExusiAI.FileViewer.Office\ExusiAI.FileViewer.Office.csproj" />
     <PackageReference Include="LibVLCSharp.WPF" />
     <PackageReference Include="VideoLAN.LibVLC.Windows" />
     <Content Include="../../docs/file-viewer/licenses/LibVLC-LGPL-2.1.txt" Link="licenses/LibVLC-LGPL-2.1.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../../docs/file-viewer/THIRD_PARTY_NOTICES.md" Link="licenses/THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../third_party/b2xtranslator/LICENSE" Link="licenses/b2xtranslator-BSD-3-Clause.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

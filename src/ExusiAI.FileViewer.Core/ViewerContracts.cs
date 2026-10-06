@@ -40,6 +40,7 @@ public sealed record ViewerOpenOptions
     public int PdfRenderWidth { get; init; } = 1280;
     public int MaximumPdfPages { get; init; } = 100_000;
     public int MaximumLegacyWordBytes { get; init; } = 16 * 1024 * 1024;
+    public int MaximumLegacyPresentationBytes { get; init; } = 16 * 1024 * 1024;
     public int MaximumLegacyWordCharacters { get; init; } = 16 * 1024 * 1024;
     public int MaximumArchiveEntries { get; init; } = 4096;
     public long MaximumArchiveEntryBytes { get; init; } = 256L * 1024 * 1024;
@@ -50,6 +51,7 @@ public sealed record ViewerOpenOptions
     internal void Validate()
     {
         if (MaximumFileBytes <= 0) throw new ArgumentOutOfRangeException(nameof(MaximumFileBytes));
+        if (MaximumLegacyPresentationBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumLegacyPresentationBytes));
         if (TextChunkCharacters is < 1024 or > 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(TextChunkCharacters));
         if (InitialDocumentPages is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(InitialDocumentPages));
         if (PagePrefetchRadius is < 0 or > 50) throw new ArgumentOutOfRangeException(nameof(PagePrefetchRadius));

@@ -4,6 +4,7 @@
     <Description>Safe, streaming document provider contracts for the ExusiAI file viewer.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../ExusiAI.FileViewer.BinaryOffice/ExusiAI.FileViewer.BinaryOffice.csproj" />
     <PackageReference Include="Docnet.Core" />
     <PackageReference Include="ScratchPad.NPOI.HWPF" />
   </ItemGroup>

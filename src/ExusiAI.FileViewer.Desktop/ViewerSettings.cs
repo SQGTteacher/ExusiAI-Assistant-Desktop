@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace ExusiAI.FileViewer.Desktop;
 
-internal sealed record ViewerSettings(bool StartMaximized = false, bool RememberRecentFiles = true, bool PreferDarkTheme = true, int DefaultZoomPercent = 100, bool PreferOfficeLayout = true)
+internal sealed record ViewerSettings(bool StartMaximized = false, bool RememberRecentFiles = true, bool PreferDarkTheme = true, int DefaultZoomPercent = 100)
 {
     public static async Task<ViewerSettings> LoadAsync()
     {

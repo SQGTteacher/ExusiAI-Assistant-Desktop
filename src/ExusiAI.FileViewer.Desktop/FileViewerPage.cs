@@ -14,7 +14,6 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Xml;
 using ExusiAI.FileViewer.Core;
-using ExusiAI.FileViewer.Office;
 using Microsoft.Win32;
 using SlideEllipse = System.Windows.Shapes.Ellipse;
 using SlideLine = System.Windows.Shapes.Line;
@@ -42,6 +41,7 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         new DocxFileViewerProvider(),
         new XlsxFileViewerProvider(),
         new PptxFileViewerProvider(),
+        new LegacyPptFileViewerProvider(),
         new VideoFileViewerProvider()
     });
 
@@ -53,7 +53,6 @@ internal sealed class FileViewerPage : UserControl, IDisposable
     private int openGeneration;
     private bool pdfViewportLoading;
     private bool pdfViewportPending;
-    private readonly OfficeLayoutProvider officeLayout = new();
 
     private readonly RecentFilesStore recentFilesStore = new();
     private readonly ViewerSettings settings;
@@ -1104,13 +1103,9 @@ internal sealed class FileViewerPage : UserControl, IDisposable
         try
         {
             var timer = Stopwatch.StartNew();
-            var fileExtension = Path.GetExtension(filePath).ToLowerInvariant();
             status.Text = "正在打开文件…";
             var openToken = loadCancellation.Token;
-            var opened = fileExtension == ".ppt" ||
-                (settings.PreferOfficeLayout && officeLayout.IsAvailable && fileExtension is ".doc" or ".docx")
-                ? await officeLayout.OpenAsync(filePath, ViewerOpenOptions.Default, openToken)
-                : await Providers.OpenAsync(filePath, cancellationToken: openToken);
+            var opened = await Providers.OpenAsync(filePath, cancellationToken: openToken);
             if (openToken.IsCancellationRequested || shuttingDown)
             {
                 await opened.DisposeAsync();
