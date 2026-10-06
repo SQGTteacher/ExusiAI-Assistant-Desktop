@@ -14,4 +14,11 @@
     <Content Include="../../docs/file-viewer/THIRD_PARTY_NOTICES.md" Link="licenses/THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../../third_party/b2xtranslator/LICENSE" Link="licenses/b2xtranslator-BSD-3-Clause.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- The optional .NET crash-dump helper is an external executable, not a viewer dependency. -->
+  <Target Name="ExcludeExternalCrashDumpHelper" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'createdump.exe'" />
+    </ItemGroup>
+  </Target>
 </Project>

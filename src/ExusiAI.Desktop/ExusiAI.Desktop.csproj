@@ -97,6 +97,10 @@
              RemoveProperties="TargetFramework;OutputPath;BaseOutputPath;IntermediateOutputPath;BaseIntermediateOutputPath;NoBuild;RuntimeIdentifiers" />
     <Error Condition="!Exists('$(FileViewerRuntimePublishDir)ExusiAI.FileViewer.Desktop.exe')" Text="The published file viewer entry point is missing." />
     <Error Condition="'$(FileViewerRuntimeSelfContained)' == 'true' And !Exists('$(FileViewerRuntimePublishDir)coreclr.dll')" Text="The self-contained file viewer runtime is incomplete." />
+    <ItemGroup>
+      <FileViewerForeignExecutables Include="$(FileViewerRuntimePublishDir)**\*.exe" Exclude="$(FileViewerRuntimePublishDir)ExusiAI.FileViewer.Desktop.exe" />
+    </ItemGroup>
+    <Error Condition="'@(FileViewerForeignExecutables)' != ''" Text="External executables are forbidden in the viewer package: @(FileViewerForeignExecutables)" />
   </Target>
   <Target Name="CopyFileViewerPackageToPublish" AfterTargets="Publish" DependsOnTargets="PublishFileViewerRuntime">
     <PropertyGroup><FileViewerPublishPackageDir>$(PublishDir)packages\exusiai.file-viewer</FileViewerPublishPackageDir></PropertyGroup>
