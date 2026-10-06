@@ -24,7 +24,7 @@ ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市
 - 支持 ZIP 插件安全导入、导出、卸载，也可直接将插件文件夹放入本地目录；
 - 内置 ClassIsland 原生运行集成：随 ExusiAI 离线分发完整 ClassIsland 2.1.0.1 folder 运行时，由 ExusiAI 统一管理进程生命周期；不再仿写 ClassIsland 页面/组件/自动化逻辑，保留 ClassIsland 2.x 备份同步，并跟踪 2.2 Misha 开源分支作为后续原生升级基线；
 - ArkPets 桌宠：保持 ArkPets 的模型 / 行为 / 选项结构，兼容 Ark-Models 全角色模型库与 direct-start 配置；ExusiAI 可自动管理上游便携运行核心、模型下载、localhost IPC 实时控制和随宿主启动，桌宠不会作为独立开机程序常驻；与 ClassIsland 原生运行集成保持独立并提供可选课堂联动；
-- 文件查看器：TXT/Markdown 异步增量预览、CSV 分页解析、DOCX 安全结构化文本预览、XLSX 首工作表分页预览、PPTX 逐页结构化文本预览，默认只读并设资源安全上限；
+- 文件查看器：TXT/Markdown 异步增量预览、CSV 分页解析、DOC/DOCX 受限文本及可选 LibreOffice 分页、XLSX 多工作表分页、PPT 静态分页、PPTX 基础图文与内嵌视频、PDF 分页搜索和随包 LibVLC 本地视频解码，默认只读并设资源安全上限；
 - Windows GitHub Actions 构建及单元测试。
 
 ## 构建与运行

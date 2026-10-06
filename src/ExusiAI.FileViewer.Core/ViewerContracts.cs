@@ -33,6 +33,7 @@ public sealed record ViewerOpenOptions
     public int MaximumPresentationSlides { get; init; } = 2_000;
     public int MaximumPresentationTextCharactersPerSlide { get; init; } = 2 * 1024 * 1024;
     public int MaximumPresentationImageBytes { get; init; } = 8 * 1024 * 1024;
+    public int MaximumPresentationVideoBytes { get; init; } = 64 * 1024 * 1024;
     public int MaximumRichTextBytes { get; init; } = 8 * 1024 * 1024;
     public int MaximumCachedSlides { get; init; } = 4;
     public int MaximumCachedDocumentPages { get; init; } = 3;
@@ -62,6 +63,7 @@ public sealed record ViewerOpenOptions
         if (MaximumPresentationSlides is < 1 or > 100_000) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationSlides));
         if (MaximumPresentationTextCharactersPerSlide is < 1 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationTextCharactersPerSlide));
         if (MaximumPresentationImageBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationImageBytes));
+        if (MaximumPresentationVideoBytes is < 1 or > 256 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumPresentationVideoBytes));
         if (MaximumRichTextBytes is < 1 or > 64 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(MaximumRichTextBytes));
         if (MaximumCachedSlides is < 1 or > 128) throw new ArgumentOutOfRangeException(nameof(MaximumCachedSlides));
         if (MaximumCachedDocumentPages is < 1 or > 32) throw new ArgumentOutOfRangeException(nameof(MaximumCachedDocumentPages));
@@ -127,6 +129,12 @@ public interface IPagedPreviewDocument
     ValueTask<DocumentPagePreview> ReadPageAsync(int pageNumber, CancellationToken cancellationToken = default);
 }
 
+public interface IPageTextDocument
+{
+    int PageCount { get; }
+    ValueTask<string> ReadPageTextAsync(int pageNumber, CancellationToken cancellationToken = default);
+}
+
 public interface IEditableTextDocument : ITextPreviewDocument
 {
     ValueTask SaveTextAsync(
@@ -184,7 +192,15 @@ public sealed record SlideVisualPreview(
     double Width,
     double Height,
     ImmutableArray<SlideElementPreview> Elements,
-    ImmutableArray<SlideImagePreview> Images = default);
+    ImmutableArray<SlideImagePreview> Images = default,
+    ImmutableArray<SlideVideoPreview> Videos = default);
+
+public sealed record SlideVideoPreview(string PartName, double X, double Y, double Width, double Height, int ZIndex);
+
+public interface IEmbeddedVideoDocument
+{
+    ValueTask<byte[]> ReadVideoAsync(string partName, CancellationToken cancellationToken = default);
+}
 
 public sealed record SlideImageCrop(double Left, double Top, double Right, double Bottom);
 

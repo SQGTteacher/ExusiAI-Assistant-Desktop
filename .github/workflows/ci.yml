@@ -35,5 +35,16 @@ jobs:
         run: dotnet restore ExusiAI.sln
       - name: Build
         run: dotnet build ExusiAI.sln --no-restore --configuration Release -p:BuildNumber=${{ github.run_number }} -p:EnableClassIslandNative=true
+      - name: Verify packaged video decoder
+        shell: pwsh
+        run: |
+          $viewerDir = "src/ExusiAI.Desktop/bin/Release/net8.0-windows/viewer"
+          foreach ($relative in @("libvlc/win-x64/libvlc.dll", "libvlc/win-x64/libvlccore.dll", "libvlc/win-x64/plugins/codec/libavcodec_plugin.dll", "licenses/LibVLC-LGPL-2.1.txt")) {
+            if (!(Test-Path (Join-Path $viewerDir $relative))) { throw "Missing viewer dependency: $relative" }
+          }
       - name: Test
         run: dotnet test ExusiAI.sln --no-build --configuration Release
+      - name: Install Office layout engine for integration checks
+        run: choco install libreoffice-fresh --yes --no-progress --timeout=600
+      - name: Native viewer integration (PPT, DOC, DOCX, H.264, VP9)
+        run: dotnet test tests/ExusiAI.FileViewer.Integration.Tests/ExusiAI.FileViewer.Integration.Tests.csproj --configuration Release

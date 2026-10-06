@@ -28,7 +28,7 @@ public sealed class PptxFileViewerProvider : IFileViewerProvider
     }
 }
 
-public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocument
+public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocument, IEmbeddedVideoDocument
 {
     private readonly FileInfo file;
     private readonly ViewerOpenOptions options;
@@ -49,11 +49,23 @@ public sealed class StreamingPptxDocument : ViewerDocument, ISlidePreviewDocumen
             true,
             ImmutableArray.Create(
                 "当前会按幻灯片坐标和层级呈现内嵌图片、基础形状、文本、纯色填充、边框、旋转及图片裁剪/镜像；复杂主题效果仍可能降级。",
-                "图表、SmartArt、动画、转场、音视频、批注、宏、外部链接和嵌入对象不会执行。")))
+                "内嵌视频按需读取并由用户点击播放；不访问外链视频。图表、SmartArt、复杂动画、宏及 OLE 对象不会执行。")))
     {
         this.file = file;
         this.options = options;
         this.slides = slides;
+    }
+
+    public async ValueTask<byte[]> ReadVideoAsync(string partName, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (!partName.StartsWith("ppt/media/", StringComparison.Ordinal) || partName.Contains("..", StringComparison.Ordinal))
+            throw new FileRejectedException("视频部件路径无效。");
+        return await Task.Run(() =>
+        {
+            using var package = OpenXmlPackageGuard.Open(file, options);
+            return package.ReadRequiredPart(partName, options.MaximumPresentationVideoBytes);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public int SlideCount => slides.Length;
@@ -240,6 +252,7 @@ internal static class PptxPackageReader
         XNamespace a = DrawingNamespace;
         var elements = ImmutableArray.CreateBuilder<SlideElementPreview>();
         var images = ImmutableArray.CreateBuilder<SlideImagePreview>();
+        var videos = ImmutableArray.CreateBuilder<SlideVideoPreview>();
         var allText = new StringBuilder();
 
         var shapeTree = document.Descendants(p + "spTree").FirstOrDefault();
@@ -247,6 +260,7 @@ internal static class PptxPackageReader
             .Where(node => node.Name == p + "sp" || node.Name == p + "pic")
             .ToArray() ?? [];
         var relationships = ReadSlideImageRelationships(package, partName);
+        var videoRelationships = ReadSlideImageRelationships(package, partName, videos: true);
         for (var zIndex = 0; zIndex < visualNodes.Length; zIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -254,6 +268,18 @@ internal static class PptxPackageReader
             if (shape.Name == p + "pic")
             {
                 ReadPicture(package, shape, relationships, options, images, zIndex);
+                var videoId = shape.Descendants(a + "videoFile")
+                    .Select(node => node.Attribute(XName.Get("link", OfficeRelationshipNamespace))?.Value).FirstOrDefault();
+                if (videoId is not null && videoRelationships.TryGetValue(videoId, out var videoPart))
+                {
+                    var videoTransform = shape.Descendants(a + "xfrm").FirstOrDefault();
+                    if (TryNumber(videoTransform?.Element(a + "off"), "x", out var vx) &&
+                        TryNumber(videoTransform?.Element(a + "off"), "y", out var vy) &&
+                        TryNumber(videoTransform?.Element(a + "ext"), "cx", out var vw) &&
+                        TryNumber(videoTransform?.Element(a + "ext"), "cy", out var vh) && vw > 0 && vh > 0 &&
+                        videoPart.StartsWith("ppt/media/", StringComparison.Ordinal))
+                        videos.Add(new(videoPart, vx, vy, vw, vh, zIndex));
+                }
                 continue;
             }
 
@@ -294,9 +320,9 @@ internal static class PptxPackageReader
                 shapeKind, stroke, strokeWidth, rotation, zIndex));
         }
 
-        var visual = elements.Count == 0 && images.Count == 0
+        var visual = elements.Count == 0 && images.Count == 0 && videos.Count == 0
             ? null
-            : new SlideVisualPreview(slideWidth, slideHeight, elements.ToImmutable(), images.ToImmutable());
+            : new SlideVisualPreview(slideWidth, slideHeight, elements.ToImmutable(), images.ToImmutable(), videos.ToImmutable());
         return (allText.ToString().TrimEnd(), visual, ReadTransition(document, p));
     }
 
@@ -402,7 +428,7 @@ internal static class PptxPackageReader
         double.TryParse(line?.Attribute("w")?.Value, System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out var width) ? Math.Max(0, width / 12_700d) : 0;
 
-    private static Dictionary<string, string> ReadSlideImageRelationships(OpenXmlPackageGuard package, string slidePart)
+    private static Dictionary<string, string> ReadSlideImageRelationships(OpenXmlPackageGuard package, string slidePart, bool videos = false)
     {
         var directory = slidePart[..slidePart.LastIndexOf('/')];
         var fileName = slidePart[(slidePart.LastIndexOf('/') + 1)..];
@@ -420,7 +446,7 @@ internal static class PptxPackageReader
             var target = reader.GetAttribute("Target");
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(target) ||
                 string.Equals(reader.GetAttribute("TargetMode"), "External", StringComparison.OrdinalIgnoreCase) ||
-                type is null || !type.EndsWith(ImageRelationshipSuffix, StringComparison.Ordinal)) continue;
+                type is null || !type.EndsWith(videos ? "/video" : ImageRelationshipSuffix, StringComparison.Ordinal)) continue;
             relationships[id] = ResolvePartTarget(directory, target);
         }
         return relationships;

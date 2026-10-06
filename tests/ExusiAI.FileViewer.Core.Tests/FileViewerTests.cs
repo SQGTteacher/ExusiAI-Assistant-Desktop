@@ -9,6 +9,86 @@ public sealed class FileViewerTests : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), $"exusiai-viewer-{Guid.NewGuid():N}");
 
+    [Theory]
+    [InlineData(".mp4")]
+    [InlineData(".mkv")]
+    [InlineData(".avi")]
+    public async Task Video_provider_rejects_playlists_disguised_as_video(string extension)
+    {
+        var path = Path.Combine(directory, "playlist" + extension);
+        await File.WriteAllTextAsync(path, "#EXTM3U\nhttps://example.invalid/remote.mp4");
+        await Assert.ThrowsAsync<FileRejectedException>(async () =>
+            await new VideoFileViewerProvider().OpenAsync(path, ViewerOpenOptions.Default, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Page_search_is_bounded_and_does_not_render_bitmaps()
+    {
+        await using var document = new SearchablePages();
+        var hits = await ViewerSearchService.SearchAsync(document, "marker", maximumResults: 2);
+        Assert.Equal(2, hits.Length);
+        Assert.All(hits, hit => Assert.Equal(ViewerSearchLocationKind.Page, hit.Kind));
+        Assert.Equal(2, hits[1].PrimaryIndex);
+        Assert.Equal(2, document.ReadCount);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ViewerSearchService.SearchAsync(document, "marker", cancellationToken: cancellation.Token));
+    }
+
+    private sealed class SearchablePages() : ViewerDocument(new("test.pdf", "test.pdf", "PDF", 0,
+        ViewerCapabilities.Pages | ViewerCapabilities.Search, true, [])), IPageTextDocument, IPagedPreviewDocument
+    {
+        public int PageCount => 1000;
+        public int ReadCount { get; private set; }
+        public ValueTask<string> ReadPageTextAsync(int pageNumber, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ReadCount++;
+            return ValueTask.FromResult("Page marker " + pageNumber);
+        }
+        public ValueTask<DocumentPagePreview> ReadPageAsync(int pageNumber, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Search must not render pages.");
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Pptx_video_reads_only_internal_media_and_honors_byte_budget(bool external)
+    {
+        var path = Path.Combine(directory, "video.pptx");
+        CreatePptx(path);
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = archive.GetEntry("ppt/slides/slide1.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open())) xml = await reader.ReadToEndAsync();
+            entry.Delete();
+            xml = xml.Replace("<p:pic>", "<p:pic><p:nvPicPr><p:nvPr><a:videoFile r:link=\"rIdVideo\"/></p:nvPr></p:nvPicPr>", StringComparison.Ordinal);
+            WriteEntry(archive, "ppt/slides/slide1.xml", xml);
+            var relationships = archive.GetEntry("ppt/slides/_rels/slide1.xml.rels")!;
+            string rels;
+            using (var reader = new StreamReader(relationships.Open())) rels = await reader.ReadToEndAsync();
+            relationships.Delete();
+            rels = rels.Replace("</Relationships>", "<Relationship Id=\"rIdVideo\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/video\" Target=\"" +
+                (external ? "https://example.invalid/video.mp4\" TargetMode=\"External" : "../media/video.mp4") + "\"/></Relationships>", StringComparison.Ordinal);
+            WriteEntry(archive, "ppt/slides/_rels/slide1.xml.rels", rels);
+            WriteBinaryEntry(archive, "ppt/media/video.mp4", [0, 0, 0, 16, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0]);
+        }
+        await using var document = await new PptxFileViewerProvider().OpenAsync(path,
+            ViewerOpenOptions.Default with { MaximumPresentationVideoBytes = 8 }, CancellationToken.None);
+        var slide = await ((ISlidePreviewDocument)document).ReadSlideAsync(1);
+        Assert.NotNull(slide.Visual);
+        if (external) Assert.Empty(slide.Visual!.Videos);
+        else
+        {
+            var video = Assert.Single(slide.Visual!.Videos);
+            Assert.Equal("ppt/media/video.mp4", video.PartName);
+            await Assert.ThrowsAsync<FileRejectedException>(async () => await ((IEmbeddedVideoDocument)document).ReadVideoAsync(video.PartName));
+        }
+        await Assert.ThrowsAsync<FileRejectedException>(async () => await ((IEmbeddedVideoDocument)document).ReadVideoAsync("../outside.mp4"));
+    }
+
     [Fact]
     public void Document_page_window_loads_first_twenty_pages()
     {
