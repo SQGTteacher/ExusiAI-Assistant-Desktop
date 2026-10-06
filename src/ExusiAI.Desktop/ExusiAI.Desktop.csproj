@@ -6,6 +6,8 @@
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The in-process ClassIsland runtime needs Metadata's Immutable 9.x dependency. -->
+    <PackageReference Include="System.Collections.Immutable" />
     <Using Remove="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>

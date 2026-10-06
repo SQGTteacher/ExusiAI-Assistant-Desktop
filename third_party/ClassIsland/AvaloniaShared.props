@@ -15,5 +15,7 @@
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="HotAvalonia" Version="3.0.2" PrivateAssets="All" Publish="True"/>
+        <!-- Honor HotAvalonia.Core/Metadata's declared minimum on net8.0. -->
+        <PackageReference Include="System.Collections.Immutable" Version="9.0.3" />
     </ItemGroup>
 </Project>
