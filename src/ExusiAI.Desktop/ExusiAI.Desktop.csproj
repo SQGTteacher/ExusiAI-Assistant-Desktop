@@ -102,6 +102,13 @@
     </ItemGroup>
     <Error Condition="'@(FileViewerForeignExecutables)' != ''" Text="External executables are forbidden in the viewer package: @(FileViewerForeignExecutables)" />
   </Target>
+  <!-- Self-contained .NET adds this optional external diagnostic tool to the host as well. -->
+  <Target Name="ExcludeExternalCrashDumpHelper" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'createdump.exe'" />
+    </ItemGroup>
+  </Target>
   <Target Name="CopyFileViewerPackageToPublish" AfterTargets="Publish" DependsOnTargets="PublishFileViewerRuntime">
     <PropertyGroup><FileViewerPublishPackageDir>$(PublishDir)packages\exusiai.file-viewer</FileViewerPublishPackageDir></PropertyGroup>
     <MakeDir Directories="$(FileViewerPublishPackageDir)" />
