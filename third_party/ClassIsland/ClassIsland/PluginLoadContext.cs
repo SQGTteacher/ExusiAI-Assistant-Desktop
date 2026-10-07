@@ -55,8 +55,13 @@ public class PluginLoadContext : AssemblyLoadContext
         {
             // 为了防止因引用 WinRT 依赖导致重复初始化 WinRT 相关运行时使应用代码无法正常调用 WinRT，
             // 这里将插件要的加载的 WinRT 相关程序集替换为应用自带的 WinRT 相关程序集。
-            return null;
+            return ResolveRuntimeAssembly(assemblyName);
         }
+        // Embedded ClassIsland is not in AssemblyLoadContext.Default. SDK and
+        // UI contracts must retain the runtime's identities, even if a plugin
+        // carries its own copies, or its services/components cannot be assigned.
+        if (ResolveRuntimeAssembly(assemblyName) is { } runtimeAssembly)
+            return runtimeAssembly;
         // 尝试查找依赖
         foreach (var dep in Info.Manifest.Dependencies)
         {
@@ -81,6 +86,14 @@ public class PluginLoadContext : AssemblyLoadContext
         }
 
         return null;
+    }
+
+    private static Assembly? ResolveRuntimeAssembly(AssemblyName name)
+    {
+        var runtime = GetLoadContext(typeof(PluginLoadContext).Assembly);
+        if (runtime is null || runtime == Default) return null;
+        try { return runtime.LoadFromAssemblyName(name); }
+        catch (FileNotFoundException) { return null; }
     }
 
     /// <summary>

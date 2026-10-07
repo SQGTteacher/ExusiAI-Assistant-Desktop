@@ -42,11 +42,24 @@ internal static class ClassIslandVerification
             var runtimeContext = AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!;
             if (runtimeContext == AssemblyLoadContext.Default)
                 throw new InvalidOperationException("ClassIsland runtime dependencies are not isolated.");
+            var core = runtimeContext.LoadFromAssemblyName(new AssemblyName("ClassIsland.Core"));
+            var pluginInfo = Activator.CreateInstance(core.GetType("ClassIsland.Core.Models.Plugin.PluginInfo", throwOnError: true)!)!;
+            var application = runtimeContext.LoadFromAssemblyName(new AssemblyName("ClassIsland"));
+            var pluginDirectory = Path.Combine(outputDirectory, "plugin-sdk-probe");
+            Directory.CreateDirectory(pluginDirectory);
+            var pluginPath = Path.Combine(pluginDirectory, "SdkProbe.dll");
+            File.Copy(entryPoint.Assembly.Location, pluginPath, overwrite: true);
+            var nested = (AssemblyLoadContext)Activator.CreateInstance(
+                application.GetType("ClassIsland.PluginLoadContext", throwOnError: true)!,
+                pluginInfo, pluginPath, false)!;
+            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions" })
+                if (!ReferenceEquals(runtimeContext.LoadFromAssemblyName(new AssemblyName(name)), nested.LoadFromAssemblyName(new AssemblyName(name))))
+                    throw new InvalidOperationException($"ClassIsland plugin SDK identity mismatch: {name}");
             var events = runtimeContext.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));
             if (events.GetName().Version?.Major != 9)
                 throw new InvalidOperationException($"Incorrect shared SystemEvents version: {events.FullName}");
             File.WriteAllText(Path.Combine(outputDirectory, "result.txt"),
-                "PASS: packaged ClassIsland started in the WPF process; island visible, settings opened, island hidden; isolated SystemEvents 9 loaded.");
+                "PASS: packaged ClassIsland started in the WPF process; island visible, settings opened, island hidden; isolated SystemEvents 9 and nested plugin SDK identities verified.");
         }
         finally
         {

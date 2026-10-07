@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 using ExusiAI.Plugin.ClassIsland;
@@ -12,7 +13,6 @@ public sealed class ClassIslandDependencyTests
     {
         var root = Path.Combine(Path.GetTempPath(), "island-dependencies-" + Guid.NewGuid().ToString("N"));
         var native = Path.Combine(root, "NativeClassIsland");
-        ClassIslandRuntimeLoadContext? context = null;
         try
         {
             Directory.CreateDirectory(native);
@@ -49,17 +49,35 @@ public sealed class ClassIslandDependencyTests
                     [name + "/1.0.0"] = new { type = "package", serviceable = false, sha512 = "" }
                 }
             }));
-            context = new ClassIslandRuntimeLoadContext(main, isCollectible: true);
-            // An identically named assembly is already loaded by the host. Private loading
-            // must still choose the packaged implementation instead of reusing that assembly.
+            var unloaded = LoadAndAssert(main, name, implementation);
+            // Unload requests collection; Windows releases the mapped DLL only
+            // after the loader allocator and its assembly references are collected.
+            for (var attempt = 0; attempt < 10 && unloaded.IsAlive; attempt++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            }
+            Assert.False(unloaded.IsAlive);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference LoadAndAssert(string main, string name, string implementation)
+    {
+        var context = new ClassIslandRuntimeLoadContext(main, isCollectible: true);
+        var weak = new WeakReference(context);
+        try
+        {
             var loaded = context.LoadFromAssemblyName(new AssemblyName(name));
             Assert.NotSame(typeof(ClassIslandHost).Assembly, loaded);
             Assert.Equal(Path.GetFullPath(implementation), loaded.Location);
         }
-        finally
-        {
-            context?.Unload();
-            if (Directory.Exists(root)) Directory.Delete(root, true);
-        }
+        finally { context.Unload(); }
+        return weak;
     }
 }
