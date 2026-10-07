@@ -32,6 +32,7 @@ internal static class FluentThemeBridge
             "ComboBoxBackgroundPointerOver", "TextControlBackgroundPointerOver", "MenuBarItemBackgroundSelected");
         Set(palette.AccentSoft, "ListBoxItemSelectedBackgroundThemeBrush");
         Set(palette.Border, "ComboBoxDropDownBorderBrush", "ControlStrokeColorDefaultBrush", "CardStrokeColorDefaultBrush");
+        Set(palette.Accent, "AccentButtonBackground", "AccentButtonBackgroundPointerOver", "AccentButtonBackgroundPressed");
         var foreground = App.GetContrastingForeground(palette.Accent);
         Set(foreground, "AccentButtonForeground", "AccentButtonForegroundPointerOver", "AccentButtonForegroundPressed",
             "TextOnAccentFillColorPrimaryBrush");

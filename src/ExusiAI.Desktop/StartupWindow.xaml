@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ExusiAI 正在启动" Width="700" Height="420" MinWidth="600" MinHeight="380"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize"
-        Background="{DynamicResource AppBackgroundBrush}" ShowInTaskbar="True">
+        Foreground="{DynamicResource TextPrimaryBrush}" Background="{DynamicResource AppBackgroundBrush}" ShowInTaskbar="True">
     <Border Margin="12" CornerRadius="18" Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="44,36">
         <Grid>

@@ -7,12 +7,12 @@
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         FontFamily="Segoe UI Variable, Segoe UI, Microsoft YaHei UI"
-        Background="{DynamicResource AppBackgroundBrush}">
+        Background="{DynamicResource AppBackgroundBrush}" Foreground="{DynamicResource TextPrimaryBrush}">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="{DynamicResource TouchTitleBarHeight}" CornerRadius="0"
                             GlassFrameThickness="0" ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
-    <Grid x:Name="ChromeRoot">
+    <Grid x:Name="ChromeRoot" Background="{DynamicResource AppBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition x:Name="TitleBarRow" Height="48" />
             <RowDefinition Height="*" />

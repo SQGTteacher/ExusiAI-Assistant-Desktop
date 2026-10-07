@@ -32,7 +32,6 @@
     <Style TargetType="TextBlock">
         <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, Microsoft YaHei UI" />
         <Setter Property="FontSize" Value="14" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
     <Style x:Key="PageTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="FontSize" Value="28" />

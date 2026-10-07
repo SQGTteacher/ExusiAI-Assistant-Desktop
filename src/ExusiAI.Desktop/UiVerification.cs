@@ -50,6 +50,12 @@ internal static class UiVerification
                         throw new InvalidOperationException($"Page creation failed: {item.Route}");
                     await Task.Delay(300); // Let the production page transition finish.
                     await window.Dispatcher.InvokeAsync(window.UpdateLayout, DispatcherPriority.ApplicationIdle);
+                    // Hosted runners can have a 1024px desktop. Arrange the real content
+                    // at the requested DIP size so both layout cases remain deterministic.
+                    var content = (FrameworkElement)window.Content;
+                    content.Measure(new System.Windows.Size(width, window.Height));
+                    content.Arrange(new Rect(0, 0, width, window.Height));
+                    content.UpdateLayout();
                     Capture(window, Path.Combine(outputDirectory, $"{name}-{width}-{item.Route}.png"));
                 }
             }
