@@ -78,6 +78,7 @@ public partial class MainWindow : Window
 
     private void AnimateNavigation(double offset)
     {
+        if (!SystemParameters.ClientAreaAnimation) return;
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
         AnimateElement(PageHost, offset, 230, easing);
         AnimateElement(SectionTitle, offset > 0 ? 8 : -8, 180, easing);

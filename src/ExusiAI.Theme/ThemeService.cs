@@ -27,18 +27,18 @@ public sealed record ThemeDefinition(
 
 public static class ThemeCatalog
 {
-    // Neutral red/black/white defaults with a warm gold secondary accent.
+    // Quiet Fluent surfaces; color is reserved for selection and primary actions.
     public static ThemePalette Light { get; } = new(
-        "#F6F3F1", "#FFFFFF", "#EEE8E6", "#242126", "#746B70", "#D9CFCC",
-        "#C84450", "#F5DDE0", "#2F8F72", "#C89035", "#C94E5C");
+        "#F4F5F7", "#FFFFFF", "#EBEDF0", "#202126", "#626771", "#E0E3E8",
+        "#B83D50", "#F8E9EC", "#237A58", "#9A6516", "#C12E43");
 
     public static ThemePalette Dark { get; } = new(
-        "#101114", "#17191F", "#22252C", "#F5F2EF", "#B2A9AD", "#3B3E46",
-        "#D84B57", "#402126", "#58C39A", "#E6BD68", "#E15D6B");
+        "#191A1E", "#222328", "#2C2E35", "#F2F3F5", "#ADB1BC", "#383B44",
+        "#F096A4", "#392830", "#73CDA7", "#E5BE78", "#F2919F");
 
     public static IReadOnlyList<ThemeDefinition> All { get; } =
     [
-        new("system", "跟随系统", "自动匹配 Windows 深浅色，并保持清晰的红黑白金视觉层级", false, Light, Dark),
+        new("system", "跟随系统", "随 Windows 自动切换浅色与深色", false, Light, Dark),
         new("paper", "Paper", "克制清晰的暖白工作区", false,
             new("#EDF7F5F0", "#F9FFFDF8", "#E8EEE9E1", "#24231F", "#706E66", "#9ED8D3C8", "#3568D4", "#D8E4EDFF", "#2E8B68", "#B97818", "#C84B55")),
         new("solarized", "Solarized Light", "适合长时间阅读的低对比浅色", false,

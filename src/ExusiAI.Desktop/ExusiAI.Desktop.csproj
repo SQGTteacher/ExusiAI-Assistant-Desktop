@@ -27,8 +27,12 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="WPF-UI" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="licenses/WPF-UI-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="RemoveLegacySamplePackage" BeforeTargets="Build;Publish">
     <RemoveDir Directories="$(TargetDir)packages\exusiai.sample;$(PublishDir)packages\exusiai.sample;$(TargetDir)packages\exusiai.misha-showcase;$(PublishDir)packages\exusiai.misha-showcase" />

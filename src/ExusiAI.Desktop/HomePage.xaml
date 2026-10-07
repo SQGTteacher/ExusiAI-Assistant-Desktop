@@ -1,130 +1,51 @@
 <UserControl x:Class="ExusiAI.Desktop.HomePage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel MaxWidth="1180">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="欢迎回来" Style="{StaticResource PageTitle}" />
-                    <TextBlock Text="ExusiAI Assistant · 为课堂大屏准备的轻量扩展工作台" Style="{StaticResource PageSubtitle}" />
-                </StackPanel>
-                <Border Grid.Column="1" Background="{DynamicResource AccentSoftBrush}" CornerRadius="14" Padding="14,8"
-                        VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="8" Height="8" Fill="{DynamicResource SuccessBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
-                        <TextBlock Text="运行中" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
-            </Grid>
-
-            <Border Style="{StaticResource LaunchCard}" Margin="0,22,0,0" Background="{DynamicResource SurfaceBrush}">
+        <StackPanel MaxWidth="1120" HorizontalAlignment="Stretch" Margin="0,0,8,8">
+            <TextBlock Text="欢迎回来" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="让工具各就其位，把时间留给课堂。" Style="{StaticResource PageSubtitle}" />
+            <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="10" Padding="28" Margin="0,26,0,0">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Border Width="34" Height="34" CornerRadius="9" Background="{DynamicResource AccentBrush}">
-                                <TextBlock Text="E" Foreground="#10141C" FontSize="17" FontWeight="Bold"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding ProductName}" FontSize="15" FontWeight="SemiBold" />
-                                <TextBlock Text="Classroom preview channel" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                            </StackPanel>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Version}" FontSize="42" FontWeight="SemiBold" Margin="0,24,0,0" />
-                        <TextBlock Text="先行预览版本 · 插件优先 · 课堂可靠性优先" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" />
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="96" /></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,20,0">
+                        <TextBlock Text="准备好，开始上课。" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="课表、课件和课堂工具，在同一个工作台里就绪。" Style="{StaticResource PageSubtitle}" />
+                        <ui:Button Content="打开插件工作台" Appearance="Primary" Icon="{ui:SymbolIcon Grid24}"
+                                   HorizontalAlignment="Left" Margin="0,22,0,0"
+                                   Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                   CommandParameter="workspace" />
                     </StackPanel>
-
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="40,0,10,0">
-                        <TextBlock Text="BUILD" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" />
-                        <TextBlock Text="{Binding BuildNumber}" FontSize="25" FontWeight="SemiBold" Margin="0,4,0,0" HorizontalAlignment="Right" />
-                        <Border Height="3" Width="62" CornerRadius="1.5" Background="{DynamicResource AccentWarmBrush}" Margin="0,12,0,0" HorizontalAlignment="Right" />
-                    </StackPanel>
+                    <ui:SymbolIcon Grid.Column="1" Symbol="Board24" FontSize="80" Foreground="{DynamicResource AccentBrush}" Opacity="0.8" />
                 </Grid>
             </Border>
-
-            <TextBlock Text="开始" FontSize="17" FontWeight="SemiBold" Margin="0,24,0,12" />
-            <UniformGrid Columns="4">
-                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CommandParameter="workspace" Margin="0,0,6,0" Padding="16" HorizontalContentAlignment="Stretch">
-                    <StackPanel>
-                        <TextBlock Text="插件工作台" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                        <TextBlock Text="打开 Misha、文件查看器等插件" Margin="0,5,0,0"
-                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Opacity="0.76" TextWrapping="Wrap" FontSize="11" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CommandParameter="extensions" Margin="2,0,4,0" Padding="16" HorizontalContentAlignment="Stretch">
-                    <StackPanel>
-                        <TextBlock Text="扩展管理" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                        <TextBlock Text="查看加载状态、启用与故障信息" Margin="0,5,0,0"
-                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Opacity="0.76" TextWrapping="Wrap" FontSize="11" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CommandParameter="theme" Margin="4,0,2,0" Padding="16" HorizontalContentAlignment="Stretch">
-                    <StackPanel>
-                        <TextBlock Text="主题与外观" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                        <TextBlock Text="调整主程序主题与窗口材质" Margin="0,5,0,0"
-                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Opacity="0.76" TextWrapping="Wrap" FontSize="11" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        CommandParameter="settings" Margin="6,0,0,0" Padding="16" HorizontalContentAlignment="Stretch">
-                    <StackPanel>
-                        <TextBlock Text="软件设置" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                        <TextBlock Text="版本、目录与运行环境" Margin="0,5,0,0"
-                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Opacity="0.76" TextWrapping="Wrap" FontSize="11" />
-                    </StackPanel>
-                </Button>
+            <TextBlock Text="常用入口" Style="{StaticResource SectionHeading}" />
+            <UniformGrid Columns="2">
+                <ui:CardAction Margin="0,0,6,12" Icon="{ui:SymbolIcon Apps24}"
+                               Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="extensions">
+                    <StackPanel><TextBlock Text="扩展管理" FontWeight="SemiBold" /><TextBlock Text="导入、启用和管理插件" Style="{StaticResource Caption}" Margin="0,5,0,0" /></StackPanel>
+                </ui:CardAction>
+                <ui:CardAction Margin="6,0,0,12" Icon="{ui:SymbolIcon Folder24}"
+                               Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="marketplace">
+                    <StackPanel><TextBlock Text="本地资源库" FontWeight="SemiBold" /><TextBlock Text="查找已经安装的资源" Style="{StaticResource Caption}" Margin="0,5,0,0" /></StackPanel>
+                </ui:CardAction>
+                <ui:CardAction Margin="0,0,6,0" Icon="{ui:SymbolIcon Color24}"
+                               Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="theme">
+                    <StackPanel><TextBlock Text="外观与主题" FontWeight="SemiBold" /><TextBlock Text="选择配色与窗口材质" Style="{StaticResource Caption}" Margin="0,5,0,0" /></StackPanel>
+                </ui:CardAction>
+                <ui:CardAction Margin="6,0,0,0" Icon="{ui:SymbolIcon Settings24}"
+                               Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="settings">
+                    <StackPanel><TextBlock Text="软件设置" FontWeight="SemiBold" /><TextBlock Text="版本信息、数据与日志" Style="{StaticResource Caption}" Margin="0,5,0,0" /></StackPanel>
+                </ui:CardAction>
             </UniformGrid>
-
-            <TextBlock Text="运行概览" FontSize="17" FontWeight="SemiBold" Margin="0,24,0,12" />
-            <UniformGrid Columns="3">
-                <Border Style="{StaticResource LaunchCard}" Margin="0,0,8,0">
-                    <StackPanel>
-                        <TextBlock Text="已发现扩展" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
-                        <TextBlock Text="{Binding InstalledCount}" FontSize="30" FontWeight="SemiBold" Margin="0,10,0,0" />
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource LaunchCard}" Margin="4,0">
-                    <StackPanel>
-                        <TextBlock Text="正在运行" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
-                        <TextBlock Text="{Binding RunningCount}" Foreground="{DynamicResource SuccessBrush}" FontSize="30" FontWeight="SemiBold" Margin="0,10,0,0" />
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource LaunchCard}" Margin="8,0,0,0">
-                    <StackPanel>
-                        <TextBlock Text="异常记录" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
-                        <TextBlock Text="{Binding FailedCount}" Foreground="{DynamicResource DangerBrush}" FontSize="30" FontWeight="SemiBold" Margin="0,10,0,0" />
-                    </StackPanel>
-                </Border>
-            </UniformGrid>
-
-            <Border Style="{StaticResource LaunchCard}" Margin="0,18,0,0">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="46" />
-                        <ColumnDefinition />
-                    </Grid.ColumnDefinitions>
-                    <Border Width="34" Height="34" CornerRadius="17" Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top">
-                        <Path Data="M12,3 V21 M3,12 H21 M5.6,5.6 L18.4,18.4 M18.4,5.6 L5.6,18.4"
-                              Width="18" Height="18" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5"
-                              HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="启动策略 · 主页面优先" FontSize="15" FontWeight="SemiBold" />
-                        <TextBlock Text="ExusiAI 主窗口会先显示并保持可操作；扩展发现与初始化随后进行。插件状态会在上方运行概览中实时更新。"
-                                   TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    </StackPanel>
-                </Grid>
+            <TextBlock Text="运行状态" Style="{StaticResource SectionHeading}" />
+            <Border Background="{DynamicResource AppBackgroundBrush}" CornerRadius="8" Padding="20,16">
+                <UniformGrid Columns="3">
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding InstalledCount}" FontSize="22" FontWeight="SemiBold" /><TextBlock Text="个扩展" Style="{StaticResource Caption}" Margin="8,0,0,0" VerticalAlignment="Center" /></StackPanel>
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding RunningCount}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource SuccessBrush}" /><TextBlock Text="个运行中" Style="{StaticResource Caption}" Margin="8,0,0,0" VerticalAlignment="Center" /></StackPanel>
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding FailedCount}" FontSize="22" FontWeight="SemiBold" /><TextBlock Text="项异常" Style="{StaticResource Caption}" Margin="8,0,0,0" VerticalAlignment="Center" /></StackPanel>
+                </UniformGrid>
             </Border>
         </StackPanel>
     </ScrollViewer>

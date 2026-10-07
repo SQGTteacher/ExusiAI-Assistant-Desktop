@@ -1,42 +1,47 @@
-<UserControl x:Class="ExusiAI.Desktop.MarketplacePage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<UserControl x:Class="ExusiAI.Desktop.MarketplacePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
     <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-        <Grid>
-            <StackPanel><TextBlock Text="本地资源库" Style="{StaticResource PageTitle}" /><TextBlock Text="检索宿主已经验证的本地包，并查看兼容性与依赖信息。" Style="{StaticResource PageSubtitle}" /></StackPanel>
-            <Button Content="刷新目录" Command="{Binding RefreshCommand}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions>
+        <StackPanel><TextBlock Text="本地资源库" Style="{StaticResource PageTitle}" /><TextBlock Text="发现已安装的插件与资源。" Style="{StaticResource PageSubtitle}" /></StackPanel>
+        <Grid Grid.Row="1" Margin="0,24,0,18">
+            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <ui:TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="搜索名称、发布者或插件 ID"
+                        Icon="{ui:SymbolIcon Search24}" MinHeight="44" Margin="0,0,12,0" AutomationProperties.Name="搜索本地资源" />
+            <ui:Button Grid.Column="1" Content="刷新" Icon="{ui:SymbolIcon ArrowClockwise24}" Command="{Binding RefreshCommand}" />
         </Grid>
-        <Grid Grid.Row="1" Margin="0,20,0,14">
-            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="12" /><ColumnDefinition Width="150" /><ColumnDefinition Width="8" /><ColumnDefinition Width="150" /></Grid.ColumnDefinitions>
-            <Border Style="{StaticResource Card}" Padding="12,8">
-                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
-                    <Path Data="M4,12 H20 M12,4 V20" Width="15" Height="15" Stretch="Uniform" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" />
-                    <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" BorderThickness="0" FontSize="13" VerticalContentAlignment="Center" ToolTip="按名称、ID、发布者或类型搜索" />
-                </Grid>
-            </Border>
-            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="12,8"><StackPanel><TextBlock Text="包" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding PackageCount}" FontSize="19" FontWeight="SemiBold" /></StackPanel></Border>
-            <Border Grid.Column="4" Style="{StaticResource Card}" Padding="12,8"><StackPanel><TextBlock Text="发布者" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding PublisherCount}" FontSize="19" FontWeight="SemiBold" /></StackPanel></Border>
-        </Grid>
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-            <Grid>
-                <ItemsControl ItemsSource="{Binding Packages}">
+        <Grid Grid.Row="2">
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions>
+            <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,12"><Run Text="{Binding PackageCount, Mode=OneWay}" /><Run Text=" 个资源 · " /><Run Text="{Binding PublisherCount, Mode=OneWay}" /><Run Text=" 位发布者" /></TextBlock>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Packages}" Margin="0,0,8,0">
                     <ItemsControl.ItemTemplate><DataTemplate>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,9">
-                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition /><ColumnDefinition Width="170" /></Grid.ColumnDefinitions>
-                                <Border Width="30" Height="30" CornerRadius="5" Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top"><Path Data="M4,7 H20 V20 H4 Z M8,7 V5 A4,4 0 0 1 16,5 V7" Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5" /></Border>
-                                <StackPanel Grid.Column="1"><TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" /><TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" /><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><TextBlock Text="{Binding PackageId}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="  ·  " Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding Publisher}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" /></StackPanel></StackPanel>
-                                <StackPanel Grid.Column="2" Margin="14,0,0,0"><TextBlock Text="{Binding Type}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" HorizontalAlignment="Right" /><TextBlock Text="{Binding Version, StringFormat='版本 {0}'}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" HorizontalAlignment="Right" /><TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" HorizontalAlignment="Right"><Run Text="API " /><Run Text="{Binding ApiVersion, Mode=OneWay}" /><Run Text="  ·  依赖 " /><Run Text="{Binding DependencyCount, Mode=OneWay}" /><Run Text="  ·  权限 " /><Run Text="{Binding PermissionCount, Mode=OneWay}" /></TextBlock></StackPanel>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <Border Width="36" Height="36" CornerRadius="8" Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Top" HorizontalAlignment="Left"><ui:SymbolIcon Symbol="Folder24" FontSize="22" Foreground="{DynamicResource AccentBrush}" /></Border>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Description}" Style="{StaticResource Caption}" Margin="0,6,0,0" />
+                                    <WrapPanel Margin="0,12,0,0"><TextBlock Text="{Binding Publisher}" Style="{StaticResource Caption}" Margin="0,0,14,0" /><TextBlock Text="{Binding Version}" Style="{StaticResource Caption}" Margin="0,0,14,0" /><TextBlock Text="{Binding Type}" Style="{StaticResource Caption}" /></WrapPanel>
+                                    <Expander Header="详细信息" Margin="0,12,0,0">
+                                        <StackPanel Margin="0,8,0,0"><TextBlock Text="{Binding PackageId}" Style="{StaticResource Caption}" />
+                                            <TextBlock Style="{StaticResource Caption}" Margin="0,6,0,0"><Run Text="API " /><Run Text="{Binding ApiVersion, Mode=OneWay}" /><Run Text=" · 依赖 " /><Run Text="{Binding DependencyCount, Mode=OneWay}" /><Run Text=" · 权限 " /><Run Text="{Binding PermissionCount, Mode=OneWay}" /></TextBlock>
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
                             </Grid>
                         </Border>
                     </DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding PackageCount}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></StackPanel.Style>
-                    <Path Data="M4,7 H20 V20 H4 Z M8,7 V5 A4,4 0 0 1 16,5 V7" Width="34" Height="34" Stretch="Uniform" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" />
-                    <TextBlock Text="没有匹配的本地包" FontSize="17" FontWeight="SemiBold" Margin="0,13,0,0" HorizontalAlignment="Center" />
-                    <TextBlock Text="清除搜索词，或将经过验证的包放入 packages 目录。" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" />
-                </StackPanel>
-                <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,10" />
-            </Grid>
-        </ScrollViewer>
+            </ScrollViewer>
+            <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="360">
+                <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding PackageCount}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+                <ui:SymbolIcon Symbol="Search24" FontSize="40" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Text="没有找到匹配的资源" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,16,0,0" />
+                <TextBlock Text="试试其他关键词，或前往扩展管理导入插件。" Style="{StaticResource Caption}" TextAlignment="Center" Margin="0,8,0,0" />
+            </StackPanel>
+            <TextBlock Grid.Row="1" Text="{Binding ErrorMessage}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" VerticalAlignment="Bottom" />
+        </Grid>
     </Grid>
 </UserControl>

@@ -1,94 +1,76 @@
 <Window x:Class="ExusiAI.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="ExusiAI Assistant" Width="1260" Height="800" MinWidth="900" MinHeight="620"
+        Title="ExusiAI Assistant" Width="1200" Height="800" MinWidth="900" MinHeight="620"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        FontFamily="Segoe UI Variable, Segoe UI, Microsoft YaHei UI"
         Background="{DynamicResource AppBackgroundBrush}">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="{DynamicResource TouchTitleBarHeight}" CornerRadius="0" GlassFrameThickness="0" ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
+        <shell:WindowChrome CaptionHeight="{DynamicResource TouchTitleBarHeight}" CornerRadius="0"
+                            GlassFrameThickness="0" ResizeBorderThickness="7" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
-
-    <Grid x:Name="ChromeRoot" Background="{DynamicResource AppBackgroundBrush}">
+    <Grid x:Name="ChromeRoot">
         <Grid.RowDefinitions>
             <RowDefinition x:Name="TitleBarRow" Height="48" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-
-        <Border Grid.Row="0" Background="{DynamicResource WindowTopBarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-            <Grid MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="196" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
-                    <Border Width="28" Height="28" CornerRadius="7" Background="{DynamicResource AccentBrush}">
-                        <TextBlock Text="E" Foreground="White" FontSize="14" FontWeight="Bold"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="ExusiAI" FontSize="13" FontWeight="SemiBold" />
-                        <TextBlock Text="Assistant" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,-1,0,0" />
-                    </StackPanel>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <Border Width="3" Height="18" CornerRadius="1.5" Background="{DynamicResource AccentWarmBrush}" Margin="0,0,10,0" />
-                    <TextBlock x:Name="SectionTitle" Text="{Binding SelectedItem.Title}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Button Style="{StaticResource GhostButton}" Width="46" Height="46" Padding="0" ToolTip="最小化" Click="Minimize_OnClick">
-                        <Path Data="M4,12 H20" Width="14" Height="14" Stretch="Uniform"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" />
-                    </Button>
-                    <Button Style="{StaticResource GhostButton}" Width="46" Height="46" Padding="0" ToolTip="最大化或还原" Click="Maximize_OnClick">
-                        <Path Data="M5,5 H19 V19 H5 Z" Width="14" Height="14" Stretch="Uniform"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" />
-                    </Button>
-                    <Button Style="{StaticResource GhostButton}" Width="46" Height="46" Padding="0" ToolTip="隐藏到系统托盘" Click="Close_OnClick">
-                        <Path Data="M5,5 L19,19 M19,5 L5,19" Width="14" Height="14" Stretch="Uniform"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" />
-                    </Button>
-                </StackPanel>
-            </Grid>
-        </Border>
-
+        <Grid Background="{DynamicResource WindowTopBarBrush}" MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,0,0">
+                <Border Width="24" Height="24" CornerRadius="6" Background="{DynamicResource AccentBrush}">
+                    <TextBlock Text="E" Foreground="{DynamicResource AccentForegroundBrush}" FontSize="14" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="ExusiAI Assistant" FontSize="12" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button Style="{StaticResource GhostButton}" Width="46" MinHeight="0" Padding="0" AutomationProperties.Name="最小化"
+                        ToolTip="最小化" Click="Minimize_OnClick"><ui:SymbolIcon Symbol="Subtract16" FontSize="16" /></Button>
+                <Button Style="{StaticResource GhostButton}" Width="46" MinHeight="0" Padding="0" AutomationProperties.Name="最大化或还原"
+                        ToolTip="最大化或还原" Click="Maximize_OnClick"><ui:SymbolIcon Symbol="Maximize16" FontSize="16" /></Button>
+                <Button Style="{StaticResource GhostButton}" Width="46" MinHeight="0" Padding="0" AutomationProperties.Name="隐藏到托盘"
+                        ToolTip="隐藏到系统托盘" Click="Close_OnClick"><ui:SymbolIcon Symbol="Dismiss16" FontSize="16" /></Button>
+            </StackPanel>
+        </Grid>
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="72" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition />
             </Grid.ColumnDefinitions>
-
-            <Border Grid.Column="0" Background="{DynamicResource NavRailBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
-                <Grid Margin="8,10,8,10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <ListBox ItemsSource="{Binding NavigationItems}" SelectedItem="{Binding SelectedItem}" Style="{StaticResource NavRailList}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Path Data="{Binding IconData}" Width="20" Height="20" Stretch="Uniform"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
-                                      StrokeThickness="1.55" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-
-                    <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,10,0,2">
-                        <Border Width="34" Height="1" Background="{DynamicResource BorderBrush}" Margin="0,0,0,10" />
-                        <TextBlock Text="PRE" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
-                        <TextBlock Text="{Binding PreviewVersion}" FontSize="8.5" Foreground="{DynamicResource TextSecondaryBrush}"
-                                   ToolTip="{Binding PreviewVersion}" TextTrimming="CharacterEllipsis" Width="48" HorizontalAlignment="Center" />
-                    </StackPanel>
+            <Grid Width="{DynamicResource TouchSidebarWidth}" Margin="12,22,12,16">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <TextBlock Text="工作空间" Style="{StaticResource Caption}" Margin="14,0,0,14" />
+                <ListBox Grid.Row="1" ItemsSource="{Binding NavigationItems}" SelectedItem="{Binding SelectedItem}"
+                         Style="{StaticResource NavigationList}" VerticalAlignment="Top" AutomationProperties.Name="主导航">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <ui:SymbolIcon Symbol="{Binding Icon}" FontSize="20" HorizontalAlignment="Left"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel Grid.Row="2" Margin="14,16,8,0">
+                    <TextBlock Text="为每一堂课，留出更多可能。" Style="{StaticResource Caption}" FontSize="11" />
+                    <TextBlock Text="{Binding PreviewVersion}" Style="{StaticResource Caption}" FontSize="10" Margin="0,8,0,0"
+                               ToolTip="{Binding PreviewVersion}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                </StackPanel>
+            </Grid>
+            <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1,1,0,0" CornerRadius="12,0,0,0" Margin="0,8,0,0">
+                <Grid Margin="28,22,28,24">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions>
+                    <TextBlock x:Name="SectionTitle" Text="{Binding SelectedItem.Title}" Style="{StaticResource Caption}" Margin="0,0,0,20" />
+                    <ContentControl x:Name="PageHost" Grid.Row="1" Content="{Binding CurrentPage}" />
                 </Grid>
             </Border>
-
-            <ContentControl x:Name="PageHost" Grid.Column="1" Content="{Binding CurrentPage}" Margin="26,22,26,24" />
         </Grid>
     </Grid>
 </Window>

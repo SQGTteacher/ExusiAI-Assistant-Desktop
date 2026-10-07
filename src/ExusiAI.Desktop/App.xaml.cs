@@ -30,6 +30,22 @@ public partial class App : Application
         // dispatcher alive until the main window has actually been shown.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         base.OnStartup(e);
+        if (e.Args is ["--verify-ui", var outputDirectory])
+        {
+            try
+            {
+                host = BuildHost();
+                await UiVerification.RunAsync(host.Services, outputDirectory);
+                Shutdown(0);
+            }
+            catch (Exception exception)
+            {
+                Directory.CreateDirectory(outputDirectory);
+                File.WriteAllText(Path.Combine(outputDirectory, "failure.txt"), exception.ToString());
+                Shutdown(1);
+            }
+            return;
+        }
         try
         {
             startupWindow = new StartupWindow();
@@ -291,6 +307,7 @@ public partial class App : Application
 
     public static void ApplyTheme(ThemePalette palette)
     {
+        FluentThemeBridge.Apply(palette);
         SetBrush("AppBackgroundBrush", palette.Background);
         SetBrush("SurfaceBrush", palette.Surface);
         SetBrush("SurfaceAltBrush", palette.SurfaceAlternative);
@@ -304,13 +321,13 @@ public partial class App : Application
         SetBrush("WarningBrush", palette.Warning);
         SetBrush("AccentWarmBrush", palette.Warning);
         SetBrush("DangerBrush", palette.Danger);
-        Current.Resources["WindowTopBarBrush"] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Surface));
-        Current.Resources["NavRailBrush"] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Surface));
+        SetBrush("NavRailBrush", palette.Background);
+        SetBrush("WindowTopBarBrush", palette.Background);
     }
 
     private static void SetBrush(string key, string color) => Current.Resources[key] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
 
-    private static string GetContrastingForeground(string color)
+    internal static string GetContrastingForeground(string color)
     {
         var value = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color);
         var luminance = (0.2126 * value.R + 0.7152 * value.G + 0.0722 * value.B) / 255d;

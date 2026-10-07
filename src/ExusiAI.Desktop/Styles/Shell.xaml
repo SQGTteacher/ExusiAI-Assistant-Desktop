@@ -1,0 +1,113 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+        <!-- Shared semantic colors are also consumed by existing plugins. -->
+        <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F4F5F7" />
+        <SolidColorBrush x:Key="WindowTopBarBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="NavRailBrush" Color="#F4F5F7" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SurfaceAltBrush" Color="#EBEDF0" />
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#202126" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#626771" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#E0E3E8" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#B83D50" />
+        <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#F8E9EC" />
+        <SolidColorBrush x:Key="AccentWarmBrush" Color="#9A6516" />
+        <SolidColorBrush x:Key="SuccessBrush" Color="#237A58" />
+        <SolidColorBrush x:Key="WarningBrush" Color="#9A6516" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#C12E43" />
+        <sys:Double x:Key="TouchTargetHeight">44</sys:Double>
+        <sys:Double x:Key="TouchCompactTargetHeight">40</sys:Double>
+        <sys:Double x:Key="TouchCardWidth">225</sys:Double>
+        <sys:Double x:Key="TouchCardHeight">70</sys:Double>
+        <sys:Double x:Key="TouchSidebarWidth">218</sys:Double>
+        <sys:Double x:Key="TouchTitleBarHeight">48</sys:Double>
+        <sys:Double x:Key="TouchDragThreshold">8</sys:Double>
+        <sys:Double x:Key="TouchScrollBarThickness">12</sys:Double>
+
+
+    <!-- Control templates, focus rings, disabled states and popups come from WPF UI. -->
+    <Style TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, Microsoft YaHei UI" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style x:Key="PageTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="PageSubtitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineHeight" Value="21" />
+        <Setter Property="Margin" Value="0,6,0,0" />
+    </Style>
+    <Style x:Key="SectionHeading" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,28,0,12" />
+    </Style>
+    <Style x:Key="Caption" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style x:Key="Card" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="20" />
+    </Style>
+    <Style x:Key="LaunchCard" TargetType="Border" BasedOn="{StaticResource Card}" />
+    <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="MinHeight" Value="{DynamicResource TouchTargetHeight}" />
+        <Setter Property="Padding" Value="16,8" />
+    </Style>
+    <Style TargetType="ui:Button" BasedOn="{StaticResource DefaultUiButtonStyle}">
+        <Setter Property="MinHeight" Value="{DynamicResource TouchTargetHeight}" />
+        <Setter Property="Padding" Value="16,8" />
+    </Style>
+    <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}" />
+    <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+        <Setter Property="MinHeight" Value="{DynamicResource TouchCompactTargetHeight}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style TargetType="ComboBox" BasedOn="{StaticResource DefaultComboBoxStyle}">
+        <Setter Property="MinHeight" Value="{DynamicResource TouchCompactTargetHeight}" />
+    </Style>
+    <Style TargetType="ScrollViewer" BasedOn="{StaticResource UiScrollViewer}">
+        <Setter Property="PanningMode" Value="VerticalFirst" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+    </Style>
+    <Style x:Key="SelectableItem" TargetType="ListBoxItem" BasedOn="{StaticResource DefaultListBoxItemStyle}">
+        <Setter Property="Border.CornerRadius" Value="6" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}" />
+        <Setter Property="Padding" Value="14,12" />
+        <Setter Property="Margin" Value="0,2" />
+        <Setter Property="MinHeight" Value="{DynamicResource TouchTargetHeight}" />
+    </Style>
+    <Style x:Key="NavigationList" TargetType="ListBox" BasedOn="{StaticResource DefaultListBoxStyle}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource SelectableItem}" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+    </Style>
+    <Style TargetType="ui:CardAction" BasedOn="{StaticResource DefaultUiCardActionStyle}">
+        <Setter Property="Padding" Value="20" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="MinHeight" Value="84" />
+    </Style>
+</ResourceDictionary>
