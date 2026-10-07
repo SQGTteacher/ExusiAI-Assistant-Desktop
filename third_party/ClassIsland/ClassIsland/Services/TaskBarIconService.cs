@@ -17,6 +17,11 @@ public class TaskBarIconService : IHostedService, ITaskBarIconService
     public TaskBarIconService(ILogger<TaskBarIconService> logger)
     {
         Logger = logger;
+        // ExusiAI supplies the only tray icon. Do not load a standalone icon
+        // relative to the host's working directory when running embedded.
+        if (AppBase.Current is not App { EmbeddedOptions: not null })
+            MainTaskBarIcon.Icon = new WindowIcon(OperatingSystem.IsMacOS()
+                ? "../Resources/Assets/AppLogo_Monochrome.png" : "Assets/AppLogo.png");
         
         AppBase.Current.AppStopping += CurrentOnAppStopping;
     }
@@ -33,7 +38,6 @@ public class TaskBarIconService : IHostedService, ITaskBarIconService
         get;
     } = new()
     {
-        Icon = new WindowIcon(OperatingSystem.IsMacOS() ? "../Resources/Assets/AppLogo_Monochrome.png" : "Assets/AppLogo.png"),
         IsVisible = false,
         ToolTipText = "ClassIsland"
     };

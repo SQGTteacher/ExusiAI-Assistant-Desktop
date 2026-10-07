@@ -1,7 +1,6 @@
 using System.IO;
 using System.Diagnostics;
 using System.Reflection;
-using System.Runtime.Loader;
 using ExusiAI.Extension.Wpf;
 
 namespace ExusiAI.Plugin.ClassIsland;
@@ -85,7 +84,6 @@ internal sealed class ClassIslandHost : IDisposable
             }
             if (thread is null)
             {
-                AssemblyLoadContext.Default.Resolving += ResolveAssembly;
                 try
                 {
                     thread = new Thread(Run) { IsBackground = true, Name = "ClassIsland original Avalonia host" };
@@ -94,7 +92,6 @@ internal sealed class ClassIslandHost : IDisposable
                 }
                 catch (Exception exception)
                 {
-                    AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
                     LastStartupError = exception.GetBaseException().Message;
                     ready.TrySetResult(false);
                     disposed = true;
@@ -214,24 +211,29 @@ internal sealed class ClassIslandHost : IDisposable
         }
     }
 
-    private Assembly? ResolveAssembly(AssemblyLoadContext context, AssemblyName name)
-    {
-        if (name.Name is null) return null;
-        var path = Path.Combine(nativeDirectory, name.Name + ".dll");
-        return File.Exists(path) ? context.LoadFromAssemblyPath(path) : null;
-    }
-
     private void Run()
     {
         try
         {
-            var desktop = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(nativeDirectory, "ClassIsland.Desktop.dll"));
-            var application = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(nativeDirectory, "ClassIsland.dll"));
+            var desktopPath = Path.Combine(nativeDirectory, "ClassIsland.Desktop.dll");
+            // WPF has already loaded System.Text.Json/SystemEvents 8.x. The upstream
+            // runtime must bind its own versions before default-context fallback.
+            var runtimeContext = new ClassIslandRuntimeLoadContext(desktopPath);
+            using var reflectionScope = runtimeContext.EnterContextualReflection();
+            var desktop = runtimeContext.LoadFromAssemblyPath(desktopPath);
+            var application = runtimeContext.LoadFromAssemblyPath(Path.Combine(nativeDirectory, "ClassIsland.dll"));
             entryPoint = desktop.GetType("ClassIsland.Desktop.Program", throwOnError: true);
             var optionsType = application.GetType("ClassIsland.EmbeddedHostOptions", throwOnError: true)!;
             var options = Activator.CreateInstance(optionsType, dataDirectory, nativeDirectory)!;
             Action<object> created = app =>
             {
+                app.GetType().GetEvent("EmbeddedFailure")?.AddEventHandler(app,
+                    new EventHandler<Exception>((_, failure) =>
+                    {
+                        LastStartupError = failure.ToString();
+                        Trace.TraceError("Embedded ClassIsland failed: {0}", failure);
+                        ready.TrySetResult(false);
+                    }));
                 var started = app.GetType().GetEvent("AppStarted")
                     ?? throw new MissingMemberException("ClassIsland.App.AppStarted");
                 started.AddEventHandler(app, new EventHandler((_, _) =>
@@ -267,10 +269,6 @@ internal sealed class ClassIslandHost : IDisposable
             Trace.TraceError("Embedded ClassIsland failed: {0}", exception);
             ready.TrySetResult(false);
         }
-        finally
-        {
-            AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
-        }
     }
 
     public void Dispose()
@@ -289,6 +287,6 @@ internal sealed class ClassIslandHost : IDisposable
         // Never join while holding the gate: concurrent commands must observe stopped state.
         if (stoppingThread is not null && !stoppingThread.Join(TimeSpan.FromSeconds(15)))
             Trace.TraceWarning("Embedded ClassIsland did not stop within fifteen seconds.");
-        // Run removes the resolver only when Avalonia really exits, including after a timeout.
+        // Avalonia owns process-wide native state; its runtime context is intentionally not collectible.
     }
 }

@@ -381,6 +381,15 @@ public partial class App : AppBase, IAppHost
 
     internal async void ProcessUnhandledException(Exception e, bool critical=false)
     {
+        if (EmbeddedOptions is not null)
+        {
+            // The host owns error reporting and process lifetime. A standalone
+            // recovery dialog here hides startup failures from the embedding host.
+            Logger?.LogCritical(e, "Embedded ClassIsland failed");
+            EmbeddedFailure?.Invoke(this, e);
+            Stop();
+            return;
+        }
 #if DEBUG
         // if (e.GetType() == typeof(ResourceReferenceKeyNotFoundException))
         // {
@@ -1170,6 +1179,8 @@ public partial class App : AppBase, IAppHost
     public override event EventHandler? AppStarted;
     public override event EventHandler? AppStopping;
     public event EventHandler? EmbeddedRestartRequested;
+
+    public event EventHandler<Exception>? EmbeddedFailure;
 
     public override void Restart(bool quiet=false)
     {

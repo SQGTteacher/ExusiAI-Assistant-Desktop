@@ -30,6 +30,21 @@ public partial class App : Application
         // dispatcher alive until the main window has actually been shown.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         base.OnStartup(e);
+        if (e.Args is ["--verify-classisland", var classIslandOutput])
+        {
+            try
+            {
+                await ClassIslandVerification.RunAsync(classIslandOutput);
+                Shutdown(0);
+            }
+            catch (Exception exception)
+            {
+                Directory.CreateDirectory(classIslandOutput);
+                File.WriteAllText(Path.Combine(classIslandOutput, "failure.txt"), exception.ToString());
+                Shutdown(1);
+            }
+            return;
+        }
         if (e.Args is ["--verify-ui", var outputDirectory])
         {
             try
