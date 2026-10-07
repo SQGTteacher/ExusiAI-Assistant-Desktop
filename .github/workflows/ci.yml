@@ -43,6 +43,7 @@ jobs:
           $process = Start-Process $app -ArgumentList @("--verify-classisland", "`"$output`"") -PassThru
           if (!$process.WaitForExit(90000)) { $process.Kill(); throw "ClassIsland startup verification timed out" }
           if (Test-Path "$output/failure.txt") { Get-Content "$output/failure.txt" }
+          Get-ChildItem $output -Recurse -File -Filter *.log | ForEach-Object { Get-Content $_.FullName -Tail 100 }
           if ($process.ExitCode -ne 0 -or !(Test-Path "$output/result.txt")) { throw "ClassIsland startup verification failed" }
           Get-Content "$output/result.txt"
       - name: Verify packaged video decoder
@@ -101,6 +102,7 @@ jobs:
           $island = Start-Process (Join-Path $publishDir "ExusiAI.Desktop.exe") -ArgumentList @("--verify-classisland", "`"$islandOutput`"") -PassThru
           if (!$island.WaitForExit(90000)) { $island.Kill(); throw "Published ClassIsland startup timed out" }
           if (Test-Path "$islandOutput/failure.txt") { Get-Content "$islandOutput/failure.txt" }
+          Get-ChildItem $islandOutput -Recurse -File -Filter *.log | ForEach-Object { Get-Content $_.FullName -Tail 100 }
           if ($island.ExitCode -ne 0 -or !(Test-Path "$islandOutput/result.txt")) { throw "Published ClassIsland startup failed" }
           Get-Content "$islandOutput/result.txt"
           $allowedExecutables = @((Join-Path $publishDir "ExusiAI.Desktop.exe"), (Join-Path $viewerDir "ExusiAI.FileViewer.Desktop.exe"))

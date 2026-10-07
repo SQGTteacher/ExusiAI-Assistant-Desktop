@@ -227,6 +227,13 @@ internal sealed class ClassIslandHost : IDisposable
             var options = Activator.CreateInstance(optionsType, dataDirectory, nativeDirectory)!;
             Action<object> created = app =>
             {
+                app.GetType().GetEvent("EmbeddedFailure")?.AddEventHandler(app,
+                    new EventHandler<Exception>((_, failure) =>
+                    {
+                        LastStartupError = failure.ToString();
+                        Trace.TraceError("Embedded ClassIsland failed: {0}", failure);
+                        ready.TrySetResult(false);
+                    }));
                 var started = app.GetType().GetEvent("AppStarted")
                     ?? throw new MissingMemberException("ClassIsland.App.AppStarted");
                 started.AddEventHandler(app, new EventHandler((_, _) =>
