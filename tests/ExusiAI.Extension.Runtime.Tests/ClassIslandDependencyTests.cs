@@ -12,7 +12,7 @@ public sealed class ClassIslandDependencyTests
     {
         var root = Path.Combine(Path.GetTempPath(), "island-dependencies-" + Guid.NewGuid().ToString("N"));
         var native = Path.Combine(root, "NativeClassIsland");
-        var context = new AssemblyLoadContext("island-dependency-test", isCollectible: true);
+        ClassIslandRuntimeLoadContext? context = null;
         try
         {
             Directory.CreateDirectory(native);
@@ -49,16 +49,16 @@ public sealed class ClassIslandDependencyTests
                     [name + "/1.0.0"] = new { type = "package", serviceable = false, sha512 = "" }
                 }
             }));
-            using var host = new ClassIslandHost(Path.Combine(root, "Data"), root);
-            typeof(ClassIslandHost).GetField("dependencyResolver", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(host, new AssemblyDependencyResolver(main));
-            var loaded = (Assembly)typeof(ClassIslandHost).GetMethod("ResolveAssembly", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(host, [context, new AssemblyName(name)])!;
+            context = new ClassIslandRuntimeLoadContext(main, isCollectible: true);
+            // An identically named assembly is already loaded by the host. Private loading
+            // must still choose the packaged implementation instead of reusing that assembly.
+            var loaded = context.LoadFromAssemblyName(new AssemblyName(name));
+            Assert.NotSame(typeof(ClassIslandHost).Assembly, loaded);
             Assert.Equal(Path.GetFullPath(implementation), loaded.Location);
         }
         finally
         {
-            context.Unload();
+            context?.Unload();
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }

@@ -6,7 +6,6 @@
   <ItemGroup>
     <PackageVersion Include="WPF-UI" Version="4.3.0" />
     <PackageVersion Include="b2xtranslator" Version="1.0.2" />
-    <PackageVersion Include="Microsoft.Win32.SystemEvents" Version="9.0.7" />
     <PackageVersion Include="System.Collections.Immutable" Version="9.0.3" />
     <PackageVersion Include="Avalonia.Desktop" Version="11.3.17" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />

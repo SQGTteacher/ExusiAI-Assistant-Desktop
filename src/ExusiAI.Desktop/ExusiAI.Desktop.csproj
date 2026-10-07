@@ -8,8 +8,6 @@
   <ItemGroup>
     <!-- The in-process ClassIsland runtime needs Metadata's Immutable 9.x dependency. -->
     <PackageReference Include="System.Collections.Immutable" />
-    <!-- WPF must bind SystemEvents 9.x before ClassIsland loads into the same process. -->
-    <PackageReference Include="Microsoft.Win32.SystemEvents" />
     <Using Remove="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>

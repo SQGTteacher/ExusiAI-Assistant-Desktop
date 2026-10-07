@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using System.Runtime.Loader;
 using ExusiAI.Extension.Abstractions;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.Wpf;
@@ -37,11 +38,15 @@ internal static class ClassIslandVerification
             Invoke("Hide");
             if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
                 throw new InvalidOperationException("ClassIsland information island did not hide.");
-            var events = Assembly.Load("Microsoft.Win32.SystemEvents");
+            var entryPoint = (Type)type.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+            var runtimeContext = AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!;
+            if (runtimeContext == AssemblyLoadContext.Default)
+                throw new InvalidOperationException("ClassIsland runtime dependencies are not isolated.");
+            var events = runtimeContext.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));
             if (events.GetName().Version?.Major != 9)
                 throw new InvalidOperationException($"Incorrect shared SystemEvents version: {events.FullName}");
             File.WriteAllText(Path.Combine(outputDirectory, "result.txt"),
-                "PASS: packaged ClassIsland started in the WPF process; island visible, settings opened, island hidden; SystemEvents 9 loaded.");
+                "PASS: packaged ClassIsland started in the WPF process; island visible, settings opened, island hidden; isolated SystemEvents 9 loaded.");
         }
         finally
         {
