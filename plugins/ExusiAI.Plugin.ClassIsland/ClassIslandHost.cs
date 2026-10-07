@@ -2,6 +2,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Runtime.InteropServices;
 using ExusiAI.Extension.Wpf;
 
 namespace ExusiAI.Plugin.ClassIsland;
@@ -16,6 +17,7 @@ internal sealed class ClassIslandHost : IDisposable
     private readonly string nativeDirectory;
     private readonly TaskCompletionSource<bool> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object lifecycleGate = new();
+    private AssemblyDependencyResolver? dependencyResolver;
     private Thread? thread;
     private Type? entryPoint;
     private HostTheme? pendingTheme;
@@ -85,7 +87,7 @@ internal sealed class ClassIslandHost : IDisposable
             }
             if (thread is null)
             {
-                AssemblyLoadContext.Default.Resolving += ResolveAssembly;
+                // Run installs resolvers before loading any ClassIsland assembly.
                 try
                 {
                     thread = new Thread(Run) { IsBackground = true, Name = "ClassIsland original Avalonia host" };
@@ -94,7 +96,6 @@ internal sealed class ClassIslandHost : IDisposable
                 }
                 catch (Exception exception)
                 {
-                    AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
                     LastStartupError = exception.GetBaseException().Message;
                     ready.TrySetResult(false);
                     disposed = true;
@@ -217,15 +218,31 @@ internal sealed class ClassIslandHost : IDisposable
     private Assembly? ResolveAssembly(AssemblyLoadContext context, AssemblyName name)
     {
         if (name.Name is null) return null;
-        var path = Path.Combine(nativeDirectory, name.Name + ".dll");
+        // Build output keeps RID-specific implementations under runtimes/win/lib.
+        var path = dependencyResolver?.ResolveAssemblyToPath(name)
+            ?? Path.Combine(nativeDirectory, name.Name + ".dll");
         return File.Exists(path) ? context.LoadFromAssemblyPath(path) : null;
+    }
+
+    private nint ResolveUnmanagedLibrary(Assembly assembly, string name)
+    {
+        // Only resolve imports belonging to the bundled runtime.
+        if (string.IsNullOrEmpty(assembly.Location) ||
+            !assembly.Location.StartsWith(nativeDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return 0;
+        var path = dependencyResolver?.ResolveUnmanagedDllToPath(name);
+        return path is null ? 0 : NativeLibrary.Load(path);
     }
 
     private void Run()
     {
         try
         {
-            var desktop = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(nativeDirectory, "ClassIsland.Desktop.dll"));
+            var desktopPath = Path.Combine(nativeDirectory, "ClassIsland.Desktop.dll");
+            dependencyResolver = new AssemblyDependencyResolver(desktopPath);
+            AssemblyLoadContext.Default.Resolving += ResolveAssembly;
+            AssemblyLoadContext.Default.ResolvingUnmanagedDll += ResolveUnmanagedLibrary;
+            var desktop = AssemblyLoadContext.Default.LoadFromAssemblyPath(desktopPath);
             var application = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(nativeDirectory, "ClassIsland.dll"));
             entryPoint = desktop.GetType("ClassIsland.Desktop.Program", throwOnError: true);
             var optionsType = application.GetType("ClassIsland.EmbeddedHostOptions", throwOnError: true)!;
@@ -270,6 +287,7 @@ internal sealed class ClassIslandHost : IDisposable
         finally
         {
             AssemblyLoadContext.Default.Resolving -= ResolveAssembly;
+            AssemblyLoadContext.Default.ResolvingUnmanagedDll -= ResolveUnmanagedLibrary;
         }
     }
 
