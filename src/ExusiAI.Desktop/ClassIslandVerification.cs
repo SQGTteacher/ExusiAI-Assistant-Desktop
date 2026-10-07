@@ -49,10 +49,12 @@ internal static class ClassIslandVerification
             Directory.CreateDirectory(pluginDirectory);
             var pluginPath = Path.Combine(pluginDirectory, "SdkProbe.dll");
             File.Copy(entryPoint.Assembly.Location, pluginPath, overwrite: true);
-            var toolkit = runtimeContext.LoadFromAssemblyName(new AssemblyName("CommunityToolkit.Mvvm"));
-            File.Copy(toolkit.Location, Path.Combine(pluginDirectory, "CommunityToolkit.Mvvm.dll"), overwrite: true);
+            var yaml = runtimeContext.LoadFromAssemblyName(new AssemblyName("YamlDotNet"));
+            File.Copy(yaml.Location, Path.Combine(pluginDirectory, "YamlDotNet.dll"), overwrite: true);
+            var markdown = runtimeContext.LoadFromAssemblyName(new AssemblyName("Markdown.Avalonia"));
+            File.Copy(markdown.Location, Path.Combine(pluginDirectory, "Markdown.Avalonia.dll"), overwrite: true);
             const string target = ".NETCoreApp,Version=v8.0";
-            const string library = "CommunityToolkit.Mvvm/8.2.1";
+            const string library = "ProbeLibraries/1.0.0";
             File.WriteAllText(Path.ChangeExtension(pluginPath, ".deps.json"), System.Text.Json.JsonSerializer.Serialize(new
             {
                 runtimeTarget = new { name = target, signature = "" },
@@ -60,7 +62,7 @@ internal static class ClassIslandVerification
                 {
                     [target] = new Dictionary<string, object>
                     {
-                        [library] = new { runtime = new Dictionary<string, object> { ["CommunityToolkit.Mvvm.dll"] = new { } } }
+                        [library] = new { runtime = new Dictionary<string, object> { ["YamlDotNet.dll"] = new { }, ["Markdown.Avalonia.dll"] = new { } } }
                     }
                 },
                 libraries = new Dictionary<string, object>
@@ -71,12 +73,32 @@ internal static class ClassIslandVerification
             var nested = (AssemblyLoadContext)Activator.CreateInstance(
                 application.GetType("ClassIsland.PluginLoadContext", throwOnError: true)!,
                 pluginInfo, pluginPath, false)!;
-            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions" })
+            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions", "Markdown.Avalonia", "SoundFlow" })
                 if (!ReferenceEquals(runtimeContext.LoadFromAssemblyName(new AssemblyName(name)), nested.LoadFromAssemblyName(new AssemblyName(name))))
                     throw new InvalidOperationException($"ClassIsland plugin SDK identity mismatch: {name}");
-            var privateToolkit = nested.LoadFromAssemblyName(new AssemblyName("CommunityToolkit.Mvvm"));
-            if (ReferenceEquals(toolkit, privateToolkit) || AssemblyLoadContext.GetLoadContext(privateToolkit) != nested)
-                throw new InvalidOperationException("ClassIsland plugin-private MVVM dependency was not isolated.");
+            var dependentInfo = Activator.CreateInstance(pluginInfo.GetType())!;
+            var dependentManifest = dependentInfo.GetType().GetProperty("Manifest")!.GetValue(dependentInfo)!;
+            const string dependencyId = "exusiai.sdk-verification.dependency";
+            dependentManifest.GetType().GetProperty("Id")!.SetValue(dependentManifest, dependencyId);
+            var dependentDirectory = Path.Combine(outputDirectory, "plugin-dependency-probe");
+            Directory.CreateDirectory(dependentDirectory);
+            var dependentPath = Path.Combine(dependentDirectory, "DependencyProbe.dll");
+            File.Copy(entryPoint.Assembly.Location, dependentPath, overwrite: true);
+            var dependent = (AssemblyLoadContext)Activator.CreateInstance(nested.GetType(), dependentInfo, dependentPath, false)!;
+            var dependency = Activator.CreateInstance(core.GetType("ClassIsland.Core.Models.Plugin.PluginDependency", throwOnError: true)!)!;
+            dependency.GetType().GetProperty("Id")!.SetValue(dependency, dependencyId);
+            var manifest = pluginInfo.GetType().GetProperty("Manifest")!.GetValue(pluginInfo)!;
+            ((System.Collections.IList)manifest.GetType().GetProperty("Dependencies")!.GetValue(manifest)!).Add(dependency);
+            var contexts = (System.Collections.IDictionary)application.GetType("ClassIsland.Services.PluginService", throwOnError: true)!
+                .GetField("PluginLoadContexts", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            contexts.Add(dependencyId, dependent);
+            try
+            {
+                var privateYaml = nested.LoadFromAssemblyName(new AssemblyName("YamlDotNet"));
+                if (ReferenceEquals(yaml, privateYaml) || AssemblyLoadContext.GetLoadContext(privateYaml) != nested)
+                    throw new InvalidOperationException("Plugin-private YAML dependency was intercepted by a dependency plugin or the runtime.");
+            }
+            finally { contexts.Remove(dependencyId); }
             var events = runtimeContext.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));
             if (events.GetName().Version?.Major != 9)
                 throw new InvalidOperationException($"Incorrect shared SystemEvents version: {events.FullName}");

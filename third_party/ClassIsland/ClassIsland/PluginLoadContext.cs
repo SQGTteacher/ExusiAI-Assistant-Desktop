@@ -19,6 +19,7 @@ namespace ClassIsland;
 public class PluginLoadContext : AssemblyLoadContext
 {
     private readonly bool _suppressMacPluginLoader;
+    private static readonly Lazy<HashSet<string>> RuntimeContracts = new(BuildRuntimeContracts);
 
     public PluginLoadContext(PluginInfo info, string fullPath, bool suppressMacPluginLoader) : base($"ClassIsland.PluginLoadContext[{info.Manifest.Id}]")
     {
@@ -49,7 +50,9 @@ public class PluginLoadContext : AssemblyLoadContext
     /// 在需要加载程序集时被调用。优先从已加载的插件依赖项上下文中解析，如果在插件目录中找到对应的程序集则从路径加载。
     /// 对 WinRT 相关依赖会使用宿主的实现。
     /// </summary>
-    protected override Assembly? Load(AssemblyName assemblyName)
+    protected override Assembly? Load(AssemblyName assemblyName) => LoadPluginAssembly(assemblyName, true);
+
+    private Assembly? LoadPluginAssembly(AssemblyName assemblyName, bool allowRuntimeFallback)
     {
         if (WinRTDeps.Contains(assemblyName.Name))
         {
@@ -70,7 +73,7 @@ public class PluginLoadContext : AssemblyLoadContext
                 continue;
             }
 
-            var assembly = context.Load(assemblyName);
+            var assembly = context.LoadPluginAssembly(assemblyName, false);
             if (assembly != null)
             {
                 return assembly;
@@ -87,17 +90,56 @@ public class PluginLoadContext : AssemblyLoadContext
 
         // A plugin-private implementation wins for libraries which do not
         // define contracts crossing the SDK boundary (e.g. YAML/MVVM helpers).
-        return ResolveRuntimeAssembly(assemblyName);
+        return allowRuntimeFallback ? ResolveRuntimeAssembly(assemblyName) : null;
     }
 
     private static bool IsRuntimeContract(string? name) => name is not null &&
+        GetLoadContext(typeof(PluginLoadContext).Assembly) != Default &&
         (name == "ClassIsland" || name.StartsWith("ClassIsland.", StringComparison.Ordinal) ||
          name == "Avalonia" || name.StartsWith("Avalonia.", StringComparison.Ordinal) ||
-         name is "FluentAvalonia" or "ReactiveUI" or "System.Reactive" or "DynamicData" or
-             "Microsoft.Extensions.DependencyInjection.Abstractions" or
-             "Microsoft.Extensions.Logging.Abstractions" or "Microsoft.Extensions.Hosting.Abstractions" or
-             "Microsoft.Extensions.Configuration.Abstractions" or "Microsoft.Extensions.Options" or
-             "Microsoft.Extensions.Primitives");
+         RuntimeContracts.Value.Contains(name));
+
+    private static HashSet<string> BuildRuntimeContracts()
+    {
+        // Derive the boundary from the real SDK, including public bases, generic
+        // arguments and method signatures. A hand-maintained list misses APIs
+        // such as MarkdownConvertHelper.Engine and IAudioService.AudioEngine.
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visited = new HashSet<Type>();
+        void AddType(Type? type)
+        {
+            if (type is null || !visited.Add(type)) return;
+            if (type.IsGenericParameter)
+            {
+                foreach (var constraint in type.GetGenericParameterConstraints()) AddType(constraint);
+                return;
+            }
+            if (type.Assembly.GetName().Name is { } name) names.Add(name);
+            if (type.HasElementType) AddType(type.GetElementType());
+            if (type.IsGenericType)
+                foreach (var argument in type.GetGenericArguments()) AddType(argument);
+        }
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        foreach (var sdk in new[] { typeof(PluginInfo).Assembly, typeof(ClassIsland.Shared.IAppHost).Assembly })
+        foreach (var type in sdk.GetExportedTypes())
+        {
+            AddType(type);
+            AddType(type.BaseType);
+            foreach (var contract in type.GetInterfaces()) AddType(contract);
+            foreach (var field in type.GetFields(flags)) AddType(field.FieldType);
+            foreach (var property in type.GetProperties(flags)) AddType(property.PropertyType);
+            foreach (var @event in type.GetEvents(flags)) AddType(@event.EventHandlerType);
+            foreach (var method in type.GetMethods(flags))
+            {
+                AddType(method.ReturnType);
+                foreach (var parameter in method.GetParameters()) AddType(parameter.ParameterType);
+                foreach (var argument in method.GetGenericArguments()) AddType(argument);
+            }
+            foreach (var constructor in type.GetConstructors(flags))
+                foreach (var parameter in constructor.GetParameters()) AddType(parameter.ParameterType);
+        }
+        return names;
+    }
 
     private static Assembly? ResolveRuntimeAssembly(AssemblyName name)
     {
