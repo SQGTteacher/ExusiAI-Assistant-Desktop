@@ -60,7 +60,7 @@ public class PluginLoadContext : AssemblyLoadContext
         // Embedded ClassIsland is not in AssemblyLoadContext.Default. SDK and
         // UI contracts must retain the runtime's identities, even if a plugin
         // carries its own copies, or its services/components cannot be assigned.
-        if (ResolveRuntimeAssembly(assemblyName) is { } runtimeAssembly)
+        if (IsRuntimeContract(assemblyName.Name) && ResolveRuntimeAssembly(assemblyName) is { } runtimeAssembly)
             return runtimeAssembly;
         // 尝试查找依赖
         foreach (var dep in Info.Manifest.Dependencies)
@@ -85,8 +85,19 @@ public class PluginLoadContext : AssemblyLoadContext
             return LoadFromAssemblyPath(assemblyPath);
         }
 
-        return null;
+        // A plugin-private implementation wins for libraries which do not
+        // define contracts crossing the SDK boundary (e.g. YAML/MVVM helpers).
+        return ResolveRuntimeAssembly(assemblyName);
     }
+
+    private static bool IsRuntimeContract(string? name) => name is not null &&
+        (name == "ClassIsland" || name.StartsWith("ClassIsland.", StringComparison.Ordinal) ||
+         name == "Avalonia" || name.StartsWith("Avalonia.", StringComparison.Ordinal) ||
+         name is "FluentAvalonia" or "ReactiveUI" or "System.Reactive" or "DynamicData" or
+             "Microsoft.Extensions.DependencyInjection.Abstractions" or
+             "Microsoft.Extensions.Logging.Abstractions" or "Microsoft.Extensions.Hosting.Abstractions" or
+             "Microsoft.Extensions.Configuration.Abstractions" or "Microsoft.Extensions.Options" or
+             "Microsoft.Extensions.Primitives");
 
     private static Assembly? ResolveRuntimeAssembly(AssemblyName name)
     {
