@@ -155,6 +155,7 @@ public partial class PluginWorkspacePage : UserControl
 
     private void AnimateContent(double offset)
     {
+        if (!SystemParameters.ClientAreaAnimation) return;
         var transform = new TranslateTransform(0, offset);
         ContentFrame.RenderTransform = transform;
         ContentFrame.Opacity = 0;

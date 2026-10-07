@@ -1,145 +1,65 @@
 <UserControl x:Class="ExusiAI.Desktop.ThemePage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel MaxWidth="900">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="1120" HorizontalAlignment="Stretch" Margin="0,0,8,8">
             <TextBlock Text="外观与主题" Style="{StaticResource PageTitle}" />
-            <TextBlock Text="主题按自动、浅色和深色分组纵向排列，保证文字与背景保持足够对比；窗口材质独立设置。"
-                       Style="{StaticResource PageSubtitle}" />
-
-            <TextBlock Text="配色方案" FontSize="17" FontWeight="SemiBold" Margin="0,24,0,10" />
-            <ListBox ItemsSource="{Binding OptionsView}"
-                     SelectedItem="{Binding SelectedOption}"
-                     BorderThickness="0"
-                     Background="Transparent"
-                     HorizontalContentAlignment="Stretch"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
+            <TextBlock Text="选一种舒服的配色，变化即刻生效。" Style="{StaticResource PageSubtitle}" />
+            <TextBlock Text="配色方案" Style="{StaticResource SectionHeading}" />
+            <ListBox ItemsSource="{Binding OptionsView}" SelectedItem="{Binding SelectedOption}"
+                     Style="{StaticResource NavigationList}" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     AutomationProperties.Name="配色方案">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
                 <ListBox.GroupStyle>
                     <GroupStyle>
-                        <GroupStyle.HeaderTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Name}"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="4,12,0,7" />
-                            </DataTemplate>
-                        </GroupStyle.HeaderTemplate>
+                        <GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" Style="{StaticResource Caption}" Margin="4,12,0,8" /></DataTemplate></GroupStyle.HeaderTemplate>
+                        <GroupStyle.Panel><ItemsPanelTemplate><StackPanel /></ItemsPanelTemplate></GroupStyle.Panel>
                     </GroupStyle>
                 </ListBox.GroupStyle>
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Margin" Value="0,0,0,9" />
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="ThemeCard" Style="{StaticResource Card}" Padding="14">
-                                        <ContentPresenter />
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="ThemeCard" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-                                        </Trigger>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="ThemeCard" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                            <Setter TargetName="ThemeCard" Property="BorderThickness" Value="2" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="92" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border Width="76" Height="48" CornerRadius="7"
-                                    Background="{Binding Palette.Background}"
-                                    BorderBrush="{Binding Palette.Border}"
-                                    BorderThickness="1"
-                                    HorizontalAlignment="Left" VerticalAlignment="Center">
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <Ellipse Width="12" Height="12" Fill="{Binding Palette.Accent}" Margin="2" />
-                                    <Ellipse Width="12" Height="12" Fill="{Binding Palette.TextPrimary}" Margin="2" />
-                                    <Ellipse Width="12" Height="12" Fill="{Binding Palette.Warning}" Margin="2" />
-                                </StackPanel>
-                            </Border>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding Description}" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           TextWrapping="Wrap" Margin="0,4,0,0" />
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-
-            <TextBlock Text="窗口材质" FontSize="17" FontWeight="SemiBold" Margin="0,24,0,10" />
-            <ListBox ItemsSource="{Binding BackdropOptions}"
-                     SelectedItem="{Binding SelectedBackdrop}"
-                     BorderThickness="0"
-                     Background="Transparent"
-                     HorizontalContentAlignment="Stretch"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Margin" Value="0,0,0,9" />
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="BackdropCard" Style="{StaticResource Card}" Padding="14">
-                                        <ContentPresenter />
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="BackdropCard" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-                                        </Trigger>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="BackdropCard" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                            <Setter TargetName="BackdropCard" Property="BorderThickness" Value="2" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource SelectableItem}">
+                        <Setter Property="Width" Value="240" /><Setter Property="Margin" Value="0,0,12,12" />
+                        <Setter Property="Padding" Value="10" /><Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel>
-                            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding Description}" FontSize="11"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       TextWrapping="Wrap" Margin="0,5,0,0" />
+                            <Border Height="100" CornerRadius="5" Background="{Binding Palette.Background}" BorderBrush="{Binding Palette.Border}" BorderThickness="1" Padding="8">
+                                <Grid>
+                                    <Grid.RowDefinitions><RowDefinition Height="12" /><RowDefinition /></Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                    <Border Width="6" Height="6" Background="{Binding Palette.Accent}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                                    <StackPanel Grid.Row="1" Margin="0,5,8,0">
+                                        <Border Height="10" CornerRadius="2" Background="{Binding Palette.AccentSoft}" />
+                                        <Border Height="3" Margin="4,8,8,0" Background="{Binding Palette.TextSecondary}" Opacity="0.5" />
+                                        <Border Height="3" Margin="4,8,8,0" Background="{Binding Palette.TextSecondary}" Opacity="0.5" />
+                                    </StackPanel>
+                                    <Border Grid.Row="1" Grid.Column="1" Background="{Binding Palette.Surface}" CornerRadius="4" Padding="10">
+                                        <StackPanel><Border Height="5" Width="54" Background="{Binding Palette.TextPrimary}" HorizontalAlignment="Left" CornerRadius="2" />
+                                            <Border Height="3" Margin="0,7,12,0" Background="{Binding Palette.TextSecondary}" Opacity="0.4" />
+                                            <Border Height="15" Width="42" Margin="0,10,0,0" Background="{Binding Palette.Accent}" CornerRadius="3" HorizontalAlignment="Left" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="2,10,0,0" />
+                            <TextBlock Text="{Binding Description}" Style="{StaticResource Caption}" Margin="2,5,0,0" MinHeight="36" />
                         </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-
-            <TextBlock Text="云母与亚克力使用 Windows 11 DWM；不支持时系统会安全回退，不启用高风险透明窗口模式。"
-                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
-                       Margin="4,10,0,0" TextWrapping="Wrap" />
+            <TextBlock Text="窗口材质" Style="{StaticResource SectionHeading}" />
+            <Border Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="180" /></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0"><TextBlock Text="背景效果" FontWeight="SemiBold" /><TextBlock Text="{Binding SelectedBackdrop.Description}" Style="{StaticResource Caption}" Margin="0,6,0,0" /></StackPanel>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding BackdropOptions}" SelectedItem="{Binding SelectedBackdrop}"
+                              DisplayMemberPath="Name" VerticalAlignment="Center" AutomationProperties.Name="窗口材质" />
+                </Grid>
+            </Border>
+            <TextBlock Text="窗口材质取决于 Windows 版本。不支持的效果将自动回退。信息岛主题在 ClassIsland 设置中单独调整。"
+                       Style="{StaticResource Caption}" Margin="2,14,0,0" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>
