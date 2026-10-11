@@ -20,6 +20,7 @@ public class PluginLoadContext : AssemblyLoadContext
 {
     private readonly bool _suppressMacPluginLoader;
     private static readonly Lazy<HashSet<string>> RuntimeContracts = new(BuildRuntimeContracts);
+    private bool _readingExportedContracts;
 
     public PluginLoadContext(PluginInfo info, string fullPath, bool suppressMacPluginLoader) : base($"ClassIsland.PluginLoadContext[{info.Manifest.Id}]")
     {
@@ -88,15 +89,27 @@ public class PluginLoadContext : AssemblyLoadContext
             return LoadFromAssemblyPath(assemblyPath);
         }
 
-        // A plugin-private implementation wins for libraries which do not
-        // define contracts crossing the SDK boundary (e.g. YAML/MVVM helpers).
-        return allowRuntimeFallback ? ResolveRuntimeAssembly(assemblyName) : null;
+        // Dependency plugins may expose a runtime-provided library in their
+        // public API. Only that contract may fall back during dependency probing.
+        return allowRuntimeFallback || ExportsContract(assemblyName.Name)
+            ? ResolveRuntimeAssembly(assemblyName) : null;
+    }
+
+    private bool ExportsContract(string? name)
+    {
+        if (name is null || _readingExportedContracts) return false;
+        _readingExportedContracts = true;
+        try { return ReadContracts(Assemblies.ToArray()).Contains(name); }
+        finally { _readingExportedContracts = false; }
     }
 
     private static bool IsRuntimeContract(string? name) => name is not null &&
         GetLoadContext(typeof(PluginLoadContext).Assembly) != Default &&
         (name == "ClassIsland" || name.StartsWith("ClassIsland.", StringComparison.Ordinal) ||
          name == "Avalonia" || name.StartsWith("Avalonia.", StringComparison.Ordinal) ||
+         // HostBuilderContext exposes configuration and change-token contracts
+         // transitively, beyond the signatures declared by the ClassIsland SDK.
+         name.StartsWith("Microsoft.Extensions.", StringComparison.Ordinal) ||
          RuntimeContracts.Value.Contains(name));
 
     private static HashSet<string> BuildRuntimeContracts()
@@ -104,6 +117,11 @@ public class PluginLoadContext : AssemblyLoadContext
         // Derive the boundary from the real SDK, including public bases, generic
         // arguments and method signatures. A hand-maintained list misses APIs
         // such as MarkdownConvertHelper.Engine and IAudioService.AudioEngine.
+        return ReadContracts(new[] { typeof(PluginInfo).Assembly, typeof(ClassIsland.Shared.IAppHost).Assembly });
+    }
+
+    private static HashSet<string> ReadContracts(IEnumerable<Assembly> assemblies)
+    {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<Type>();
         void AddType(Type? type)
@@ -120,8 +138,8 @@ public class PluginLoadContext : AssemblyLoadContext
                 foreach (var argument in type.GetGenericArguments()) AddType(argument);
         }
         const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-        foreach (var sdk in new[] { typeof(PluginInfo).Assembly, typeof(ClassIsland.Shared.IAppHost).Assembly })
-        foreach (var type in sdk.GetExportedTypes())
+        foreach (var sdk in assemblies)
+        foreach (var type in sdk.IsDynamic ? sdk.GetTypes().Where(type => type.IsVisible) : sdk.GetExportedTypes())
         {
             AddType(type);
             AddType(type.BaseType);

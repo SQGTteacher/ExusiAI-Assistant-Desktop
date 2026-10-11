@@ -53,6 +53,9 @@ internal static class ClassIslandVerification
             File.Copy(yaml.Location, Path.Combine(pluginDirectory, "YamlDotNet.dll"), overwrite: true);
             var markdown = runtimeContext.LoadFromAssemblyName(new AssemblyName("Markdown.Avalonia"));
             File.Copy(markdown.Location, Path.Combine(pluginDirectory, "Markdown.Avalonia.dll"), overwrite: true);
+            foreach (var name in new[] { "Microsoft.Extensions.Configuration.Abstractions", "Microsoft.Extensions.Primitives" })
+                File.Copy(runtimeContext.LoadFromAssemblyName(new AssemblyName(name)).Location,
+                    Path.Combine(pluginDirectory, name + ".dll"), overwrite: true);
             const string target = ".NETCoreApp,Version=v8.0";
             const string library = "ProbeLibraries/1.0.0";
             File.WriteAllText(Path.ChangeExtension(pluginPath, ".deps.json"), System.Text.Json.JsonSerializer.Serialize(new
@@ -62,7 +65,12 @@ internal static class ClassIslandVerification
                 {
                     [target] = new Dictionary<string, object>
                     {
-                        [library] = new { runtime = new Dictionary<string, object> { ["YamlDotNet.dll"] = new { }, ["Markdown.Avalonia.dll"] = new { } } }
+                        [library] = new { runtime = new Dictionary<string, object>
+                        {
+                            ["YamlDotNet.dll"] = new { }, ["Markdown.Avalonia.dll"] = new { },
+                            ["Microsoft.Extensions.Configuration.Abstractions.dll"] = new { },
+                            ["Microsoft.Extensions.Primitives.dll"] = new { }
+                        } }
                     }
                 },
                 libraries = new Dictionary<string, object>
@@ -73,7 +81,7 @@ internal static class ClassIslandVerification
             var nested = (AssemblyLoadContext)Activator.CreateInstance(
                 application.GetType("ClassIsland.PluginLoadContext", throwOnError: true)!,
                 pluginInfo, pluginPath, false)!;
-            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions", "Markdown.Avalonia", "SoundFlow" })
+            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Configuration.Abstractions", "Microsoft.Extensions.Primitives", "Markdown.Avalonia", "SoundFlow" })
                 if (!ReferenceEquals(runtimeContext.LoadFromAssemblyName(new AssemblyName(name)), nested.LoadFromAssemblyName(new AssemblyName(name))))
                     throw new InvalidOperationException($"ClassIsland plugin SDK identity mismatch: {name}");
             var dependentInfo = Activator.CreateInstance(pluginInfo.GetType())!;
@@ -97,6 +105,19 @@ internal static class ClassIslandVerification
                 var privateYaml = nested.LoadFromAssemblyName(new AssemblyName("YamlDotNet"));
                 if (ReferenceEquals(yaml, privateYaml) || AssemblyLoadContext.GetLoadContext(privateYaml) != nested)
                     throw new InvalidOperationException("Plugin-private YAML dependency was intercepted by a dependency plugin or the runtime.");
+                // Model a dependency plugin whose exported API exposes runtime
+                // YAML types without carrying a private YAML implementation.
+                using (dependent.EnterContextualReflection())
+                {
+                    var builder = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
+                        new AssemblyName("DependencyContractProbe"), System.Reflection.Emit.AssemblyBuilderAccess.Run);
+                    var contract = builder.DefineDynamicModule("Contracts").DefineType("PublicYamlContract", TypeAttributes.Public);
+                    contract.DefineField("Yaml", yaml.GetType("YamlDotNet.Serialization.ISerializer", throwOnError: true)!, FieldAttributes.Public);
+                    _ = contract.CreateType();
+                }
+                var consumer = (AssemblyLoadContext)Activator.CreateInstance(nested.GetType(), pluginInfo, pluginPath, false)!;
+                if (!ReferenceEquals(yaml, consumer.LoadFromAssemblyName(new AssemblyName("YamlDotNet"))))
+                    throw new InvalidOperationException("Dependency-plugin exported YAML contract lost its runtime identity.");
             }
             finally { contexts.Remove(dependencyId); }
             var events = runtimeContext.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));
