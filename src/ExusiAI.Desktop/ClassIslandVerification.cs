@@ -87,7 +87,7 @@ internal static class ClassIslandVerification
             var nested = (AssemblyLoadContext)Activator.CreateInstance(
                 application.GetType("ClassIsland.PluginLoadContext", throwOnError: true)!,
                 pluginInfo, pluginPath, false)!;
-            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Configuration.Abstractions", "Microsoft.Extensions.Primitives", "Markdown.Avalonia", "SoundFlow", "YamlDotNet", "MoonSharp.Interpreter" })
+            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Configuration.Abstractions", "Microsoft.Extensions.Primitives", "Markdown.Avalonia", "SoundFlow", "MoonSharp.Interpreter" })
                 if (!ReferenceEquals(runtimeContext.LoadFromAssemblyName(new AssemblyName(name)), nested.LoadFromAssemblyName(new AssemblyName(name))))
                     throw new InvalidOperationException($"ClassIsland plugin SDK identity mismatch: {name}");
             var dependentInfo = Activator.CreateInstance(pluginInfo.GetType())!;
@@ -108,6 +108,9 @@ internal static class ClassIslandVerification
             contexts.Add(dependencyId, dependent);
             try
             {
+                var privateYaml = nested.LoadFromAssemblyName(new AssemblyName("YamlDotNet"));
+                if (ReferenceEquals(yaml, privateYaml) || AssemblyLoadContext.GetLoadContext(privateYaml) != nested)
+                    throw new InvalidOperationException("Plugin-private YAML dependency was intercepted by a dependency plugin or the runtime.");
                 var privateLogging = nested.LoadFromAssemblyName(new AssemblyName("Microsoft.Extensions.Logging.Console"));
                 if (ReferenceEquals(consoleLogging, privateLogging) || AssemblyLoadContext.GetLoadContext(privateLogging) != nested)
                     throw new InvalidOperationException("Plugin-private logging implementation was intercepted by the runtime.");
