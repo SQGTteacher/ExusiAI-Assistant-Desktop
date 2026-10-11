@@ -180,7 +180,8 @@ public class PluginLoadContext : AssemblyLoadContext
         }
         const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         foreach (var sdk in assemblies)
-        foreach (var type in sdk.IsDynamic ? sdk.GetTypes().Where(type => type.IsVisible) : sdk.GetExportedTypes())
+        foreach (var type in sdk.IsDynamic ? sdk.GetTypes().Where(type => type.IsVisible)
+                     : sdk.GetExportedTypes().Concat(sdk.GetForwardedTypes()))
             AddType(type);
         // Follow public bases and exposed external types as well as SDK declarations.
         // This includes HostBuilderContext.Configuration and inherited plugin APIs,
