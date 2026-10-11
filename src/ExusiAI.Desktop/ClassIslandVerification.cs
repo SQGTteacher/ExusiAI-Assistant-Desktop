@@ -58,6 +58,8 @@ internal static class ClassIslandVerification
                     Path.Combine(pluginDirectory, name + ".dll"), overwrite: true);
             var consoleLogging = runtimeContext.LoadFromAssemblyName(new AssemblyName("Microsoft.Extensions.Logging.Console"));
             File.Copy(consoleLogging.Location, Path.Combine(pluginDirectory, "Microsoft.Extensions.Logging.Console.dll"), overwrite: true);
+            var moonSharp = runtimeContext.LoadFromAssemblyName(new AssemblyName("MoonSharp.Interpreter"));
+            File.Copy(moonSharp.Location, Path.Combine(pluginDirectory, "MoonSharp.Interpreter.dll"), overwrite: true);
             const string target = ".NETCoreApp,Version=v8.0";
             const string library = "ProbeLibraries/1.0.0";
             File.WriteAllText(Path.ChangeExtension(pluginPath, ".deps.json"), System.Text.Json.JsonSerializer.Serialize(new
@@ -72,7 +74,8 @@ internal static class ClassIslandVerification
                             ["YamlDotNet.dll"] = new { }, ["Markdown.Avalonia.dll"] = new { },
                             ["Microsoft.Extensions.Configuration.Abstractions.dll"] = new { },
                             ["Microsoft.Extensions.Primitives.dll"] = new { },
-                            ["Microsoft.Extensions.Logging.Console.dll"] = new { }
+                            ["Microsoft.Extensions.Logging.Console.dll"] = new { },
+                            ["MoonSharp.Interpreter.dll"] = new { }
                         } }
                     }
                 },
@@ -84,7 +87,7 @@ internal static class ClassIslandVerification
             var nested = (AssemblyLoadContext)Activator.CreateInstance(
                 application.GetType("ClassIsland.PluginLoadContext", throwOnError: true)!,
                 pluginInfo, pluginPath, false)!;
-            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Configuration.Abstractions", "Microsoft.Extensions.Primitives", "Markdown.Avalonia", "SoundFlow" })
+            foreach (var name in new[] { "ClassIsland.Core", "ClassIsland.Shared", "Avalonia.Controls", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Configuration.Abstractions", "Microsoft.Extensions.Primitives", "Markdown.Avalonia", "SoundFlow", "YamlDotNet", "MoonSharp.Interpreter" })
                 if (!ReferenceEquals(runtimeContext.LoadFromAssemblyName(new AssemblyName(name)), nested.LoadFromAssemblyName(new AssemblyName(name))))
                     throw new InvalidOperationException($"ClassIsland plugin SDK identity mismatch: {name}");
             var dependentInfo = Activator.CreateInstance(pluginInfo.GetType())!;
@@ -105,38 +108,35 @@ internal static class ClassIslandVerification
             contexts.Add(dependencyId, dependent);
             try
             {
-                var privateYaml = nested.LoadFromAssemblyName(new AssemblyName("YamlDotNet"));
-                if (ReferenceEquals(yaml, privateYaml) || AssemblyLoadContext.GetLoadContext(privateYaml) != nested)
-                    throw new InvalidOperationException("Plugin-private YAML dependency was intercepted by a dependency plugin or the runtime.");
                 var privateLogging = nested.LoadFromAssemblyName(new AssemblyName("Microsoft.Extensions.Logging.Console"));
                 if (ReferenceEquals(consoleLogging, privateLogging) || AssemblyLoadContext.GetLoadContext(privateLogging) != nested)
                     throw new InvalidOperationException("Plugin-private logging implementation was intercepted by the runtime.");
                 // Model a dependency plugin whose exported API exposes runtime
-                // YAML through inherited members of an external base type.
+                // logging options through inherited members of an external base type.
                 Type baseContract;
                 using (runtimeContext.EnterContextualReflection())
                 {
                     var builder = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
                         new AssemblyName("ExternalContractProbe"), System.Reflection.Emit.AssemblyBuilderAccess.Run);
-                    var contract = builder.DefineDynamicModule("Contracts").DefineType("ExternalYamlBase", TypeAttributes.Public);
+                    var contract = builder.DefineDynamicModule("Contracts").DefineType("ExternalLoggingBase", TypeAttributes.Public);
                     contract.DefineDefaultConstructor(MethodAttributes.Public);
-                    contract.DefineField("Yaml", yaml.GetType("YamlDotNet.Serialization.ISerializer", throwOnError: true)!, FieldAttributes.Public);
+                    contract.DefineField("Options", consoleLogging.GetType("Microsoft.Extensions.Logging.Console.ConsoleLoggerOptions", throwOnError: true)!, FieldAttributes.Public);
                     baseContract = contract.CreateType()!;
                 }
                 using (dependent.EnterContextualReflection())
                 {
                     var builder = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
                         new AssemblyName("DependencyContractProbe"), System.Reflection.Emit.AssemblyBuilderAccess.Run);
-                    var contract = builder.DefineDynamicModule("Contracts").DefineType("PublicYamlContract", TypeAttributes.Public, baseContract);
+                    var contract = builder.DefineDynamicModule("Contracts").DefineType("PublicLoggingContract", TypeAttributes.Public, baseContract);
                     _ = contract.CreateType();
                 }
                 var consumer = (AssemblyLoadContext)Activator.CreateInstance(nested.GetType(), pluginInfo, pluginPath, false)!;
-                if (!ReferenceEquals(yaml, consumer.LoadFromAssemblyName(new AssemblyName("YamlDotNet"))))
-                    throw new InvalidOperationException("Dependency-plugin exported YAML contract lost its runtime identity.");
+                if (!ReferenceEquals(consoleLogging, consumer.LoadFromAssemblyName(new AssemblyName("Microsoft.Extensions.Logging.Console"))))
+                    throw new InvalidOperationException("Dependency-plugin exported logging contract lost its runtime identity.");
                 await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
                 {
                     var parallelConsumer = (AssemblyLoadContext)Activator.CreateInstance(nested.GetType(), pluginInfo, pluginPath, false)!;
-                    if (!ReferenceEquals(yaml, parallelConsumer.LoadFromAssemblyName(new AssemblyName("YamlDotNet"))))
+                    if (!ReferenceEquals(consoleLogging, parallelConsumer.LoadFromAssemblyName(new AssemblyName("Microsoft.Extensions.Logging.Console"))))
                         throw new InvalidOperationException("Concurrent dependency contract resolution lost its runtime identity.");
                 })));
             }
