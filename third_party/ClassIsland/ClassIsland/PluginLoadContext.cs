@@ -19,6 +19,7 @@ namespace ClassIsland;
 public class PluginLoadContext : AssemblyLoadContext
 {
     private readonly bool _suppressMacPluginLoader;
+    private readonly string _pluginDirectory;
     private static readonly Lazy<HashSet<string>> RuntimeContracts = new(BuildRuntimeContracts);
     [ThreadStatic]
     private static HashSet<PluginLoadContext>? _readingExportedContracts;
@@ -26,6 +27,7 @@ public class PluginLoadContext : AssemblyLoadContext
     public PluginLoadContext(PluginInfo info, string fullPath, bool suppressMacPluginLoader) : base($"ClassIsland.PluginLoadContext[{info.Manifest.Id}]")
     {
         _suppressMacPluginLoader = suppressMacPluginLoader;
+        _pluginDirectory = Path.GetDirectoryName(fullPath)!;
         Info = info;
         CoreResolver = UseMacOsPluginLoadingBehavior ? null : new(fullPath);
         MacResolver = UseMacOsPluginLoadingBehavior ? new(fullPath) : null;
@@ -98,10 +100,28 @@ public class PluginLoadContext : AssemblyLoadContext
 
     private bool ExportsContract(string? name)
     {
-        if (name is null) return false;
+        if (name is null || GetLoadContext(typeof(PluginLoadContext).Assembly) == Default) return false;
         var reading = _readingExportedContracts ??= new HashSet<PluginLoadContext>();
         if (!reading.Add(this)) return false;
-        try { return ReadContracts(Assemblies.ToArray()).Contains(name); }
+        try
+        {
+            // A dependency's secondary API assembly may not have been requested
+            // yet. Discover only assets accepted by its own package resolver;
+            // native DLLs, RID placeholders and unrelated adjacent files are not roots.
+            foreach (var path in Directory.EnumerateFiles(_pluginDirectory, "*.dll", SearchOption.AllDirectories))
+            {
+                AssemblyName candidate;
+                try { candidate = AssemblyName.GetAssemblyName(path); }
+                catch (BadImageFormatException) { continue; }
+                if (WinRTDeps.Contains(candidate.Name) || IsRuntimeContract(candidate.Name)) continue;
+                var resolved = UseMacOsPluginLoadingBehavior
+                    ? MacResolver?.ResolveAssemblyToPath(candidate) : CoreResolver?.ResolveAssemblyToPath(candidate);
+                if (resolved is not null && string.Equals(Path.GetFullPath(resolved), Path.GetFullPath(path),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    LoadFromAssemblyPath(resolved);
+            }
+            return ReadContracts(Assemblies.ToArray()).Contains(name);
+        }
         finally { reading.Remove(this); }
     }
 
