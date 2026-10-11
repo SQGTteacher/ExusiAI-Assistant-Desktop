@@ -19,7 +19,8 @@ namespace ClassIsland;
 public class PluginLoadContext : AssemblyLoadContext
 {
     private readonly bool _suppressMacPluginLoader;
-    private readonly string _pluginDirectory;
+    private readonly string _componentAssemblyPath;
+    private readonly HashSet<Assembly> _exportedApiAssemblies = new();
     private static readonly Lazy<HashSet<string>> RuntimeContracts = new(BuildRuntimeContracts);
     [ThreadStatic]
     private static HashSet<PluginLoadContext>? _readingExportedContracts;
@@ -27,7 +28,7 @@ public class PluginLoadContext : AssemblyLoadContext
     public PluginLoadContext(PluginInfo info, string fullPath, bool suppressMacPluginLoader) : base($"ClassIsland.PluginLoadContext[{info.Manifest.Id}]")
     {
         _suppressMacPluginLoader = suppressMacPluginLoader;
-        _pluginDirectory = Path.GetDirectoryName(fullPath)!;
+        _componentAssemblyPath = fullPath;
         Info = info;
         CoreResolver = UseMacOsPluginLoadingBehavior ? null : new(fullPath);
         MacResolver = UseMacOsPluginLoadingBehavior ? new(fullPath) : null;
@@ -89,7 +90,12 @@ public class PluginLoadContext : AssemblyLoadContext
         
         if (assemblyPath != null)
         {
-            return LoadFromAssemblyPath(assemblyPath);
+            var supplied = LoadFromAssemblyPath(assemblyPath);
+            // A dependency consumer explicitly requesting a secondary assembly
+            // makes its public API a boundary; internal implementation loads do not.
+            if (!allowRuntimeFallback)
+                lock (_exportedApiAssemblies) _exportedApiAssemblies.Add(supplied);
+            return supplied;
         }
 
         // Dependency plugins may expose a runtime-provided library in their
@@ -105,22 +111,13 @@ public class PluginLoadContext : AssemblyLoadContext
         if (!reading.Add(this)) return false;
         try
         {
-            // A dependency's secondary API assembly may not have been requested
-            // yet. Discover only assets accepted by its own package resolver;
-            // native DLLs, RID placeholders and unrelated adjacent files are not roots.
-            foreach (var path in Directory.EnumerateFiles(_pluginDirectory, "*.dll", SearchOption.AllDirectories))
-            {
-                AssemblyName candidate;
-                try { candidate = AssemblyName.GetAssemblyName(path); }
-                catch (BadImageFormatException) { continue; }
-                if (WinRTDeps.Contains(candidate.Name) || IsRuntimeContract(candidate.Name)) continue;
-                var resolved = UseMacOsPluginLoadingBehavior
-                    ? MacResolver?.ResolveAssemblyToPath(candidate) : CoreResolver?.ResolveAssemblyToPath(candidate);
-                if (resolved is not null && string.Equals(Path.GetFullPath(resolved), Path.GetFullPath(path),
-                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-                    LoadFromAssemblyPath(resolved);
-            }
-            return ReadContracts(Assemblies.ToArray()).Contains(name);
+            // Seed only the plugin entry API, not every private implementation in
+            // its package. Public signatures reach secondary APIs even before
+            // consumers request them, regardless of their assembly-name prefix.
+            var entry = LoadFromAssemblyPath(_componentAssemblyPath);
+            Assembly[] roots;
+            lock (_exportedApiAssemblies) roots = _exportedApiAssemblies.ToArray();
+            return ReadContracts(new[] { entry }.Concat(roots).Concat(Assemblies.Where(assembly => assembly.IsDynamic)).ToArray()).Contains(name);
         }
         finally { reading.Remove(this); }
     }
@@ -144,11 +141,28 @@ public class PluginLoadContext : AssemblyLoadContext
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<Type>();
         var pending = new Queue<Type>();
+        void AddArgument(CustomAttributeTypedArgument argument)
+        {
+            AddType(argument.ArgumentType);
+            if (argument.Value is Type type) AddType(type);
+            if (argument.Value is IEnumerable<CustomAttributeTypedArgument> items)
+                foreach (var item in items) AddArgument(item);
+        }
+        void AddAttributes(IEnumerable<CustomAttributeData> attributes)
+        {
+            foreach (var attribute in attributes)
+            {
+                AddType(attribute.AttributeType);
+                foreach (var argument in attribute.ConstructorArguments) AddArgument(argument);
+                foreach (var argument in attribute.NamedArguments) AddArgument(argument.TypedValue);
+            }
+        }
         void AddType(Type? type)
         {
             if (type is null || !visited.Add(type)) return;
             if (type.IsGenericParameter)
             {
+                AddAttributes(type.CustomAttributes);
                 foreach (var constraint in type.GetGenericParameterConstraints()) AddType(constraint);
                 return;
             }
@@ -160,12 +174,14 @@ public class PluginLoadContext : AssemblyLoadContext
             // Framework types already share the CLR's identity. Traversing their
             // entire API would turn object/Type into an unrelated assembly sweep.
             if (!type.HasElementType && name is not null && name != "mscorlib" && name != "netstandard" &&
-                name != "System" && !name.StartsWith("System.", StringComparison.Ordinal))
+                name != "System" && !name.StartsWith("System.", StringComparison.Ordinal) &&
+                GetLoadContext(type.Assembly) != Default)
                 pending.Enqueue(type);
         }
         const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         foreach (var sdk in assemblies)
-        foreach (var type in sdk.IsDynamic ? sdk.GetTypes().Where(type => type.IsVisible) : sdk.GetExportedTypes())
+        foreach (var type in sdk.IsDynamic ? sdk.GetTypes().Where(type => type.IsVisible)
+                     : sdk.GetExportedTypes().Concat(sdk.GetForwardedTypes()))
             AddType(type);
         // Follow public bases and exposed external types as well as SDK declarations.
         // This includes HostBuilderContext.Configuration and inherited plugin APIs,
@@ -173,19 +189,25 @@ public class PluginLoadContext : AssemblyLoadContext
         while (pending.Count != 0)
         {
             var type = pending.Dequeue();
+            AddAttributes(type.CustomAttributes);
             AddType(type.BaseType);
             foreach (var contract in type.GetInterfaces()) AddType(contract);
-            foreach (var field in type.GetFields(flags)) AddType(field.FieldType);
-            foreach (var property in type.GetProperties(flags)) AddType(property.PropertyType);
-            foreach (var @event in type.GetEvents(flags)) AddType(@event.EventHandlerType);
+            foreach (var field in type.GetFields(flags)) { AddType(field.FieldType); AddAttributes(field.CustomAttributes); }
+            foreach (var property in type.GetProperties(flags)) { AddType(property.PropertyType); AddAttributes(property.CustomAttributes); }
+            foreach (var @event in type.GetEvents(flags)) { AddType(@event.EventHandlerType); AddAttributes(@event.CustomAttributes); }
             foreach (var method in type.GetMethods(flags))
             {
                 AddType(method.ReturnType);
-                foreach (var parameter in method.GetParameters()) AddType(parameter.ParameterType);
+                AddAttributes(method.CustomAttributes);
+                AddAttributes(method.ReturnParameter.CustomAttributes);
+                foreach (var parameter in method.GetParameters()) { AddType(parameter.ParameterType); AddAttributes(parameter.CustomAttributes); }
                 foreach (var argument in method.GetGenericArguments()) AddType(argument);
             }
             foreach (var constructor in type.GetConstructors(flags))
-                foreach (var parameter in constructor.GetParameters()) AddType(parameter.ParameterType);
+            {
+                AddAttributes(constructor.CustomAttributes);
+                foreach (var parameter in constructor.GetParameters()) { AddType(parameter.ParameterType); AddAttributes(parameter.CustomAttributes); }
+            }
         }
         return names;
     }
