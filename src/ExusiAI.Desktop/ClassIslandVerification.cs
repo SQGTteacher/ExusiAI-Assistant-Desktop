@@ -118,6 +118,12 @@ internal static class ClassIslandVerification
                 var consumer = (AssemblyLoadContext)Activator.CreateInstance(nested.GetType(), pluginInfo, pluginPath, false)!;
                 if (!ReferenceEquals(yaml, consumer.LoadFromAssemblyName(new AssemblyName("YamlDotNet"))))
                     throw new InvalidOperationException("Dependency-plugin exported YAML contract lost its runtime identity.");
+                await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
+                {
+                    var parallelConsumer = (AssemblyLoadContext)Activator.CreateInstance(nested.GetType(), pluginInfo, pluginPath, false)!;
+                    if (!ReferenceEquals(yaml, parallelConsumer.LoadFromAssemblyName(new AssemblyName("YamlDotNet"))))
+                        throw new InvalidOperationException("Concurrent dependency contract resolution lost its runtime identity.");
+                })));
             }
             finally { contexts.Remove(dependencyId); }
             var events = runtimeContext.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));

@@ -20,7 +20,8 @@ public class PluginLoadContext : AssemblyLoadContext
 {
     private readonly bool _suppressMacPluginLoader;
     private static readonly Lazy<HashSet<string>> RuntimeContracts = new(BuildRuntimeContracts);
-    private bool _readingExportedContracts;
+    [ThreadStatic]
+    private static HashSet<PluginLoadContext>? _readingExportedContracts;
 
     public PluginLoadContext(PluginInfo info, string fullPath, bool suppressMacPluginLoader) : base($"ClassIsland.PluginLoadContext[{info.Manifest.Id}]")
     {
@@ -97,10 +98,11 @@ public class PluginLoadContext : AssemblyLoadContext
 
     private bool ExportsContract(string? name)
     {
-        if (name is null || _readingExportedContracts) return false;
-        _readingExportedContracts = true;
+        if (name is null) return false;
+        var reading = _readingExportedContracts ??= new HashSet<PluginLoadContext>();
+        if (!reading.Add(this)) return false;
         try { return ReadContracts(Assemblies.ToArray()).Contains(name); }
-        finally { _readingExportedContracts = false; }
+        finally { reading.Remove(this); }
     }
 
     private static bool IsRuntimeContract(string? name) => name is not null &&
