@@ -20,6 +20,7 @@ public class PluginLoadContext : AssemblyLoadContext
 {
     private readonly bool _suppressMacPluginLoader;
     private readonly string _componentAssemblyPath;
+    private readonly HashSet<Assembly> _exportedApiAssemblies = new();
     private static readonly Lazy<HashSet<string>> RuntimeContracts = new(BuildRuntimeContracts);
     [ThreadStatic]
     private static HashSet<PluginLoadContext>? _readingExportedContracts;
@@ -89,7 +90,12 @@ public class PluginLoadContext : AssemblyLoadContext
         
         if (assemblyPath != null)
         {
-            return LoadFromAssemblyPath(assemblyPath);
+            var supplied = LoadFromAssemblyPath(assemblyPath);
+            // A dependency consumer explicitly requesting a secondary assembly
+            // makes its public API a boundary; internal implementation loads do not.
+            if (!allowRuntimeFallback)
+                lock (_exportedApiAssemblies) _exportedApiAssemblies.Add(supplied);
+            return supplied;
         }
 
         // Dependency plugins may expose a runtime-provided library in their
@@ -109,7 +115,9 @@ public class PluginLoadContext : AssemblyLoadContext
             // its package. Public signatures reach secondary APIs even before
             // consumers request them, regardless of their assembly-name prefix.
             var entry = LoadFromAssemblyPath(_componentAssemblyPath);
-            return ReadContracts(new[] { entry }.Concat(Assemblies.Where(assembly => assembly.IsDynamic)).ToArray()).Contains(name);
+            Assembly[] roots;
+            lock (_exportedApiAssemblies) roots = _exportedApiAssemblies.ToArray();
+            return ReadContracts(new[] { entry }.Concat(roots).Concat(Assemblies.Where(assembly => assembly.IsDynamic)).ToArray()).Contains(name);
         }
         finally { reading.Remove(this); }
     }
@@ -154,6 +162,7 @@ public class PluginLoadContext : AssemblyLoadContext
             if (type is null || !visited.Add(type)) return;
             if (type.IsGenericParameter)
             {
+                AddAttributes(type.CustomAttributes);
                 foreach (var constraint in type.GetGenericParameterConstraints()) AddType(constraint);
                 return;
             }
