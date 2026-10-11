@@ -109,9 +109,6 @@ public class PluginLoadContext : AssemblyLoadContext
         GetLoadContext(typeof(PluginLoadContext).Assembly) != Default &&
         (name == "ClassIsland" || name.StartsWith("ClassIsland.", StringComparison.Ordinal) ||
          name == "Avalonia" || name.StartsWith("Avalonia.", StringComparison.Ordinal) ||
-         // HostBuilderContext exposes configuration and change-token contracts
-         // transitively, beyond the signatures declared by the ClassIsland SDK.
-         name.StartsWith("Microsoft.Extensions.", StringComparison.Ordinal) ||
          RuntimeContracts.Value.Contains(name));
 
     private static HashSet<string> BuildRuntimeContracts()
@@ -126,6 +123,7 @@ public class PluginLoadContext : AssemblyLoadContext
     {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<Type>();
+        var pending = new Queue<Type>();
         void AddType(Type? type)
         {
             if (type is null || !visited.Add(type)) return;
@@ -134,16 +132,27 @@ public class PluginLoadContext : AssemblyLoadContext
                 foreach (var constraint in type.GetGenericParameterConstraints()) AddType(constraint);
                 return;
             }
-            if (type.Assembly.GetName().Name is { } name) names.Add(name);
+            var name = type.Assembly.GetName().Name;
+            if (name is not null) names.Add(name);
             if (type.HasElementType) AddType(type.GetElementType());
             if (type.IsGenericType)
                 foreach (var argument in type.GetGenericArguments()) AddType(argument);
+            // Framework types already share the CLR's identity. Traversing their
+            // entire API would turn object/Type into an unrelated assembly sweep.
+            if (!type.HasElementType && name is not null && name != "mscorlib" && name != "netstandard" &&
+                name != "System" && !name.StartsWith("System.", StringComparison.Ordinal))
+                pending.Enqueue(type);
         }
         const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         foreach (var sdk in assemblies)
         foreach (var type in sdk.IsDynamic ? sdk.GetTypes().Where(type => type.IsVisible) : sdk.GetExportedTypes())
-        {
             AddType(type);
+        // Follow public bases and exposed external types as well as SDK declarations.
+        // This includes HostBuilderContext.Configuration and inherited plugin APIs,
+        // without sharing unrelated Microsoft.Extensions implementation assemblies.
+        while (pending.Count != 0)
+        {
+            var type = pending.Dequeue();
             AddType(type.BaseType);
             foreach (var contract in type.GetInterfaces()) AddType(contract);
             foreach (var field in type.GetFields(flags)) AddType(field.FieldType);

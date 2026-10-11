@@ -56,6 +56,8 @@ internal static class ClassIslandVerification
             foreach (var name in new[] { "Microsoft.Extensions.Configuration.Abstractions", "Microsoft.Extensions.Primitives" })
                 File.Copy(runtimeContext.LoadFromAssemblyName(new AssemblyName(name)).Location,
                     Path.Combine(pluginDirectory, name + ".dll"), overwrite: true);
+            var consoleLogging = runtimeContext.LoadFromAssemblyName(new AssemblyName("Microsoft.Extensions.Logging.Console"));
+            File.Copy(consoleLogging.Location, Path.Combine(pluginDirectory, "Microsoft.Extensions.Logging.Console.dll"), overwrite: true);
             const string target = ".NETCoreApp,Version=v8.0";
             const string library = "ProbeLibraries/1.0.0";
             File.WriteAllText(Path.ChangeExtension(pluginPath, ".deps.json"), System.Text.Json.JsonSerializer.Serialize(new
@@ -69,7 +71,8 @@ internal static class ClassIslandVerification
                         {
                             ["YamlDotNet.dll"] = new { }, ["Markdown.Avalonia.dll"] = new { },
                             ["Microsoft.Extensions.Configuration.Abstractions.dll"] = new { },
-                            ["Microsoft.Extensions.Primitives.dll"] = new { }
+                            ["Microsoft.Extensions.Primitives.dll"] = new { },
+                            ["Microsoft.Extensions.Logging.Console.dll"] = new { }
                         } }
                     }
                 },
@@ -105,14 +108,26 @@ internal static class ClassIslandVerification
                 var privateYaml = nested.LoadFromAssemblyName(new AssemblyName("YamlDotNet"));
                 if (ReferenceEquals(yaml, privateYaml) || AssemblyLoadContext.GetLoadContext(privateYaml) != nested)
                     throw new InvalidOperationException("Plugin-private YAML dependency was intercepted by a dependency plugin or the runtime.");
+                var privateLogging = nested.LoadFromAssemblyName(new AssemblyName("Microsoft.Extensions.Logging.Console"));
+                if (ReferenceEquals(consoleLogging, privateLogging) || AssemblyLoadContext.GetLoadContext(privateLogging) != nested)
+                    throw new InvalidOperationException("Plugin-private logging implementation was intercepted by the runtime.");
                 // Model a dependency plugin whose exported API exposes runtime
-                // YAML types without carrying a private YAML implementation.
+                // YAML through inherited members of an external base type.
+                Type baseContract;
+                using (runtimeContext.EnterContextualReflection())
+                {
+                    var builder = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
+                        new AssemblyName("ExternalContractProbe"), System.Reflection.Emit.AssemblyBuilderAccess.Run);
+                    var contract = builder.DefineDynamicModule("Contracts").DefineType("ExternalYamlBase", TypeAttributes.Public);
+                    contract.DefineDefaultConstructor(MethodAttributes.Public);
+                    contract.DefineField("Yaml", yaml.GetType("YamlDotNet.Serialization.ISerializer", throwOnError: true)!, FieldAttributes.Public);
+                    baseContract = contract.CreateType()!;
+                }
                 using (dependent.EnterContextualReflection())
                 {
                     var builder = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
                         new AssemblyName("DependencyContractProbe"), System.Reflection.Emit.AssemblyBuilderAccess.Run);
-                    var contract = builder.DefineDynamicModule("Contracts").DefineType("PublicYamlContract", TypeAttributes.Public);
-                    contract.DefineField("Yaml", yaml.GetType("YamlDotNet.Serialization.ISerializer", throwOnError: true)!, FieldAttributes.Public);
+                    var contract = builder.DefineDynamicModule("Contracts").DefineType("PublicYamlContract", TypeAttributes.Public, baseContract);
                     _ = contract.CreateType();
                 }
                 var consumer = (AssemblyLoadContext)Activator.CreateInstance(nested.GetType(), pluginInfo, pluginPath, false)!;
