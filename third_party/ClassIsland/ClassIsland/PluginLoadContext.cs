@@ -19,10 +19,15 @@ namespace ClassIsland;
 public class PluginLoadContext : AssemblyLoadContext
 {
     private readonly bool _suppressMacPluginLoader;
+    private readonly string _pluginDirectory;
+    private static readonly Lazy<HashSet<string>> RuntimeContracts = new(BuildRuntimeContracts);
+    [ThreadStatic]
+    private static HashSet<PluginLoadContext>? _readingExportedContracts;
 
     public PluginLoadContext(PluginInfo info, string fullPath, bool suppressMacPluginLoader) : base($"ClassIsland.PluginLoadContext[{info.Manifest.Id}]")
     {
         _suppressMacPluginLoader = suppressMacPluginLoader;
+        _pluginDirectory = Path.GetDirectoryName(fullPath)!;
         Info = info;
         CoreResolver = UseMacOsPluginLoadingBehavior ? null : new(fullPath);
         MacResolver = UseMacOsPluginLoadingBehavior ? new(fullPath) : null;
@@ -49,7 +54,9 @@ public class PluginLoadContext : AssemblyLoadContext
     /// 在需要加载程序集时被调用。优先从已加载的插件依赖项上下文中解析，如果在插件目录中找到对应的程序集则从路径加载。
     /// 对 WinRT 相关依赖会使用宿主的实现。
     /// </summary>
-    protected override Assembly? Load(AssemblyName assemblyName)
+    protected override Assembly? Load(AssemblyName assemblyName) => LoadPluginAssembly(assemblyName, true);
+
+    private Assembly? LoadPluginAssembly(AssemblyName assemblyName, bool allowRuntimeFallback)
     {
         if (WinRTDeps.Contains(assemblyName.Name))
         {
@@ -60,7 +67,7 @@ public class PluginLoadContext : AssemblyLoadContext
         // Embedded ClassIsland is not in AssemblyLoadContext.Default. SDK and
         // UI contracts must retain the runtime's identities, even if a plugin
         // carries its own copies, or its services/components cannot be assigned.
-        if (ResolveRuntimeAssembly(assemblyName) is { } runtimeAssembly)
+        if (IsRuntimeContract(assemblyName.Name) && ResolveRuntimeAssembly(assemblyName) is { } runtimeAssembly)
             return runtimeAssembly;
         // 尝试查找依赖
         foreach (var dep in Info.Manifest.Dependencies)
@@ -70,7 +77,7 @@ public class PluginLoadContext : AssemblyLoadContext
                 continue;
             }
 
-            var assembly = context.Load(assemblyName);
+            var assembly = context.LoadPluginAssembly(assemblyName, false);
             if (assembly != null)
             {
                 return assembly;
@@ -85,7 +92,102 @@ public class PluginLoadContext : AssemblyLoadContext
             return LoadFromAssemblyPath(assemblyPath);
         }
 
-        return null;
+        // Dependency plugins may expose a runtime-provided library in their
+        // public API. Only that contract may fall back during dependency probing.
+        return allowRuntimeFallback || ExportsContract(assemblyName.Name)
+            ? ResolveRuntimeAssembly(assemblyName) : null;
+    }
+
+    private bool ExportsContract(string? name)
+    {
+        if (name is null || GetLoadContext(typeof(PluginLoadContext).Assembly) == Default) return false;
+        var reading = _readingExportedContracts ??= new HashSet<PluginLoadContext>();
+        if (!reading.Add(this)) return false;
+        try
+        {
+            // A dependency's secondary API assembly may not have been requested
+            // yet. Discover only assets accepted by its own package resolver;
+            // native DLLs, RID placeholders and unrelated adjacent files are not roots.
+            foreach (var path in Directory.EnumerateFiles(_pluginDirectory, "*.dll", SearchOption.AllDirectories))
+            {
+                AssemblyName candidate;
+                try { candidate = AssemblyName.GetAssemblyName(path); }
+                catch (BadImageFormatException) { continue; }
+                if (WinRTDeps.Contains(candidate.Name) || IsRuntimeContract(candidate.Name)) continue;
+                var resolved = UseMacOsPluginLoadingBehavior
+                    ? MacResolver?.ResolveAssemblyToPath(candidate) : CoreResolver?.ResolveAssemblyToPath(candidate);
+                if (resolved is not null && string.Equals(Path.GetFullPath(resolved), Path.GetFullPath(path),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    LoadFromAssemblyPath(resolved);
+            }
+            return ReadContracts(Assemblies.ToArray()).Contains(name);
+        }
+        finally { reading.Remove(this); }
+    }
+
+    private static bool IsRuntimeContract(string? name) => name is not null &&
+        GetLoadContext(typeof(PluginLoadContext).Assembly) != Default &&
+        (name == "ClassIsland" || name.StartsWith("ClassIsland.", StringComparison.Ordinal) ||
+         name == "Avalonia" || name.StartsWith("Avalonia.", StringComparison.Ordinal) ||
+         RuntimeContracts.Value.Contains(name));
+
+    private static HashSet<string> BuildRuntimeContracts()
+    {
+        // Derive the boundary from the real SDK, including public bases, generic
+        // arguments and method signatures. A hand-maintained list misses APIs
+        // such as MarkdownConvertHelper.Engine and IAudioService.AudioEngine.
+        return ReadContracts(new[] { typeof(PluginInfo).Assembly, typeof(ClassIsland.Shared.IAppHost).Assembly });
+    }
+
+    private static HashSet<string> ReadContracts(IEnumerable<Assembly> assemblies)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visited = new HashSet<Type>();
+        var pending = new Queue<Type>();
+        void AddType(Type? type)
+        {
+            if (type is null || !visited.Add(type)) return;
+            if (type.IsGenericParameter)
+            {
+                foreach (var constraint in type.GetGenericParameterConstraints()) AddType(constraint);
+                return;
+            }
+            var name = type.Assembly.GetName().Name;
+            if (name is not null) names.Add(name);
+            if (type.HasElementType) AddType(type.GetElementType());
+            if (type.IsGenericType)
+                foreach (var argument in type.GetGenericArguments()) AddType(argument);
+            // Framework types already share the CLR's identity. Traversing their
+            // entire API would turn object/Type into an unrelated assembly sweep.
+            if (!type.HasElementType && name is not null && name != "mscorlib" && name != "netstandard" &&
+                name != "System" && !name.StartsWith("System.", StringComparison.Ordinal))
+                pending.Enqueue(type);
+        }
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        foreach (var sdk in assemblies)
+        foreach (var type in sdk.IsDynamic ? sdk.GetTypes().Where(type => type.IsVisible) : sdk.GetExportedTypes())
+            AddType(type);
+        // Follow public bases and exposed external types as well as SDK declarations.
+        // This includes HostBuilderContext.Configuration and inherited plugin APIs,
+        // without sharing unrelated Microsoft.Extensions implementation assemblies.
+        while (pending.Count != 0)
+        {
+            var type = pending.Dequeue();
+            AddType(type.BaseType);
+            foreach (var contract in type.GetInterfaces()) AddType(contract);
+            foreach (var field in type.GetFields(flags)) AddType(field.FieldType);
+            foreach (var property in type.GetProperties(flags)) AddType(property.PropertyType);
+            foreach (var @event in type.GetEvents(flags)) AddType(@event.EventHandlerType);
+            foreach (var method in type.GetMethods(flags))
+            {
+                AddType(method.ReturnType);
+                foreach (var parameter in method.GetParameters()) AddType(parameter.ParameterType);
+                foreach (var argument in method.GetGenericArguments()) AddType(argument);
+            }
+            foreach (var constructor in type.GetConstructors(flags))
+                foreach (var parameter in constructor.GetParameters()) AddType(parameter.ParameterType);
+        }
+        return names;
     }
 
     private static Assembly? ResolveRuntimeAssembly(AssemblyName name)

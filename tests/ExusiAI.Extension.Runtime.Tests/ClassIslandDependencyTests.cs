@@ -62,7 +62,20 @@ public sealed class ClassIslandDependencyTests
         }
         finally
         {
-            if (Directory.Exists(root)) Directory.Delete(root, true);
+            // A dead context weak reference does not guarantee that Windows has
+            // already released the mapped image (or a scanner's transient lock).
+            // Keep cleanup bounded and surface persistent failures.
+            for (var attempt = 0; Directory.Exists(root); attempt++)
+            {
+                try { Directory.Delete(root, true); }
+                catch (Exception error) when (attempt < 9 &&
+                    (error is IOException || error is UnauthorizedAccessException))
+                {
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    Thread.Sleep(50);
+                }
+            }
         }
     }
 
