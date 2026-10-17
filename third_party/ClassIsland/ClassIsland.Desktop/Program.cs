@@ -14,7 +14,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Logging;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using ClassIsland.Core;
 using ClassIsland.Core.Abstractions.Services;
 using ClassIsland.Core.Services;
@@ -55,20 +54,13 @@ public class Program
         Volatile.Read(ref embeddedApp)?.MainWindow is { IsVisible: true } &&
         App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible);
 
-    /// <summary>Renders the embedded visual tree for host/CI diagnostics.</summary>
-    public static string CaptureEmbeddedPreview(string path) => Dispatcher.UIThread.Invoke(() =>
-    {
-        var window = Volatile.Read(ref embeddedApp)?.MainWindow
-            ?? throw new InvalidOperationException("The embedded main window is not ready.");
-        var width = Math.Max(1, (int)Math.Ceiling(window.Bounds.Width));
-        var height = Math.Max(1, (int)Math.Ceiling(window.Bounds.Height));
-        var bitmap = new RenderTargetBitmap(new PixelSize(width, height));
-        using (var canvas = bitmap.CreateDrawingContext(false))
-            canvas.DrawRectangle(new VisualBrush(window), null, new Rect(0, 0, width, height));
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        bitmap.Save(path);
-        return $"{AvaloniaUnsafeAccessorHelpers.GetActiveWin32CompositionMode()};{width}x{height};{new FileInfo(path).Length}";
-    });
+    /// <summary>Returns the real Win32 top-level used by host render verification.</summary>
+    public static long GetEmbeddedWindowHandle() => Dispatcher.UIThread.Invoke(() =>
+        Volatile.Read(ref embeddedApp)?.MainWindow?.TryGetPlatformHandle()?.Handle.ToInt64()
+        ?? throw new InvalidOperationException("The embedded main window is not ready."));
+
+    public static string GetEmbeddedCompositionMode() => Dispatcher.UIThread.Invoke(() =>
+        AvaloniaUnsafeAccessorHelpers.GetActiveWin32CompositionMode()?.ToString() ?? "Unknown");
 
     public static void OpenEmbeddedPage(string page)
     {

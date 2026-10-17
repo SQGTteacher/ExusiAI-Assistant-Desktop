@@ -2,7 +2,12 @@ using System.IO;
 using System.IO.Compression;
 using System.Collections;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using ExusiAI.Extension.Abstractions;
 using ExusiAI.Extension.Runtime;
 using ExusiAI.Extension.Wpf;
@@ -37,9 +42,10 @@ internal static class ClassIslandVerification
             if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not true)
                 throw new InvalidOperationException("ClassIsland started without a visible information island.");
             var preview = Path.Combine(outputDirectory, "classisland-main-window.png");
-            var renderStatus = (string)InvokeEntryPoint(type, host, "CaptureEmbeddedPreview", preview)!;
-            if (!renderStatus.StartsWith("RedirectionSurface;", StringComparison.Ordinal) ||
-                !File.Exists(preview) || new FileInfo(preview).Length < 512)
+            var compositionMode = (string)InvokeEntryPoint(type, host, "GetEmbeddedCompositionMode")!;
+            var windowHandle = new IntPtr((long)InvokeEntryPoint(type, host, "GetEmbeddedWindowHandle")!);
+            var renderStatus = CaptureNativeWindow(windowHandle, preview);
+            if (compositionMode != "RedirectionSurface" || !renderStatus.HasVisibleContent)
                 throw new InvalidOperationException($"ClassIsland main window did not render correctly: {renderStatus}");
             VerifyPluginInstallProbes(installProbe);
             if (!await Task.Run(() => Invoke("OpenSettings") is true))
@@ -158,7 +164,7 @@ internal static class ClassIslandVerification
             if (events.GetName().Version?.Major != 9)
                 throw new InvalidOperationException($"Incorrect shared SystemEvents version: {events.FullName}");
             File.WriteAllText(Path.Combine(outputDirectory, "result.txt"),
-                $"PASS: packaged ClassIsland rendered via {renderStatus}; settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified.");
+                $"PASS: packaged ClassIsland rendered via {compositionMode} ({renderStatus}); settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified.");
         }
         finally
         {
@@ -248,4 +254,71 @@ internal static class ClassIslandVerification
         if (expected.Count != 0)
             throw new InvalidOperationException($"ClassIsland did not index plugin probes: {string.Join(", ", expected)}.");
     }
+
+    private static NativeRenderStatus CaptureNativeWindow(IntPtr window, string path)
+    {
+        if (window == IntPtr.Zero || !GetWindowRect(window, out var rect))
+            throw new InvalidOperationException("ClassIsland has no capturable native window.");
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        if (width <= 1 || height <= 1)
+            throw new InvalidOperationException($"ClassIsland native window has invalid bounds {width}x{height}.");
+
+        _ = DwmFlush();
+        var screen = GetDC(IntPtr.Zero);
+        var memory = CreateCompatibleDC(screen);
+        var bitmap = CreateCompatibleBitmap(screen, width, height);
+        var previous = SelectObject(memory, bitmap);
+        try
+        {
+            if (!PrintWindow(window, memory, 2))
+                throw new InvalidOperationException("PrintWindow could not capture the ClassIsland top-level surface.");
+            var source = Imaging.CreateBitmapSourceFromHBitmap(bitmap, IntPtr.Zero, Int32Rect.Empty,
+                BitmapSizeOptions.FromEmptyOptions());
+            var converted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+            var stride = width * 4;
+            var pixels = new byte[stride * height];
+            converted.CopyPixels(pixels, stride, 0);
+            var first = BitConverter.ToUInt32(pixels, 0);
+            var different = 0;
+            var nonBlack = 0;
+            for (var i = 0; i < pixels.Length; i += 4)
+            {
+                if (BitConverter.ToUInt32(pixels, i) != first) different++;
+                if (pixels[i] > 8 || pixels[i + 1] > 8 || pixels[i + 2] > 8) nonBlack++;
+            }
+            using var output = File.Create(path);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(converted));
+            encoder.Save(output);
+            return new NativeRenderStatus(width, height, different >= 64 && nonBlack >= 64, different, nonBlack);
+        }
+        finally
+        {
+            _ = SelectObject(memory, previous);
+            _ = DeleteObject(bitmap);
+            _ = DeleteDC(memory);
+            _ = ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
+    private readonly record struct NativeRenderStatus(int Width, int Height, bool HasVisibleContent,
+        int DifferentPixels, int NonBlackPixels)
+    {
+        public override string ToString() => $"{Width}x{Height}; different={DifferentPixels}; nonBlack={NonBlackPixels}";
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect { public int Left, Top, Right, Bottom; }
+
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window, IntPtr dc);
+    [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr dc);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr dc, int width, int height);
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr value);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr value);
+    [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr dc);
+    [DllImport("dwmapi.dll")] private static extern int DwmFlush();
 }

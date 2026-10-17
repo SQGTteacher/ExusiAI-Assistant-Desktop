@@ -82,8 +82,7 @@ public class PluginService : IPluginService
                 {
                     var mf = pkg.GetEntry(PluginManifestFileName)
                         ?? throw new InvalidDataException($"Plugin package has no {PluginManifestFileName}.");
-                    using var reader = new StreamReader(mf.Open());
-                    manifest = deserializer.Deserialize<PluginManifest>(reader.ReadToEnd())
+                    manifest = deserializer.Deserialize<PluginManifest>(PluginPackageInstaller.ReadManifestText(mf))
                         ?? throw new InvalidDataException("Plugin manifest is empty.");
                 }
                 Console.Write($"正在处理插件安装: {manifest.Name}({manifest.Id},{manifest.Version})...");

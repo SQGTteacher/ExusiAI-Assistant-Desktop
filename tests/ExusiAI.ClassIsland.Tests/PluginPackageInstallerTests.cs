@@ -119,6 +119,39 @@ public sealed class PluginPackageInstallerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(target, ".disabled")));
     }
 
+    [Fact]
+    public void RecoversInterruptedBackupOutsidePluginScanRoot()
+    {
+        var transaction = Path.Combine(root, ".ClassIslandPluginTransactions", "example.plugin");
+        var previous = Path.Combine(transaction, "previous");
+        Directory.CreateDirectory(previous);
+        File.WriteAllText(Path.Combine(previous, "old.txt"), "old");
+        File.WriteAllText(Path.Combine(previous, ".disabled"), "");
+        var package = CreatePackage(("asset.txt", null));
+
+        Assert.Throws<InvalidDataException>(() =>
+            PluginPackageInstaller.Install(package, Plugins, "example.plugin", "Missing.dll"));
+
+        var target = Path.Combine(Plugins, "example.plugin");
+        Assert.Equal("old", File.ReadAllText(Path.Combine(target, "old.txt")));
+        Assert.True(File.Exists(Path.Combine(target, ".disabled")));
+        Assert.DoesNotContain(Directory.EnumerateDirectories(Plugins), path =>
+            Path.GetFileName(path).StartsWith(".classisland-plugin-", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RejectsOversizedManifestBeforeReading()
+    {
+        Directory.CreateDirectory(root);
+        var package = Path.Combine(root, Guid.NewGuid() + ".cipx");
+        using (var archive = ZipFile.Open(package, ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(archive.CreateEntry("manifest.yml").Open()))
+            writer.Write(new string('x', 1024 * 1024 + 1));
+        using var opened = ZipFile.OpenRead(package);
+        Assert.Throws<InvalidDataException>(() =>
+            PluginPackageInstaller.ReadManifestText(opened.GetEntry("manifest.yml")!));
+    }
+
     private string CreateOldPlugin(bool disabled, bool uninstalling)
     {
         var target = Path.Combine(Plugins, "example.plugin");

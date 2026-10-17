@@ -11,6 +11,7 @@ internal static class PluginPackageInstaller
 {
     private const int MaxEntryCount = 4096;
     private const long MaxExpandedBytes = 512L * 1024 * 1024;
+    private const long MaxManifestBytes = 1024 * 1024;
     private static readonly char[] InvalidWindowsChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
     private static readonly HashSet<string> ReservedWindowsNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -25,15 +26,20 @@ internal static class PluginPackageInstaller
         var root = Path.GetFullPath(pluginsRoot);
         Directory.CreateDirectory(root);
         var target = Path.Combine(root, pluginId);
-        var suffix = Guid.NewGuid().ToString("N");
-        var staged = Path.Combine(root, $".classisland-plugin-install-{suffix}");
-        var previous = Path.Combine(root, $".classisland-plugin-previous-{suffix}");
+        // Keep transaction directories outside PluginsRootPath: plugin discovery
+        // enumerates every direct child and would otherwise load a staged copy
+        // or backup after an interrupted startup.
+        var transaction = Path.Combine(Path.GetDirectoryName(root)!, ".ClassIslandPluginTransactions", pluginId);
+        var staged = Path.Combine(transaction, "staged");
+        var previous = Path.Combine(transaction, "previous");
+        RecoverInterruptedTransaction(transaction, target, previous);
         var hadPrevious = Directory.Exists(target);
         var wasDisabled = hadPrevious && File.Exists(Path.Combine(target, ".disabled"));
         var wasUninstalling = hadPrevious && File.Exists(Path.Combine(target, ".uninstall"));
 
         try
         {
+            Directory.CreateDirectory(transaction);
             Directory.CreateDirectory(staged);
             ExtractSafely(packagePath, staged);
             var entrancePath = ResolveInside(staged, normalizedEntrance);
@@ -60,7 +66,7 @@ internal static class PluginPackageInstaller
                     Directory.Move(previous, target);
                 throw;
             }
-            if (Directory.Exists(previous)) Directory.Delete(previous, recursive: true);
+            TryDeleteTransaction(transaction);
         }
         catch
         {
@@ -69,6 +75,42 @@ internal static class PluginPackageInstaller
             if (hadPrevious && Directory.Exists(previous) && !Directory.Exists(target))
                 Directory.Move(previous, target);
             throw;
+        }
+    }
+
+    internal static string ReadManifestText(ZipArchiveEntry entry)
+    {
+        if (entry.Length > MaxManifestBytes)
+            throw new InvalidDataException($"Plugin manifest exceeds {MaxManifestBytes} bytes.");
+        using var reader = new StreamReader(entry.Open());
+        return reader.ReadToEnd();
+    }
+
+    private static void RecoverInterruptedTransaction(string transaction, string target, string previous)
+    {
+        if (!Directory.Exists(transaction)) return;
+        if (!Directory.Exists(target) && Directory.Exists(previous))
+            Directory.Move(previous, target);
+        if (Directory.Exists(transaction)) Directory.Delete(transaction, recursive: true);
+    }
+
+    private static void TryDeleteTransaction(string transaction)
+    {
+        try
+        {
+            if (Directory.Exists(transaction)) Directory.Delete(transaction, recursive: true);
+            var parent = Path.GetDirectoryName(transaction);
+            if (parent is not null && Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any())
+                Directory.Delete(parent);
+        }
+        catch (IOException)
+        {
+            // The canonical target is already installed. A later startup will
+            // retry cleanup before processing another package for this plugin.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Antivirus/indexers can temporarily retain handles on Windows.
         }
     }
 
