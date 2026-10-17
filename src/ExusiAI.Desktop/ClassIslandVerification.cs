@@ -1,4 +1,6 @@
 using System.IO;
+using System.IO.Compression;
+using System.Collections;
 using System.Reflection;
 using System.Runtime.Loader;
 using ExusiAI.Extension.Abstractions;
@@ -15,6 +17,7 @@ internal static class ClassIslandVerification
         Directory.CreateDirectory(outputDirectory);
         var package = Path.Combine(AppContext.BaseDirectory, "packages", "exusiai.classisland");
         var data = Path.Combine(outputDirectory, "ClassIslandData");
+        var installProbe = PreparePluginInstallProbes(data);
         var context = new PackageLoadContext(Path.Combine(package, "ExusiAI.Plugin.ClassIsland.dll"),
             ["ExusiAI.Extension.Abstractions", "ExusiAI.Extension.Wpf"]);
         IDisposable? host = null;
@@ -33,6 +36,12 @@ internal static class ClassIslandVerification
                 throw new InvalidOperationException(Error() ?? "ClassIsland startup failed.");
             if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not true)
                 throw new InvalidOperationException("ClassIsland started without a visible information island.");
+            var preview = Path.Combine(outputDirectory, "classisland-main-window.png");
+            var renderStatus = (string)InvokeEntryPoint(type, host, "CaptureEmbeddedPreview", preview)!;
+            if (!renderStatus.StartsWith("RedirectionSurface;", StringComparison.Ordinal) ||
+                !File.Exists(preview) || new FileInfo(preview).Length < 512)
+                throw new InvalidOperationException($"ClassIsland main window did not render correctly: {renderStatus}");
+            VerifyPluginInstallProbes(installProbe);
             if (!await Task.Run(() => Invoke("OpenSettings") is true))
                 throw new InvalidOperationException(Error() ?? "ClassIsland settings failed.");
             Invoke("Hide");
@@ -45,6 +54,7 @@ internal static class ClassIslandVerification
             var core = runtimeContext.LoadFromAssemblyName(new AssemblyName("ClassIsland.Core"));
             var pluginInfo = Activator.CreateInstance(core.GetType("ClassIsland.Core.Models.Plugin.PluginInfo", throwOnError: true)!)!;
             var application = runtimeContext.LoadFromAssemblyName(new AssemblyName("ClassIsland"));
+            VerifyPluginLoadStatus(application);
             var pluginDirectory = Path.Combine(outputDirectory, "plugin-sdk-probe");
             Directory.CreateDirectory(pluginDirectory);
             var pluginPath = Path.Combine(pluginDirectory, "SdkProbe.dll");
@@ -148,12 +158,94 @@ internal static class ClassIslandVerification
             if (events.GetName().Version?.Major != 9)
                 throw new InvalidOperationException($"Incorrect shared SystemEvents version: {events.FullName}");
             File.WriteAllText(Path.Combine(outputDirectory, "result.txt"),
-                "PASS: packaged ClassIsland started in the WPF process; island visible, settings opened, island hidden; isolated SystemEvents 9 and nested plugin SDK identities verified.");
+                $"PASS: packaged ClassIsland rendered via {renderStatus}; settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified.");
         }
         finally
         {
             if (host is not null) await Task.Run(host.Dispose);
             context.Unload();
         }
+    }
+
+    private static object? InvokeEntryPoint(Type hostType, IDisposable host, string method, params object?[] args)
+    {
+        var entryPoint = (Type)hostType.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+        return entryPoint.GetMethod(method)!.Invoke(null, args);
+    }
+
+    private static (string ValidPackage, string InvalidPackage, string ValidDirectory, string InvalidDirectory) PreparePluginInstallProbes(string data)
+    {
+        const string validId = "exusiai.install-verification.valid";
+        const string invalidId = "exusiai.install-verification.invalid";
+        var plugins = Path.Combine(data, "Plugins");
+        var packages = Path.Combine(data, "Cache", "PluginPackages");
+        Directory.CreateDirectory(packages);
+        var validDirectory = CreateOldPlugin(plugins, validId);
+        var invalidDirectory = CreateOldPlugin(plugins, invalidId);
+        var validPackage = Path.Combine(packages, "valid.CIPX");
+        var invalidPackage = Path.Combine(packages, "invalid.cipx");
+        CreatePluginPackage(validPackage, validId, "Probe.dll", typeof(ClassIslandVerification).Assembly.Location);
+        CreatePluginPackage(invalidPackage, invalidId, "Missing.dll", null);
+        return (validPackage, invalidPackage, validDirectory, invalidDirectory);
+    }
+
+    private static string CreateOldPlugin(string plugins, string id)
+    {
+        var directory = Path.Combine(plugins, id);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, ".disabled"), "");
+        File.WriteAllText(Path.Combine(directory, "old.txt"), "old");
+        File.WriteAllText(Path.Combine(directory, "manifest.yml"), Manifest(id, "Old.dll"));
+        return directory;
+    }
+
+    private static void CreatePluginPackage(string path, string id, string entrance, string? assembly)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        using (var writer = new StreamWriter(archive.CreateEntry("manifest.yml").Open()))
+            writer.Write(Manifest(id, entrance));
+        if (assembly is null) return;
+        using var input = File.OpenRead(assembly);
+        using var output = archive.CreateEntry(entrance).Open();
+        input.CopyTo(output);
+    }
+
+    private static string Manifest(string id, string entrance) => $"""
+        id: {id}
+        name: Install verification
+        version: 1.0.0
+        apiVersion: 2.0.0.0
+        entranceAssembly: {entrance}
+        """;
+
+    private static void VerifyPluginInstallProbes((string ValidPackage, string InvalidPackage, string ValidDirectory, string InvalidDirectory) probe)
+    {
+        if (File.Exists(probe.ValidPackage) || !File.Exists(Path.Combine(probe.ValidDirectory, "Probe.dll")) ||
+            File.Exists(Path.Combine(probe.ValidDirectory, "old.txt")) || !File.Exists(Path.Combine(probe.ValidDirectory, ".disabled")))
+            throw new InvalidOperationException("Valid queued ClassIsland plugin was not transactionally installed.");
+        if (!File.Exists(probe.InvalidPackage) || !File.Exists(Path.Combine(probe.InvalidDirectory, "old.txt")) ||
+            !File.Exists(Path.Combine(probe.InvalidDirectory, ".disabled")))
+            throw new InvalidOperationException("Invalid queued ClassIsland plugin was not retained with its old version.");
+    }
+
+    private static void VerifyPluginLoadStatus(Assembly application)
+    {
+        var service = application.GetType("ClassIsland.Services.PluginService", throwOnError: true)!;
+        var statuses = (IEnumerable)service.GetProperty("PluginLoadedStatus", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+        var expected = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "exusiai.install-verification.valid", "exusiai.install-verification.invalid"
+        };
+        foreach (var info in statuses)
+        {
+            var manifest = info!.GetType().GetProperty("Manifest")!.GetValue(info)!;
+            var id = (string)manifest.GetType().GetProperty("Id")!.GetValue(manifest)!;
+            if (!expected.Remove(id)) continue;
+            var status = info.GetType().GetProperty("LoadStatus")!.GetValue(info)?.ToString();
+            if (status != "Disabled")
+                throw new InvalidOperationException($"ClassIsland plugin {id} lost its disabled state: {status}.");
+        }
+        if (expected.Count != 0)
+            throw new InvalidOperationException($"ClassIsland did not index plugin probes: {string.Join(", ", expected)}.");
     }
 }

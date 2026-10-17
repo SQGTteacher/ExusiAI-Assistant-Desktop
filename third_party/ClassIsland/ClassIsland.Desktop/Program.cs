@@ -14,9 +14,11 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Logging;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using ClassIsland.Core;
 using ClassIsland.Core.Abstractions.Services;
 using ClassIsland.Core.Services;
+using ClassIsland.Core.Helpers;
 using ClassIsland.Extensions;
 using ClassIsland.Models;
 using ClassIsland.Views;
@@ -52,6 +54,21 @@ public class Program
     public static bool GetEmbeddedVisible() => Dispatcher.UIThread.Invoke(() =>
         Volatile.Read(ref embeddedApp)?.MainWindow is { IsVisible: true } &&
         App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible);
+
+    /// <summary>Renders the embedded visual tree for host/CI diagnostics.</summary>
+    public static string CaptureEmbeddedPreview(string path) => Dispatcher.UIThread.Invoke(() =>
+    {
+        var window = Volatile.Read(ref embeddedApp)?.MainWindow
+            ?? throw new InvalidOperationException("The embedded main window is not ready.");
+        var width = Math.Max(1, (int)Math.Ceiling(window.Bounds.Width));
+        var height = Math.Max(1, (int)Math.Ceiling(window.Bounds.Height));
+        var bitmap = new RenderTargetBitmap(new PixelSize(width, height));
+        using (var canvas = bitmap.CreateDrawingContext(false))
+            canvas.DrawRectangle(new VisualBrush(window), null, new Rect(0, 0, width, height));
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        bitmap.Save(path);
+        return $"{AvaloniaUnsafeAccessorHelpers.GetActiveWin32CompositionMode()};{width}x{height};{new FileInfo(path).Length}";
+    });
 
     public static void OpenEmbeddedPage(string page)
     {
@@ -117,7 +134,10 @@ public class Program
             })
             .With(new Win32PlatformOptions
             {
-                CompositionMode = [Win32CompositionMode.WinUIComposition, Win32CompositionMode.RedirectionSurface],
+                // WPF already owns a DirectComposition device in the host
+                // process. A second WinUIComposition chain can leave this
+                // transparent top-level visible but with an empty surface.
+                CompositionMode = [Win32CompositionMode.RedirectionSurface],
                 RenderingMode = BuildRenderingMode(0)
             })
             .UsePlatformDetect()

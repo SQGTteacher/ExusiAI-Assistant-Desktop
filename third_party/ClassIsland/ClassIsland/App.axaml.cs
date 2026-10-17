@@ -652,8 +652,9 @@ public partial class App : AppBase, IAppHost
         spanProcessUpdate.Finish();
 
         FileFolderService.CreateFolders();
-        if (EmbeddedOptions is null)
-            PluginService.ProcessPluginsInstall();
+        // Embedded mode has its own isolated data root, but queued packages are
+        // still installed by ClassIsland itself on the next host startup.
+        PluginService.ProcessPluginsInstall();
         bool isSystemSpeechSystemExist = false;
         var spanHostBuilding = spanPreInit.StartChild("startup-host-building");
 

@@ -6,6 +6,7 @@ using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Enums;
 using ClassIsland.Core.Models.Plugin;
 using ClassIsland.Core.Services.Registry;
+using ClassIsland.Helpers;
 using ClassIsland.Models.Plugins;
 using ClassIsland.Services.Management;
 using ClassIsland.Shared;
@@ -71,38 +72,31 @@ public class PluginService : IPluginService
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
             .Build();
 
-        foreach (var pkgPath in Directory.EnumerateFiles(PluginsPkgRootPath).Where(x => Path.GetExtension(x) == IPluginService.PluginPackageExtension))
+        foreach (var pkgPath in Directory.EnumerateFiles(PluginsPkgRootPath)
+                     .Where(x => Path.GetExtension(x).Equals(IPluginService.PluginPackageExtension, StringComparison.OrdinalIgnoreCase)))
         {
             try
             {
-                bool isEnabledBefore = true;
-                using var pkg = ZipFile.OpenRead(pkgPath);
-                var mf = pkg.GetEntry(PluginManifestFileName);
-                if (mf == null)
-                    continue;
-                var mfText = new StreamReader(mf.Open()).ReadToEnd();
-                var manifest = deserializer.Deserialize<PluginManifest>(mfText);
-                var targetPath = Path.Combine(PluginsRootPath, manifest.Id);
-                Console.Write($"正在处理插件安装: {manifest.Name}({manifest.Id},{manifest.Version})...");
-                if (Directory.Exists(targetPath))
+                PluginManifest manifest;
+                using (var pkg = ZipFile.OpenRead(pkgPath))
                 {
-                    if(File.Exists(Path.Combine(targetPath,".disabled")))
-                    {
-                        isEnabledBefore = false;
-                    }
-                    Directory.Delete(targetPath, true);
+                    var mf = pkg.GetEntry(PluginManifestFileName)
+                        ?? throw new InvalidDataException($"Plugin package has no {PluginManifestFileName}.");
+                    using var reader = new StreamReader(mf.Open());
+                    manifest = deserializer.Deserialize<PluginManifest>(reader.ReadToEnd())
+                        ?? throw new InvalidDataException("Plugin manifest is empty.");
                 }
-                Directory.CreateDirectory(targetPath);
-                ZipFile.ExtractToDirectory(pkgPath, targetPath);
-                if(!isEnabledBefore) File.WriteAllText(Path.Combine(targetPath, ".disabled"), "");
+                Console.Write($"正在处理插件安装: {manifest.Name}({manifest.Id},{manifest.Version})...");
+                PluginPackageInstaller.Install(pkgPath, PluginsRootPath, manifest.Id, manifest.EntranceAssembly);
                 InstalledPlugins.Add(manifest);
+                File.Delete(pkgPath);
+                Console.WriteLine("完成!");
             }
             catch (Exception e)
             {
                 Console.WriteLine(e);
+                Console.WriteLine($"插件包 {Path.GetFileName(pkgPath)} 安装失败，已保留以便下次重试。");
             }
-            File.Delete(pkgPath);
-            Console.WriteLine("完成!");
         }
     }
 

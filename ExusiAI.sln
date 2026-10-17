@@ -42,12 +42,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.FileViewer.Core.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.FileViewer.BinaryOffice", "src\ExusiAI.FileViewer.BinaryOffice\ExusiAI.FileViewer.BinaryOffice.csproj", "{F6666666-6666-4666-8666-666666666666}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExusiAI.ClassIsland.Tests", "tests\ExusiAI.ClassIsland.Tests\ExusiAI.ClassIsland.Tests.csproj", "{C1A55151-C1A5-4151-8151-C1A55151C1A5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C1A55151-C1A5-4151-8151-C1A55151C1A5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1A55151-C1A5-4151-8151-C1A55151C1A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C1A55151-C1A5-4151-8151-C1A55151C1A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1A55151-C1A5-4151-8151-C1A55151C1A5}.Release|Any CPU.Build.0 = Release|Any CPU
 		{F6666666-6666-4666-8666-666666666666}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{F6666666-6666-4666-8666-666666666666}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F6666666-6666-4666-8666-666666666666}.Release|Any CPU.ActiveCfg = Release|Any CPU
