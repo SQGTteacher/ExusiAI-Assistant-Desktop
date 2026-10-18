@@ -48,8 +48,8 @@ public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExten
         Command("profile", "编辑课表", token => host.OpenPageWithCancellation("profile", token)),
         Command("edit", "编辑信息岛组件", token => host.OpenPageWithCancellation("edit", token)),
         Command("settings", "原版设置", token => host.OpenPageWithCancellation("settings", token)),
-        Command("show", "显示信息岛", host.StartWithCancellation),
-        Command("hide", "隐藏信息岛", host.HideWithCancellation)
+        Command("show", "显示信息岛", token => host.StartWithCancellation(token)),
+        Command("hide", "隐藏信息岛", token => host.HideWithCancellation(token))
     ];
 
     private WpfTrayCommand Command(string id, string title, Func<CancellationToken, bool> action) => new(id, title,

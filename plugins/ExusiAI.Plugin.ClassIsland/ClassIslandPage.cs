@@ -158,10 +158,11 @@ internal sealed class ClassIslandPage : UserControl
         controls.IsEnabled = !busy;
         cancel.IsEnabled = operation is { IsCancellationRequested: false };
         status.Text = busy ? "正在处理 ClassIsland 操作，请稍候。取消后会等待安全清理完成。"
-            : message ?? (host.LastStartupError is { } error
+            : (host.LastStartupError is { } error
                 ? $"ClassIsland 操作失败：{error}" + (host.RequiresRestart ? " 请重启 ExusiAI 后再次打开。" : "")
                 : host.RequiresRestart ? "ClassIsland 已停止。请重启 ExusiAI 后再次打开。"
                 : host.IsStopped ? "尚未启动。选择下方操作即可打开 ClassIsland。"
                 : host.IsVisible ? "原版信息岛正在显示。" : "原版信息岛已隐藏，后台服务仍在运行。");
+        if (!busy && message is not null) status.Text += $"\n上次操作：{message}";
     }
 }
