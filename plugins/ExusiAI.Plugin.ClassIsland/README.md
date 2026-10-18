@@ -1,6 +1,8 @@
 # ClassIsland in ExusiAI
 
-Enabling the plugin only registers its navigation and tray commands. ExusiAI startup does not launch the ClassIsland runtime or show its windows; use an explicit show/settings/edit command to start it on demand.
+By default, enabling the plugin only registers its navigation and tray commands. Use an explicit show/settings/edit command to start ClassIsland on demand. The optional **随 ExusiAI 启动显示信息岛** setting opts into automatically showing the island next time ExusiAI activates the plugin; saving this choice does not open any windows.
+
+Cold settings/profile startup initializes the island with an invisible, nonactivating native surface and hides it before reporting readiness. Settings can therefore open without flashing the information island. Show/hide commands retain the initialized runtime for subsequent use. The plugin page distinguishes a dormant runtime, a hidden running island, and a stopped runtime that requires restarting ExusiAI.
 
 This plugin loads the original ClassIsland Avalonia desktop assembly from the bundled `NativeClassIsland` directory into the ExusiAI process. Its original information island, components, theme effects and settings are used directly. The ExusiAI page contains only controls to show or hide the original island and open the original settings. It has no alternate WPF renderer or imitation settings workbench.
 

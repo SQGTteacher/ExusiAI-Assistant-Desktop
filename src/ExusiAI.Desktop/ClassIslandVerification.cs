@@ -37,6 +37,13 @@ internal static class ClassIslandVerification
                 binder: null, args: [data, package], culture: null)!;
             object? Invoke(string method) => type.GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null);
             string? Error() => type.GetProperty("LastStartupError", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) as string;
+            if (!await Task.Run(() => Invoke("OpenSettings") is true))
+                throw new InvalidOperationException(Error() ?? "ClassIsland cold settings startup failed.");
+            if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
+                throw new InvalidOperationException("Opening settings from a cold start unexpectedly showed the island.");
+            var coldWindow = new IntPtr((long)InvokeEntryPoint(type, host, "GetEmbeddedWindowHandle")!);
+            if (IsWindowVisible(coldWindow))
+                throw new InvalidOperationException("Cold settings startup left the native island window visible.");
             if (!await Task.Run(() => Invoke("Start") is true))
                 throw new InvalidOperationException(Error() ?? "ClassIsland startup failed.");
             if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not true)
@@ -53,6 +60,13 @@ internal static class ClassIslandVerification
             Invoke("Hide");
             if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
                 throw new InvalidOperationException("ClassIsland information island did not hide.");
+            if (!await Task.Run(() => Invoke("OpenSettings") is true) ||
+                type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
+                throw new InvalidOperationException("Opening settings changed the hidden island state.");
+            if (!await Task.Run(() => Invoke("Start") is true) ||
+                type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not true)
+                throw new InvalidOperationException("ClassIsland information island could not be shown again.");
+            Invoke("Hide");
             var entryPoint = (Type)type.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
             var runtimeContext = AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!;
             if (runtimeContext == AssemblyLoadContext.Default)
@@ -312,6 +326,7 @@ internal static class ClassIslandVerification
     private struct NativeRect { public int Left, Top, Right, Bottom; }
 
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window, IntPtr dc);
     [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);

@@ -21,6 +21,8 @@ internal sealed class ClassIslandHost : IDisposable
     private readonly object themeGate = new();
     private readonly string themePreferencePath;
     private bool followHostTheme;
+    private readonly string startupPreferencePath;
+    private bool showOnHostStartup;
     private volatile bool disposed;
     private int stopRequested;
     internal string? LastStartupError { get; private set; }
@@ -28,6 +30,16 @@ internal sealed class ClassIslandHost : IDisposable
     internal ClassIslandHost(string dataDirectory, string packageDirectory)
     {
         this.dataDirectory = dataDirectory;
+        startupPreferencePath = Path.Combine(dataDirectory, "ExusiAIStartup.json");
+        try
+        {
+            if (File.Exists(startupPreferencePath))
+                showOnHostStartup = System.Text.Json.JsonSerializer.Deserialize<bool>(File.ReadAllText(startupPreferencePath));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            Trace.TraceWarning("ClassIsland startup preference could not be read: {0}", error.Message);
+        }
         themePreferencePath = Path.Combine(dataDirectory, "ExusiAIHostTheme.json");
         try
         {
@@ -46,6 +58,20 @@ internal sealed class ClassIslandHost : IDisposable
 
     internal string DataDirectory => dataDirectory;
     internal bool IsStopped => thread is null || !thread.IsAlive;
+    internal bool RequiresRestart => disposed || (thread is not null && !thread.IsAlive);
+    internal bool ShowOnHostStartup { get { lock (lifecycleGate) return showOnHostStartup; } }
+
+    internal void SetShowOnHostStartup(bool show)
+    {
+        lock (lifecycleGate)
+        {
+            Directory.CreateDirectory(dataDirectory);
+            var temporary = startupPreferencePath + ".tmp";
+            File.WriteAllText(temporary, System.Text.Json.JsonSerializer.Serialize(show));
+            File.Move(temporary, startupPreferencePath, overwrite: true);
+            showOnHostStartup = show;
+        }
+    }
 
     internal bool IsVisible
     {
@@ -225,6 +251,7 @@ internal sealed class ClassIslandHost : IDisposable
             entryPoint = desktop.GetType("ClassIsland.Desktop.Program", throwOnError: true);
             var optionsType = application.GetType("ClassIsland.EmbeddedHostOptions", throwOnError: true)!;
             var options = Activator.CreateInstance(optionsType, dataDirectory, nativeDirectory)!;
+            optionsType.GetProperty("StartHidden")!.SetValue(options, true);
             Action<object> created = app =>
             {
                 app.GetType().GetEvent("EmbeddedFailure")?.AddEventHandler(app,

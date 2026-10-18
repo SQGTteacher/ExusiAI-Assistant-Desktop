@@ -868,6 +868,11 @@ public partial class App : AppBase, IAppHost
         MainWindow = mw;
         mw.StartupCompleted += (o, args) =>
         {
+            if (EmbeddedOptions is { StartHidden: true })
+            {
+                mw.Hide();
+                mw.Opacity = 1;
+            }
             GetService<ISplashService>().CurrentProgress = 98;
             GetService<ISplashService>().SetDetailedStatus("正在进行启动后操作");
             // 由于在应用启动时调用 WMI 会导致无法使用触摸，故在应用启动完成后再获取设备统计信息。
@@ -950,6 +955,12 @@ public partial class App : AppBase, IAppHost
         GetService<ISplashService>().SetDetailedStatus("正在初始化主界面（步骤 2/2）");
         if (!Design.IsDesignMode)
         {
+            if (EmbeddedOptions is { StartHidden: true })
+            {
+                Settings.IsMainWindowVisible = false;
+                mw.ShowActivated = false;
+                mw.Opacity = 0;
+            }
             mw.Show();
         }
         GetService<IWindowRuleService>();

@@ -20,7 +20,10 @@ application boundary: `EmbeddedHostOptions`, `Program.AppEntry`,
 (`SetEmbeddedVisible`, `GetEmbeddedVisible`, `GetEmbeddedWindowHandle`, `GetEmbeddedCompositionMode`, `SetEmbeddedTheme`, `OpenEmbeddedPage`, `OpenEmbeddedSettings`,
 `StopEmbedded`), `App` startup/restart, and the
 directory/global-storage services. Embedded mode receives a private data root,
-does not create ClassIsland's global mutex, change the host working directory or
+and the optional `EmbeddedHostOptions.StartHidden` initializes the native island
+without presenting it before host commands run. The host uses this for cold
+settings/profile navigation and offers a separate, default-off startup preference.
+Embedded mode does not create ClassIsland's global mutex, change the host working directory or
 process priority, start an updater/IPC server, or restart ExusiAI's executable.
 The embedded Windows entry point uses Avalonia's redirection surface instead of
 creating a second WinUI DirectComposition chain beside WPF. Queued `.cipx`

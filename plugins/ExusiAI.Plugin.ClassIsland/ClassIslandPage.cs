@@ -19,6 +19,18 @@ internal sealed class ClassIslandPage : UserControl
         panel.Children.Add(new TextBlock { Text = "原版信息岛和设置在 ExusiAI 进程内运行。",
             Margin = new Thickness(0, 8, 0, 18) });
         panel.Children.Add(status);
+        var startup = new CheckBox { Content = "随 ExusiAI 启动显示信息岛（下次启动生效）",
+            IsChecked = host.ShowOnHostStartup, Margin = new Thickness(0, 18, 0, 0) };
+        startup.Click += (_, _) =>
+        {
+            try { host.SetShowOnHostStartup(startup.IsChecked == true); }
+            catch (Exception error)
+            {
+                startup.IsChecked = host.ShowOnHostStartup;
+                status.Text = $"启动选项保存失败：{error.GetBaseException().Message}";
+            }
+        };
+        panel.Children.Add(startup);
         var followTheme = new CheckBox { Content = "跟随 ExusiAI 深浅色与强调色",
             IsChecked = host.FollowHostTheme, Margin = new Thickness(0, 18, 0, 0) };
         followTheme.Click += (_, _) =>
@@ -79,7 +91,10 @@ internal sealed class ClassIslandPage : UserControl
         panel.Children.Add(button);
     }
 
-    private void Refresh() => status.Text = host.LastStartupError is { } error
+    private void Refresh() => status.Text = host.RequiresRestart
+        ? "ClassIsland 已停止。请重启 ExusiAI 后再次打开。"
+        : host.LastStartupError is { } error
         ? $"原版 ClassIsland 启动失败：{error}"
-        : host.IsVisible ? "原版信息岛正在显示。" : "原版信息岛已隐藏。";
+        : host.IsStopped ? "尚未启动。选择下方操作即可打开 ClassIsland。"
+        : host.IsVisible ? "原版信息岛正在显示。" : "原版信息岛已隐藏，后台服务仍在运行。";
 }
