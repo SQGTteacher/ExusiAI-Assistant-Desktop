@@ -866,6 +866,19 @@ public partial class App : AppBase, IAppHost
 #endif
         var mw = GetService<MainWindow>();
         MainWindow = mw;
+        if (EmbeddedOptions is not null)
+        {
+            Settings.PropertyChanged += (_, change) =>
+            {
+                if (change.PropertyName == nameof(Settings.IsMainWindowVisible))
+                    EmbeddedVisibilityChanged?.Invoke(this, EventArgs.Empty);
+            };
+            mw.PropertyChanged += (_, change) =>
+            {
+                if (change.Property == Window.IsVisibleProperty)
+                    EmbeddedVisibilityChanged?.Invoke(this, EventArgs.Empty);
+            };
+        }
         mw.StartupCompleted += (o, args) =>
         {
             if (EmbeddedOptions is { StartHidden: true })
@@ -1195,6 +1208,8 @@ public partial class App : AppBase, IAppHost
     public event EventHandler? EmbeddedRestartRequested;
 
     public event EventHandler<Exception>? EmbeddedFailure;
+
+    public event EventHandler? EmbeddedVisibilityChanged;
 
     public override void Restart(bool quiet=false)
     {

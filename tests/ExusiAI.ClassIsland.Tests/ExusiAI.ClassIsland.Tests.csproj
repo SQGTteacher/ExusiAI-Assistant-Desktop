@@ -11,6 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="../../plugins/ExusiAI.Plugin.ClassIsland/ClassIslandDataImporter.cs" Link="ClassIslandDataImporter.cs" />
     <Compile Include="../../third_party/ClassIsland/ClassIsland/Helpers/PluginPackageInstaller.cs" Link="PluginPackageInstaller.cs" />
   </ItemGroup>
 </Project>

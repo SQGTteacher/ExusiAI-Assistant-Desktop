@@ -25,7 +25,42 @@ internal sealed class ClassIslandHost : IDisposable
     private bool showOnHostStartup;
     private volatile bool disposed;
     private int stopRequested;
+    private readonly SemaphoreSlim operationGate = new(1, 1);
+    private int runtimeExited;
+    internal event EventHandler? StateChanged;
+    internal bool IsBusy => operationGate.CurrentCount == 0;
     internal string? LastStartupError { get; private set; }
+
+    private void NotifyStateChanged()
+    {
+        // Subscribers must marshal to their dispatcher; never wait for WPF from Avalonia.
+        foreach (EventHandler handler in StateChanged?.GetInvocationList() ?? [])
+            try { handler(this, EventArgs.Empty); }
+            catch (Exception error) { Trace.TraceWarning("ClassIsland state subscriber failed: {0}", error.Message); }
+    }
+
+    private bool Command(Func<bool> action, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!operationGate.Wait(0)) return false;
+        NotifyStateChanged();
+        try { return action(); }
+        finally { operationGate.Release(); NotifyStateChanged(); }
+    }
+
+    internal async Task<string> ImportDataAsync(string source, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!operationGate.Wait(0))
+            throw new InvalidOperationException("ClassIsland 正在执行其他操作，请稍后再试。");
+        NotifyStateChanged();
+        try
+        {
+            return await ClassIslandDataImporter.ImportAsync(source, dataDirectory,
+                Dispose, () => IsStopped, cancellationToken).ConfigureAwait(false);
+        }
+        finally { operationGate.Release(); NotifyStateChanged(); }
+    }
 
     internal ClassIslandHost(string dataDirectory, string packageDirectory)
     {
@@ -57,11 +92,19 @@ internal sealed class ClassIslandHost : IDisposable
         File.Exists(Path.Combine(nativeDirectory, "ClassIsland.dll"));
 
     internal string DataDirectory => dataDirectory;
-    internal bool IsStopped => thread is null || !thread.IsAlive;
-    internal bool RequiresRestart => disposed || Volatile.Read(ref stopRequested) != 0 || (thread is not null && !thread.IsAlive);
+    internal bool IsStopped => thread is null || Volatile.Read(ref runtimeExited) != 0 || !thread.IsAlive;
+    internal bool RequiresRestart => disposed || Volatile.Read(ref stopRequested) != 0 || (thread is not null && IsStopped);
     internal bool ShowOnHostStartup { get { lock (lifecycleGate) return showOnHostStartup; } }
 
-    internal void SetShowOnHostStartup(bool show)
+    internal void SetShowOnHostStartup(bool show) => Preference(() => SetShowOnHostStartupCore(show));
+
+    private void Preference(Action action)
+    {
+        if (!Command(() => { action(); return true; }))
+            throw new InvalidOperationException("ClassIsland 正在执行其他操作，请稍后再试。");
+    }
+
+    private void SetShowOnHostStartupCore(bool show)
     {
         lock (lifecycleGate)
         {
@@ -91,9 +134,9 @@ internal sealed class ClassIslandHost : IDisposable
         }
     }
 
-    internal bool Start() => EnsureStarted(showIsland: true);
+    internal bool Start() => StartWithCancellation(CancellationToken.None);
 
-    internal bool StartWithCancellation(CancellationToken cancellationToken) => EnsureStarted(true, cancellationToken);
+    internal bool StartWithCancellation(CancellationToken cancellationToken) => Command(() => EnsureStarted(true, cancellationToken), cancellationToken);
 
     private bool EnsureStarted(bool showIsland, CancellationToken cancellationToken = default)
     {
@@ -170,7 +213,12 @@ internal sealed class ClassIslandHost : IDisposable
         }
     }
 
-    internal void Hide()
+    internal void Hide() => HideWithCancellation(CancellationToken.None);
+
+    internal bool HideWithCancellation(CancellationToken cancellationToken) =>
+        Command(() => { HideCore(); return true; }, cancellationToken);
+
+    private void HideCore()
     {
         lock (lifecycleGate)
         {
@@ -182,14 +230,20 @@ internal sealed class ClassIslandHost : IDisposable
 
     internal bool OpenSettings() => OpenPage("settings");
 
-    internal bool OpenPage(string page)
+    internal bool OpenPage(string page) => OpenPageWithCancellation(page, CancellationToken.None);
+
+    internal bool OpenPageWithCancellation(string page, CancellationToken cancellationToken) =>
+        Command(() => OpenPageCore(page, cancellationToken), cancellationToken);
+
+    private bool OpenPageCore(string page, CancellationToken cancellationToken)
     {
         if (page is not ("settings" or "profile" or "edit" or "class-swap"))
             throw new ArgumentException("Unsupported ClassIsland page.", nameof(page));
-        if (!EnsureStarted(showIsland: false)) return false;
+        if (!EnsureStarted(showIsland: false, cancellationToken)) return false;
         lock (lifecycleGate)
         {
-            if (disposed) return false;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (disposed || Volatile.Read(ref stopRequested) != 0) return false;
             try
             {
                 InvokeControl("OpenEmbeddedPage", [page]);
@@ -210,7 +264,9 @@ internal sealed class ClassIslandHost : IDisposable
 
     internal bool FollowHostTheme { get { lock (themeGate) return followHostTheme; } }
 
-    internal void SetFollowHostTheme(bool follow)
+    internal void SetFollowHostTheme(bool follow) => Preference(() => SetFollowHostThemeCore(follow));
+
+    private void SetFollowHostThemeCore(bool follow)
     {
         lock (themeGate)
         {
@@ -276,7 +332,10 @@ internal sealed class ClassIslandHost : IDisposable
                         LastStartupError = failure.ToString();
                         Trace.TraceError("Embedded ClassIsland failed: {0}", failure);
                         ready.TrySetResult(false);
+                        NotifyStateChanged();
                     }));
+                app.GetType().GetEvent("EmbeddedVisibilityChanged")?.AddEventHandler(app,
+                    new EventHandler((_, _) => NotifyStateChanged()));
                 var started = app.GetType().GetEvent("AppStarted")
                     ?? throw new MissingMemberException("ClassIsland.App.AppStarted");
                 started.AddEventHandler(app, new EventHandler((_, _) =>
@@ -288,6 +347,7 @@ internal sealed class ClassIslandHost : IDisposable
                     }
                     if (Volatile.Read(ref stopRequested) != 0)
                         entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null);
+                    NotifyStateChanged();
                 }));
                 app.GetType().GetEvent("EmbeddedRestartRequested")?.AddEventHandler(app,
                     new EventHandler((_, _) =>
@@ -312,6 +372,11 @@ internal sealed class ClassIslandHost : IDisposable
             Trace.TraceError("Embedded ClassIsland failed: {0}", exception);
             ready.TrySetResult(false);
         }
+        finally
+        {
+            Volatile.Write(ref runtimeExited, 1);
+            NotifyStateChanged();
+        }
     }
 
     public void Dispose()
@@ -330,6 +395,7 @@ internal sealed class ClassIslandHost : IDisposable
         // Never join while holding the gate: concurrent commands must observe stopped state.
         if (stoppingThread is not null && !stoppingThread.Join(TimeSpan.FromSeconds(15)))
             Trace.TraceWarning("Embedded ClassIsland did not stop within fifteen seconds.");
+        NotifyStateChanged();
         // Avalonia owns process-wide native state; its runtime context is intentionally not collectible.
     }
 }
