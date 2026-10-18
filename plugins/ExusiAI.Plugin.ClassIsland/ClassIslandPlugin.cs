@@ -19,11 +19,12 @@ public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExten
         host = new ClassIslandHost(dataDirectory, packageDirectory);
     }
 
-    public override async Task StartAsync(CancellationToken cancellationToken)
+    public override Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!await Task.Run(host.Start, cancellationToken))
-            Context.Logger.Warning($"原版 ClassIsland 无法启动：{host.LastStartupError}");
+        // Plugin activation registers contributions; it is not a user request
+        // to show a desktop window. Start Avalonia only from explicit commands.
+        return Task.CompletedTask;
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)
