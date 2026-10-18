@@ -20,4 +20,7 @@ public sealed class EmbeddedHostOptions
 
     public string DataDirectory { get; }
     public string PackageDirectory { get; }
+
+    /// <summary>Initialize the island without presenting its native surface.</summary>
+    public bool StartHidden { get; set; }
 }

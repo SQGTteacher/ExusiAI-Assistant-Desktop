@@ -21,6 +21,8 @@ internal sealed class ClassIslandHost : IDisposable
     private readonly object themeGate = new();
     private readonly string themePreferencePath;
     private bool followHostTheme;
+    private readonly string startupPreferencePath;
+    private bool showOnHostStartup;
     private volatile bool disposed;
     private int stopRequested;
     internal string? LastStartupError { get; private set; }
@@ -28,6 +30,16 @@ internal sealed class ClassIslandHost : IDisposable
     internal ClassIslandHost(string dataDirectory, string packageDirectory)
     {
         this.dataDirectory = dataDirectory;
+        startupPreferencePath = Path.Combine(dataDirectory, "ExusiAIStartup.json");
+        try
+        {
+            if (File.Exists(startupPreferencePath))
+                showOnHostStartup = System.Text.Json.JsonSerializer.Deserialize<bool>(File.ReadAllText(startupPreferencePath));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            Trace.TraceWarning("ClassIsland startup preference could not be read: {0}", error.Message);
+        }
         themePreferencePath = Path.Combine(dataDirectory, "ExusiAIHostTheme.json");
         try
         {
@@ -46,6 +58,20 @@ internal sealed class ClassIslandHost : IDisposable
 
     internal string DataDirectory => dataDirectory;
     internal bool IsStopped => thread is null || !thread.IsAlive;
+    internal bool RequiresRestart => disposed || Volatile.Read(ref stopRequested) != 0 || (thread is not null && !thread.IsAlive);
+    internal bool ShowOnHostStartup { get { lock (lifecycleGate) return showOnHostStartup; } }
+
+    internal void SetShowOnHostStartup(bool show)
+    {
+        lock (lifecycleGate)
+        {
+            Directory.CreateDirectory(dataDirectory);
+            var temporary = startupPreferencePath + ".tmp";
+            File.WriteAllText(temporary, System.Text.Json.JsonSerializer.Serialize(show));
+            File.Move(temporary, startupPreferencePath, overwrite: true);
+            showOnHostStartup = show;
+        }
+    }
 
     internal bool IsVisible
     {
@@ -67,12 +93,16 @@ internal sealed class ClassIslandHost : IDisposable
 
     internal bool Start() => EnsureStarted(showIsland: true);
 
-    private bool EnsureStarted(bool showIsland)
+    internal bool StartWithCancellation(CancellationToken cancellationToken) => EnsureStarted(true, cancellationToken);
+
+    private bool EnsureStarted(bool showIsland, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var cancellation = cancellationToken.Register(RequestStop);
         Thread runningThread;
         lock (lifecycleGate)
         {
-            if (disposed)
+            if (disposed || Volatile.Read(ref stopRequested) != 0)
             {
                 LastStartupError = "ClassIsland 已停止，需要重新启动 ExusiAI。";
                 return false;
@@ -101,14 +131,16 @@ internal sealed class ClassIslandHost : IDisposable
             }
             runningThread = thread;
         }
-        if (!ready.Task.Wait(TimeSpan.FromSeconds(30)))
+        if (!ready.Task.Wait(TimeSpan.FromSeconds(30), cancellationToken))
         {
             LastStartupError = "Native ClassIsland did not finish starting within 30 seconds.";
+            RequestStop();
             return false;
         }
         lock (lifecycleGate)
         {
-            if (disposed || !ready.Task.Result || !runningThread.IsAlive)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (disposed || Volatile.Read(ref stopRequested) != 0 || !ready.Task.Result || !runningThread.IsAlive)
             {
                 LastStartupError ??= "Native ClassIsland stopped before its window was ready.";
                 return false;
@@ -125,6 +157,16 @@ internal sealed class ClassIslandHost : IDisposable
                 Trace.TraceError("Embedded ClassIsland command failed: {0}", exception);
                 return false;
             }
+        }
+    }
+
+    private void RequestStop()
+    {
+        Interlocked.Exchange(ref stopRequested, 1);
+        try { entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null); }
+        catch (TargetInvocationException exception)
+        {
+            Trace.TraceWarning("ClassIsland stop request failed: {0}", exception.GetBaseException().Message);
         }
     }
 
@@ -225,6 +267,7 @@ internal sealed class ClassIslandHost : IDisposable
             entryPoint = desktop.GetType("ClassIsland.Desktop.Program", throwOnError: true);
             var optionsType = application.GetType("ClassIsland.EmbeddedHostOptions", throwOnError: true)!;
             var options = Activator.CreateInstance(optionsType, dataDirectory, nativeDirectory)!;
+            optionsType.GetProperty("StartHidden")!.SetValue(options, true);
             Action<object> created = app =>
             {
                 app.GetType().GetEvent("EmbeddedFailure")?.AddEventHandler(app,

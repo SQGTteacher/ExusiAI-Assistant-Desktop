@@ -37,6 +37,13 @@ internal static class ClassIslandVerification
                 binder: null, args: [data, package], culture: null)!;
             object? Invoke(string method) => type.GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null);
             string? Error() => type.GetProperty("LastStartupError", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) as string;
+            if (!await Task.Run(() => Invoke("OpenSettings") is true))
+                throw new InvalidOperationException(Error() ?? "ClassIsland cold settings startup failed.");
+            if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
+                throw new InvalidOperationException("Opening settings from a cold start unexpectedly showed the island.");
+            var coldWindow = new IntPtr((long)InvokeEntryPoint(type, host, "GetEmbeddedWindowHandle")!);
+            if (IsWindowVisible(coldWindow))
+                throw new InvalidOperationException("Cold settings startup left the native island window visible.");
             if (!await Task.Run(() => Invoke("Start") is true))
                 throw new InvalidOperationException(Error() ?? "ClassIsland startup failed.");
             if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not true)
@@ -44,7 +51,7 @@ internal static class ClassIslandVerification
             var preview = Path.Combine(outputDirectory, "classisland-main-window.png");
             var compositionMode = (string)InvokeEntryPoint(type, host, "GetEmbeddedCompositionMode")!;
             var windowHandle = new IntPtr((long)InvokeEntryPoint(type, host, "GetEmbeddedWindowHandle")!);
-            var renderStatus = CaptureNativeWindow(windowHandle, preview);
+            var renderStatus = await CaptureNativeWindowAsync(windowHandle, preview);
             if (compositionMode != "RedirectionSurface" || !renderStatus.HasVisibleContent)
                 throw new InvalidOperationException($"ClassIsland main window did not render correctly: {renderStatus}");
             VerifyPluginInstallProbes(installProbe);
@@ -53,6 +60,13 @@ internal static class ClassIslandVerification
             Invoke("Hide");
             if (type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
                 throw new InvalidOperationException("ClassIsland information island did not hide.");
+            if (!await Task.Run(() => Invoke("OpenSettings") is true) ||
+                type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
+                throw new InvalidOperationException("Opening settings changed the hidden island state.");
+            if (!await Task.Run(() => Invoke("Start") is true) ||
+                type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not true)
+                throw new InvalidOperationException("ClassIsland information island could not be shown again.");
+            Invoke("Hide");
             var entryPoint = (Type)type.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
             var runtimeContext = AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!;
             if (runtimeContext == AssemblyLoadContext.Default)
@@ -255,6 +269,20 @@ internal static class ClassIslandVerification
             throw new InvalidOperationException($"ClassIsland did not index plugin probes: {string.Join(", ", expected)}.");
     }
 
+    private static async Task<NativeRenderStatus> CaptureNativeWindowAsync(IntPtr window, string path)
+    {
+        NativeRenderStatus status = default;
+        // Show returns before the compositor presents its first frame. Keep the
+        // actual-surface assertion, but allow bounded time for frame delivery.
+        for (var attempt = 0; attempt < 30; attempt++)
+        {
+            status = CaptureNativeWindow(window, path);
+            if (status.HasVisibleContent) return status;
+            await Task.Delay(100);
+        }
+        return status;
+    }
+
     private static NativeRenderStatus CaptureNativeWindow(IntPtr window, string path)
     {
         if (window == IntPtr.Zero || !GetWindowRect(window, out var rect))
@@ -312,6 +340,7 @@ internal static class ClassIslandVerification
     private struct NativeRect { public int Left, Top, Right, Bottom; }
 
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window, IntPtr dc);
     [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
