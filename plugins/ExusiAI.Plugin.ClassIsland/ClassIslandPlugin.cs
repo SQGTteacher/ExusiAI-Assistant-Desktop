@@ -22,7 +22,7 @@ public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExten
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (host.ShowOnHostStartup && !await Task.Run(host.Start, cancellationToken))
+        if (host.ShowOnHostStartup && !await Task.Run(() => host.StartWithCancellation(cancellationToken), cancellationToken))
             Context.Logger.Warning($"ClassIsland 自动显示失败：{host.LastStartupError}");
     }
 

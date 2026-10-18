@@ -108,6 +108,45 @@ public sealed class ClassIslandHostTests
     }
 
     [Fact]
+    public void CanceledHostStartupDoesNotCreateRuntimeThread()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "classisland-canceled-" + Guid.NewGuid().ToString("N"));
+        using var host = new ClassIslandHost(root, root);
+        Assert.Throws<OperationCanceledException>(() => host.StartWithCancellation(new CancellationToken(true)));
+        Assert.True(host.IsStopped);
+        Assert.False(host.IsVisible);
+        Assert.Null(host.LastStartupError);
+    }
+
+    [Fact]
+    public void CancellationInterruptsAnExistingReadinessWait()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "classisland-wait-" + Guid.NewGuid().ToString("N"));
+        var threadField = typeof(ClassIslandHost).GetField("thread", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        using var host = new ClassIslandHost(root, root);
+        try
+        {
+            var native = Path.Combine(root, "NativeClassIsland");
+            Directory.CreateDirectory(native);
+            File.WriteAllBytes(Path.Combine(native, "ClassIsland.dll"), []);
+            File.WriteAllBytes(Path.Combine(native, "ClassIsland.Desktop.dll"), []);
+            // Model an existing live native thread whose AppStarted event has
+            // not arrived, without initializing process-wide Avalonia state.
+            threadField.SetValue(host, Thread.CurrentThread);
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Throws<OperationCanceledException>(() => host.StartWithCancellation(cancellation.Token));
+            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(5));
+            Assert.False(host.IsVisible);
+        }
+        finally
+        {
+            threadField.SetValue(host, null);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void ConcurrentCommandsAfterStopCannotLaunchRuntime()
     {
         var root = Path.Combine(Path.GetTempPath(), "classisland-host-" + Guid.NewGuid().ToString("N"));

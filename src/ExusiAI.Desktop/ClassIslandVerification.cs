@@ -51,7 +51,7 @@ internal static class ClassIslandVerification
             var preview = Path.Combine(outputDirectory, "classisland-main-window.png");
             var compositionMode = (string)InvokeEntryPoint(type, host, "GetEmbeddedCompositionMode")!;
             var windowHandle = new IntPtr((long)InvokeEntryPoint(type, host, "GetEmbeddedWindowHandle")!);
-            var renderStatus = CaptureNativeWindow(windowHandle, preview);
+            var renderStatus = await CaptureNativeWindowAsync(windowHandle, preview);
             if (compositionMode != "RedirectionSurface" || !renderStatus.HasVisibleContent)
                 throw new InvalidOperationException($"ClassIsland main window did not render correctly: {renderStatus}");
             VerifyPluginInstallProbes(installProbe);
@@ -267,6 +267,20 @@ internal static class ClassIslandVerification
         }
         if (expected.Count != 0)
             throw new InvalidOperationException($"ClassIsland did not index plugin probes: {string.Join(", ", expected)}.");
+    }
+
+    private static async Task<NativeRenderStatus> CaptureNativeWindowAsync(IntPtr window, string path)
+    {
+        NativeRenderStatus status = default;
+        // Show returns before the compositor presents its first frame. Keep the
+        // actual-surface assertion, but allow bounded time for frame delivery.
+        for (var attempt = 0; attempt < 30; attempt++)
+        {
+            status = CaptureNativeWindow(window, path);
+            if (status.HasVisibleContent) return status;
+            await Task.Delay(100);
+        }
+        return status;
     }
 
     private static NativeRenderStatus CaptureNativeWindow(IntPtr window, string path)

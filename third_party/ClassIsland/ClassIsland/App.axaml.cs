@@ -871,7 +871,7 @@ public partial class App : AppBase, IAppHost
             if (EmbeddedOptions is { StartHidden: true })
             {
                 mw.Hide();
-                mw.Opacity = 1;
+                if (mw.Content is Control content) content.Opacity = 1;
             }
             GetService<ISplashService>().CurrentProgress = 98;
             GetService<ISplashService>().SetDetailedStatus("正在进行启动后操作");
@@ -959,7 +959,9 @@ public partial class App : AppBase, IAppHost
             {
                 Settings.IsMainWindowVisible = false;
                 mw.ShowActivated = false;
-                mw.Opacity = 0;
+                // Window.Opacity changes Win32 layered-window styles and can
+                // invalidate ANGLE's EGL surface. Suppress only the visual tree.
+                if (mw.Content is Control content) content.Opacity = 0;
             }
             mw.Show();
         }

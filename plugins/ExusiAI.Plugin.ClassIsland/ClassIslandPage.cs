@@ -91,10 +91,9 @@ internal sealed class ClassIslandPage : UserControl
         panel.Children.Add(button);
     }
 
-    private void Refresh() => status.Text = host.RequiresRestart
-        ? "ClassIsland 已停止。请重启 ExusiAI 后再次打开。"
-        : host.LastStartupError is { } error
-        ? $"原版 ClassIsland 启动失败：{error}"
+    private void Refresh() => status.Text = host.LastStartupError is { } error
+        ? $"原版 ClassIsland 启动失败：{error}" + (host.RequiresRestart ? " 请重启 ExusiAI 后再次打开。" : "")
+        : host.RequiresRestart ? "ClassIsland 已停止。请重启 ExusiAI 后再次打开。"
         : host.IsStopped ? "尚未启动。选择下方操作即可打开 ClassIsland。"
         : host.IsVisible ? "原版信息岛正在显示。" : "原版信息岛已隐藏，后台服务仍在运行。";
 }

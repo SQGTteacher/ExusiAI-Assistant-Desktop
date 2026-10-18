@@ -58,7 +58,7 @@ internal sealed class ClassIslandHost : IDisposable
 
     internal string DataDirectory => dataDirectory;
     internal bool IsStopped => thread is null || !thread.IsAlive;
-    internal bool RequiresRestart => disposed || (thread is not null && !thread.IsAlive);
+    internal bool RequiresRestart => disposed || Volatile.Read(ref stopRequested) != 0 || (thread is not null && !thread.IsAlive);
     internal bool ShowOnHostStartup { get { lock (lifecycleGate) return showOnHostStartup; } }
 
     internal void SetShowOnHostStartup(bool show)
@@ -93,12 +93,16 @@ internal sealed class ClassIslandHost : IDisposable
 
     internal bool Start() => EnsureStarted(showIsland: true);
 
-    private bool EnsureStarted(bool showIsland)
+    internal bool StartWithCancellation(CancellationToken cancellationToken) => EnsureStarted(true, cancellationToken);
+
+    private bool EnsureStarted(bool showIsland, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var cancellation = cancellationToken.Register(RequestStop);
         Thread runningThread;
         lock (lifecycleGate)
         {
-            if (disposed)
+            if (disposed || Volatile.Read(ref stopRequested) != 0)
             {
                 LastStartupError = "ClassIsland 已停止，需要重新启动 ExusiAI。";
                 return false;
@@ -127,14 +131,16 @@ internal sealed class ClassIslandHost : IDisposable
             }
             runningThread = thread;
         }
-        if (!ready.Task.Wait(TimeSpan.FromSeconds(30)))
+        if (!ready.Task.Wait(TimeSpan.FromSeconds(30), cancellationToken))
         {
             LastStartupError = "Native ClassIsland did not finish starting within 30 seconds.";
+            RequestStop();
             return false;
         }
         lock (lifecycleGate)
         {
-            if (disposed || !ready.Task.Result || !runningThread.IsAlive)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (disposed || Volatile.Read(ref stopRequested) != 0 || !ready.Task.Result || !runningThread.IsAlive)
             {
                 LastStartupError ??= "Native ClassIsland stopped before its window was ready.";
                 return false;
@@ -151,6 +157,16 @@ internal sealed class ClassIslandHost : IDisposable
                 Trace.TraceError("Embedded ClassIsland command failed: {0}", exception);
                 return false;
             }
+        }
+    }
+
+    private void RequestStop()
+    {
+        Interlocked.Exchange(ref stopRequested, 1);
+        try { entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null); }
+        catch (TargetInvocationException exception)
+        {
+            Trace.TraceWarning("ClassIsland stop request failed: {0}", exception.GetBaseException().Message);
         }
     }
 
