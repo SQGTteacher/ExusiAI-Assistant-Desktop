@@ -46,6 +46,12 @@ jobs:
           Get-ChildItem $output -Recurse -File -Filter *.log | ForEach-Object { Get-Content $_.FullName -Tail 100 }
           if ($process.ExitCode -ne 0 -or !(Test-Path "$output/result.txt")) { throw "ClassIsland startup verification failed" }
           Get-Content "$output/result.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: classisland-render-preview
+          path: artifacts/classisland-build
+          if-no-files-found: ignore
       - name: Verify packaged video decoder
         shell: pwsh
         run: |

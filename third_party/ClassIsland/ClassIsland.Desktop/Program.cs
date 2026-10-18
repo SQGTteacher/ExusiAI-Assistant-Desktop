@@ -17,6 +17,7 @@ using Avalonia.Media;
 using ClassIsland.Core;
 using ClassIsland.Core.Abstractions.Services;
 using ClassIsland.Core.Services;
+using ClassIsland.Core.Helpers;
 using ClassIsland.Extensions;
 using ClassIsland.Models;
 using ClassIsland.Views;
@@ -52,6 +53,14 @@ public class Program
     public static bool GetEmbeddedVisible() => Dispatcher.UIThread.Invoke(() =>
         Volatile.Read(ref embeddedApp)?.MainWindow is { IsVisible: true } &&
         App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible);
+
+    /// <summary>Returns the real Win32 top-level used by host render verification.</summary>
+    public static long GetEmbeddedWindowHandle() => Dispatcher.UIThread.Invoke(() =>
+        Volatile.Read(ref embeddedApp)?.MainWindow?.TryGetPlatformHandle()?.Handle.ToInt64()
+        ?? throw new InvalidOperationException("The embedded main window is not ready."));
+
+    public static string GetEmbeddedCompositionMode() => Dispatcher.UIThread.Invoke(() =>
+        AvaloniaUnsafeAccessorHelpers.GetActiveWin32CompositionMode()?.ToString() ?? "Unknown");
 
     public static void OpenEmbeddedPage(string page)
     {
@@ -117,7 +126,10 @@ public class Program
             })
             .With(new Win32PlatformOptions
             {
-                CompositionMode = [Win32CompositionMode.WinUIComposition, Win32CompositionMode.RedirectionSurface],
+                // WPF already owns a DirectComposition device in the host
+                // process. A second WinUIComposition chain can leave this
+                // transparent top-level visible but with an empty surface.
+                CompositionMode = [Win32CompositionMode.RedirectionSurface],
                 RenderingMode = BuildRenderingMode(0)
             })
             .UsePlatformDetect()

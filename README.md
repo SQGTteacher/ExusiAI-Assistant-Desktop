@@ -22,7 +22,7 @@ ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市
 - 插件可在运行时启用、禁用和重试，偏好会跨启动保留；
 - 可搜索的本地资源库、统一插件目录和扩展管理页面；
 - 支持 ZIP 插件安全导入、导出、卸载，也可直接将插件文件夹放入本地目录；
-- 内置 ClassIsland 源码集成：在 ExusiAI 同一进程运行原版 Avalonia 界面与课表、组件、临时换课逻辑，不打包或启动 ClassIsland.exe；安装/启用插件时同步注册宿主托盘入口，停用时移除；默认保留原版独立主题，可选择跟随宿主；
+- 内置 ClassIsland 源码集成：在 ExusiAI 同一进程运行原版 Avalonia 界面与课表、组件、临时换课逻辑，不打包或启动 ClassIsland.exe；嵌入窗口使用与 WPF 宿主兼容的重定向合成面；ClassIsland 插件包在下次启动时事务安装，失败保留旧版本和待重试包；默认保留原版独立主题，可选择跟随宿主；
 - ArkPets 桌宠：保持 ArkPets 的模型 / 行为 / 选项结构，兼容 Ark-Models 全角色模型库与 direct-start 配置；ExusiAI 可自动管理上游便携运行核心、模型下载、localhost IPC 实时控制和随宿主启动，桌宠不会作为独立开机程序常驻；与 ClassIsland 原生运行集成保持独立并提供可选课堂联动；
 - 文件查看器：TXT/Markdown 异步增量预览、CSV 分页解析、DOC/DOCX 受限文本、XLSX 多工作表分页、PPT 程序内源码转换基础预览、PPTX 基础图文与内嵌视频、PDF 分页搜索和程序内 LibVLC DLL 视频解码；不打包或启动第三方格式转换 exe，复杂 Office 排版仍在完善；
 - Windows GitHub Actions 构建及单元测试。
