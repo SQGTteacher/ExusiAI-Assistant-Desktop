@@ -66,7 +66,25 @@ internal static class ClassIslandVerification
             if (!await Task.Run(() => Invoke("Start") is true) ||
                 type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not true)
                 throw new InvalidOperationException("ClassIsland information island could not be shown again.");
-            Invoke("Hide");
+            var stateEvents = 0;
+            EventHandler stateChanged = (_, _) => Interlocked.Increment(ref stateEvents);
+            var stateEvent = type.GetEvent("StateChanged", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            stateEvent.GetAddMethod(nonPublic: true)!.Invoke(host, [stateChanged]);
+            try
+            {
+                // The upstream menu toggles settings without hiding the native HWND.
+                await Task.Run(() => ToggleNativeVisibility(type, host));
+                if (Volatile.Read(ref stateEvents) == 0 ||
+                    type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
+                    throw new InvalidOperationException("Native menu visibility change did not notify the host.");
+                await Task.Run(() => ToggleNativeVisibility(type, host));
+                Interlocked.Exchange(ref stateEvents, 0);
+                await Task.Run(() => InvokeEntryPoint(type, host, "SetEmbeddedVisible", false));
+                if (Volatile.Read(ref stateEvents) == 0 ||
+                    type.GetProperty("IsVisible", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is not false)
+                    throw new InvalidOperationException("Native visibility change did not notify the host.");
+            }
+            finally { stateEvent.GetRemoveMethod(nonPublic: true)!.Invoke(host, [stateChanged]); }
             var entryPoint = (Type)type.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
             var runtimeContext = AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!;
             if (runtimeContext == AssemblyLoadContext.Default)
@@ -185,6 +203,19 @@ internal static class ClassIslandVerification
             if (host is not null) await Task.Run(host.Dispose);
             context.Unload();
         }
+    }
+
+    private static void ToggleNativeVisibility(Type hostType, IDisposable host)
+    {
+        var entry = (Type)hostType.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+        var app = entry.GetField("embeddedApp", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        var window = app.GetType().GetProperty("MainWindow")!.GetValue(app)!;
+        var dispatcher = AssemblyLoadContext.GetLoadContext(entry.Assembly)!
+            .LoadFromAssemblyName(new AssemblyName("Avalonia.Base")).GetType("Avalonia.Threading.Dispatcher")!;
+        Action toggle = () => window.GetType().GetMethod("MenuItemSwitchMainWindowVisibility_OnClick",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [window, EventArgs.Empty]);
+        dispatcher.GetMethod("Invoke", [typeof(Action)])!.Invoke(
+            dispatcher.GetProperty("UIThread")!.GetValue(null), [toggle]);
     }
 
     private static object? InvokeEntryPoint(Type hostType, IDisposable host, string method, params object?[] args)

@@ -8,6 +8,16 @@ internal static class ClassIslandDataImporter
 {
     private static readonly string[] ManagedNames = ["Settings.json", "Profiles", "Config"];
 
+    internal static IReadOnlyList<string> ListBackups(string dataDirectory)
+    {
+        var parent = Directory.GetParent(Path.GetFullPath(dataDirectory))?.FullName;
+        if (parent is null || !Directory.Exists(parent)) return [];
+        return Directory.EnumerateDirectories(parent, "ClassIsland-before-import-*")
+            .Where(path => (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0 &&
+                File.Exists(Path.Combine(path, "Settings.json")))
+            .OrderByDescending(Path.GetFileName, StringComparer.Ordinal).ToArray();
+    }
+
     internal static Task<string> ImportAsync(string sourceDirectory, string dataDirectory,
         Action stopHost, Func<bool> isHostStopped, CancellationToken cancellationToken = default) =>
         Task.Run(() => Import(sourceDirectory, dataDirectory, stopHost, isHostStopped, cancellationToken), cancellationToken);
@@ -51,7 +61,7 @@ internal static class ClassIslandDataImporter
                 if ((File.Exists(sourcePath) || Directory.Exists(sourcePath)) &&
                     (File.GetAttributes(sourcePath) & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException($"数据目录包含链接，导入已取消：{sourcePath}");
-                if (File.Exists(sourcePath)) File.Copy(sourcePath, stagedPath);
+                if (File.Exists(sourcePath)) CopyFile(sourcePath, stagedPath, cancellationToken);
                 else if (Directory.Exists(sourcePath)) CopyDirectory(sourcePath, stagedPath, cancellationToken);
             }
             using (var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(staging, "Settings.json"))))
@@ -63,6 +73,8 @@ internal static class ClassIslandDataImporter
             if (!isHostStopped())
                 throw new IOException("原版信息岛尚未停止，导入已取消；请重启 ExusiAI 后再试。");
 
+            // Cancellation ends at this boundary: replacement must finish or roll back.
+            cancellationToken.ThrowIfCancellationRequested();
             Directory.CreateDirectory(destination);
             Directory.CreateDirectory(backup);
             try
@@ -111,7 +123,20 @@ internal static class ClassIslandDataImporter
                 throw new InvalidDataException($"数据目录包含链接，导入已取消：{entry}");
             var destination = Path.Combine(target, Path.GetFileName(entry));
             if (Directory.Exists(entry)) CopyDirectory(entry, destination, cancellationToken);
-            else File.Copy(entry, destination);
+            else CopyFile(entry, destination, cancellationToken);
+        }
+    }
+
+    private static void CopyFile(string source, string target, CancellationToken cancellationToken)
+    {
+        using var input = File.OpenRead(source);
+        using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        var buffer = new byte[81920];
+        int read;
+        while ((read = input.Read(buffer, 0, buffer.Length)) != 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            output.Write(buffer, 0, read);
         }
     }
 

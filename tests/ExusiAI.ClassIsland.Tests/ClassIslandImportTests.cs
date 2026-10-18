@@ -1,6 +1,6 @@
 using ExusiAI.Plugin.ClassIsland;
 
-namespace ExusiAI.Extension.Runtime.Tests;
+namespace ExusiAI.ClassIsland.Tests;
 
 public sealed class ClassIslandImportTests
 {
@@ -76,6 +76,51 @@ public sealed class ClassIslandImportTests
 
             Assert.True(stopRequested);
             Assert.Contains("1", File.ReadAllText(Path.Combine(destination, "Settings.json")));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+    [Fact]
+    public async Task RestoreCreatesUndoBackupAndPreservesHostPreferences()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "classisland-restore-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(root, "source");
+        var destination = Path.Combine(root, "Data");
+        try
+        {
+            Directory.CreateDirectory(source);
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(Path.Combine(source, "Settings.json"), "{\"Value\":2}");
+            File.WriteAllText(Path.Combine(destination, "Settings.json"), "{\"Value\":1}");
+            File.WriteAllText(Path.Combine(destination, "ExusiAIStartup.json"), "true");
+            var backup = await ClassIslandDataImporter.ImportAsync(source, destination, () => { }, () => true);
+            Assert.Contains(backup, ClassIslandDataImporter.ListBackups(destination));
+            var undo = await ClassIslandDataImporter.ImportAsync(backup, destination, () => { }, () => true);
+            Assert.Contains("1", File.ReadAllText(Path.Combine(destination, "Settings.json")));
+            Assert.Contains("2", File.ReadAllText(Path.Combine(undo, "Settings.json")));
+            Assert.Contains("1", File.ReadAllText(Path.Combine(backup, "Settings.json")));
+            Assert.Equal("true", File.ReadAllText(Path.Combine(destination, "ExusiAIStartup.json")));
+            Assert.Equal(2, ClassIslandDataImporter.ListBackups(destination).Count);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task CancellationAfterStopPreservesDataAndCleansStaging()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "classisland-cancel-import-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(root, "source");
+        var destination = Path.Combine(root, "Data");
+        using var cancellation = new CancellationTokenSource();
+        try
+        {
+            Directory.CreateDirectory(source);
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(Path.Combine(source, "Settings.json"), "{\"Value\":2}");
+            File.WriteAllText(Path.Combine(destination, "Settings.json"), "{\"Value\":1}");
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ClassIslandDataImporter.ImportAsync(
+                source, destination, cancellation.Cancel, () => true, cancellation.Token));
+            Assert.Contains("1", File.ReadAllText(Path.Combine(destination, "Settings.json")));
+            Assert.Empty(Directory.EnumerateDirectories(root, "ClassIsland-*"));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

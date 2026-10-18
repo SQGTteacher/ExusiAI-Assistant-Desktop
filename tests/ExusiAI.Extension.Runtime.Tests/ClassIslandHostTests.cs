@@ -186,4 +186,43 @@ public sealed class ClassIslandHostTests
         Assert.True(host.IsStopped);
         Assert.Contains("assemblies are missing", host.LastStartupError);
     }
+    [Fact]
+    public async Task BusyHostRejectsOtherEntryPointsWithoutStartingRuntime()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "classisland-busy-" + Guid.NewGuid().ToString("N"));
+        using var host = new ClassIslandHost(root, root);
+        var gate = (SemaphoreSlim)typeof(ClassIslandHost).GetField("operationGate",
+            BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(host)!;
+        Assert.True(gate.Wait(0));
+        try
+        {
+            Assert.True(host.IsBusy);
+            Assert.False(host.Start());
+            Assert.False(host.OpenPage("edit"));
+            Assert.False(host.HideWithCancellation(CancellationToken.None));
+            Assert.Throws<InvalidOperationException>(() => host.SetShowOnHostStartup(true));
+            Assert.Throws<InvalidOperationException>(() => host.SetFollowHostTheme(true));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => host.ImportDataAsync(root));
+            Assert.True(host.IsStopped);
+            Assert.Null(host.LastStartupError);
+            Assert.False(Directory.Exists(root));
+        }
+        finally { gate.Release(); }
+    }
+
+    [Fact]
+    public async Task FailedImportReleasesBusyStateAndNotifiesSubscribers()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "classisland-failed-import-" + Guid.NewGuid().ToString("N"));
+        using var host = new ClassIslandHost(root, root);
+        var states = new List<bool>();
+        host.StateChanged += (_, _) => states.Add(host.IsBusy);
+        await Assert.ThrowsAsync<ArgumentException>(() => host.ImportDataAsync(root));
+        Assert.Equal(new[] { true, false }, states);
+        Assert.False(host.IsBusy);
+        Assert.False(host.RequiresRestart);
+        host.SetShowOnHostStartup(false);
+        try { Assert.False(host.IsBusy); }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
 }
