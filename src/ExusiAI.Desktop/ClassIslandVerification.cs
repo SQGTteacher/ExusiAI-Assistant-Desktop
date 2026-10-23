@@ -15,7 +15,7 @@ using ExusiAI.Extension.Wpf;
 namespace ExusiAI.Desktop;
 
 /// <summary>Exercises the packaged plugin in the real WPF process with isolated ClassIsland data.</summary>
-internal static class ClassIslandVerification
+internal static partial class ClassIslandVerification
 {
     internal static async Task RunAsync(string outputDirectory)
     {
@@ -195,8 +195,13 @@ internal static class ClassIslandVerification
             var events = runtimeContext.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));
             if (events.GetName().Version?.Major != 9)
                 throw new InvalidOperationException($"Incorrect shared SystemEvents version: {events.FullName}");
+            var windows = await GetNativeWindowsAsync(type, host);
+            await Task.Run(host.Dispose);
+            VerifyStopped(type, host, windows);
+            host = null;
+            await VerifyLifecycleAsync(package, outputDirectory);
             File.WriteAllText(Path.Combine(outputDirectory, "result.txt"),
-                $"PASS: packaged ClassIsland rendered via {compositionMode} ({renderStatus}); settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified.");
+                $"PASS: packaged ClassIsland rendered via {compositionMode} ({renderStatus}); settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified; dormant disable and three plugin enable/render/disable cycles passed.");
         }
         finally
         {
