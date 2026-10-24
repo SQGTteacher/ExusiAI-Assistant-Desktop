@@ -14,7 +14,7 @@ ExusiAI 本体专注桌面壳、扩展运行时、设置、主题、日志和市
 - .NET 8 / C# 12 / WPF / MVVM 桌面壳；
 - 统一 `package.json`，可表达 Plugin、Theme、Widget、Provider 等包类型；
 - 清单严格解析、兼容性检查、重复 ID 检测和包路径逃逸防护；
-- 可回收 `AssemblyLoadContext`、插件初始化/启动/停止生命周期和故障隔离；
+- 默认可回收的 `AssemblyLoadContext`、插件初始化/启动/停止生命周期和故障隔离；经验证含进程级依赖的插件可显式使用挂起/恢复生命周期；
 - 与通用扩展协议分离的 WPF 导航扩展点；
 - 8 套编辑器风格配色、System 自动切换、本地版本化设置和文件日志；
 - Windows 11 原生 Mica / Acrylic 材质与 DWM 窗口圆角；

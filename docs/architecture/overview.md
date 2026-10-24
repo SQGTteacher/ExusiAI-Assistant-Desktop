@@ -7,6 +7,9 @@ then starts the WPF shell.
 `ExusiAI.Extension.Abstractions` contains the stable package and lifecycle
 contracts. `ExusiAI.Extension.Runtime` parses and validates `package.json` files
 and loads code packages in collectible `AssemblyLoadContext` instances.
+Plugins with verified process-scoped dependencies can opt into the suspendable
+lifecycle; their instance and load context remain retained while disabled and
+are released only on removal or host shutdown.
 `ExusiAI.Extension.Wpf` adds the WPF navigation page contract without making
 the core extension protocol WPF-specific.
 

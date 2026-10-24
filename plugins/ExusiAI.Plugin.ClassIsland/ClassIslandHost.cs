@@ -228,6 +228,26 @@ internal sealed class ClassIslandHost : IDisposable
         }
     }
 
+    internal async Task SuspendAsync(CancellationToken cancellationToken)
+    {
+        await operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        NotifyStateChanged();
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (lifecycleGate)
+            {
+                if (!disposed && ready.Task.IsCompletedSuccessfully && ready.Task.Result)
+                    InvokeControl("SuspendEmbedded");
+            }
+        }
+        finally
+        {
+            operationGate.Release();
+            NotifyStateChanged();
+        }
+    }
+
     internal bool OpenSettings() => OpenPage("settings");
 
     internal bool OpenPage(string page) => OpenPageWithCancellation(page, CancellationToken.None);

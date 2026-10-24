@@ -50,6 +50,19 @@ public class Program
         else if (!visible && window.IsVisible) window.Hide();
     });
 
+    /// <summary>
+    /// Hides every native window while retaining Avalonia's process-scoped
+    /// dispatcher and renderer for a later plugin resume.
+    /// </summary>
+    public static void SuspendEmbedded() => Dispatcher.UIThread.Invoke(() =>
+    {
+        var app = Volatile.Read(ref embeddedApp);
+        if (app is null) return;
+        App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible = false;
+        foreach (var window in app.DesktopLifetime?.Windows.ToArray() ?? [])
+            if (window.IsVisible) window.Hide();
+    });
+
     public static bool GetEmbeddedVisible() => Dispatcher.UIThread.Invoke(() =>
         Volatile.Read(ref embeddedApp)?.MainWindow is { IsVisible: true } &&
         App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible);
@@ -172,8 +185,8 @@ public class Program
         var renderingMode = int.TryParse(GlobalStorageService.GetValue("Win32RenderingMode") ?? "", out var v1)
             ? v1
             : 0;
-        
-        var r =  AppBuilder.Configure<App>(() =>
+
+        var r = AppBuilder.Configure<App>(() =>
             {
                 var app = buildApp();
 #if Platforms_Windows
@@ -242,7 +255,7 @@ public class Program
 
         return r.StartWithClassicDesktopLifetime(args);
     }
-    
+
     // AppBuilder for designer
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
         .UsePlatformDetect()
