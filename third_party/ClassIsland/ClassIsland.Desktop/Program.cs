@@ -130,7 +130,10 @@ public class Program
                 // process. A second WinUIComposition chain can leave this
                 // transparent top-level visible but with an empty surface.
                 CompositionMode = [Win32CompositionMode.RedirectionSurface],
-                RenderingMode = BuildRenderingMode(0)
+                // ANGLE does not reliably release its process-wide EGL state
+                // between plugin activations. Software Skia preserves the same
+                // Avalonia visual tree while allowing a complete service stop.
+                RenderingMode = [Win32RenderingMode.Software]
             })
             .UsePlatformDetect()
             .AfterPlatformServicesSetup(_ =>
@@ -150,6 +153,7 @@ public class Program
         finally
         {
             Volatile.Write(ref embeddedApp, null);
+            stopTokenSource.Cancel();
             stopTokenSource.Dispose();
         }
     }
@@ -171,8 +175,8 @@ public class Program
         var renderingMode = int.TryParse(GlobalStorageService.GetValue("Win32RenderingMode") ?? "", out var v1)
             ? v1
             : 0;
-        
-        var r =  AppBuilder.Configure<App>(() =>
+
+        var r = AppBuilder.Configure<App>(() =>
             {
                 var app = buildApp();
 #if Platforms_Windows
@@ -241,7 +245,7 @@ public class Program
 
         return r.StartWithClassicDesktopLifetime(args);
     }
-    
+
     // AppBuilder for designer
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
         .UsePlatformDetect()
@@ -279,7 +283,9 @@ public class Program
         PlatformServices.WindowPlatformService = new WindowPlatformService();
         PlatformServices.LocationService = new LocationService();
         PlatformServices.DesktopService = new DesktopService();
-        PlatformServices.SystemEventsService = new SystemEventsService();
+        var systemEventsService = new SystemEventsService();
+        PlatformServices.SystemEventsService = systemEventsService;
+        stopToken.Register(systemEventsService.Dispose);
         PlatformServices.DesktopToastService = new DesktopToastService();
         postInitCallback = () =>
         {
