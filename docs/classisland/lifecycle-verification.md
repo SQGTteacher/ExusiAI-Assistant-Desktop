@@ -13,4 +13,8 @@
 
 CI 在框架依赖构建和 Windows x64 自包含发布中都运行该探针，单次进程总超时为 180 秒。
 
+首次执行发现：停止第一个原版实例后，再启用会报 `Failed to create system events window thread`。SystemEvents 9 的窗口类名称仅包含 AppDomain 标识，每个插件私有加载上下文各自创建一份时会重复注册同名窗口类。修复将此依赖交由共享 WPF 契约程序集中的进程级提供器加载，保留与 WPF 自带旧版本的隔离，后续插件实例复用同一程序集。Windows 平台服务在停止时取消 TimeChanged 订阅；其他原版依赖仍按原方案隔离。回归另外断言各轮 SystemEvents 9 的程序集引用相同。
+
+根因可对照 [.NET 9.0.7 SystemEvents 源码](https://github.com/dotnet/runtime/blob/v9.0.7/src/libraries/Microsoft.Win32.SystemEvents/src/Microsoft/Win32/SystemEvents.cs) 中的 `Initialize` 和 `EnsureSystemEvents`；本地并发测试加载同版本的 Windows 实现 DLL，仅检查加载身份，不在 Linux 上调用 Windows 事件 API。
+
 这些是有限次数的生命周期回归，不代表长期运行内存、全部原版动画、DPI、通知和焦点行为已经验收。原版运行上下文目前不可回收；探针不以“窗口已关闭”推断所有服务和程序集内存已释放。任何启停策略调整仍需结合 Windows 结果和具体资源行为。

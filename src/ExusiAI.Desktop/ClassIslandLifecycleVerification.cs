@@ -72,6 +72,7 @@ internal static partial class ClassIslandVerification
         RequireState(PackageState.Disabled);
         Log("PASS: dormant plugin disabled; page and tray removed.");
 
+        Assembly? sharedEvents = null;
         for (var cycle = 1; cycle <= 3; cycle++)
         {
             Log($"Starting cycle {cycle}.");
@@ -79,6 +80,11 @@ internal static partial class ClassIslandVerification
             RequireState(PackageState.Running);
             RequireDormant();
             await Command("show");
+            var entryPoint = (Type)hostType!.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(activeHost)!;
+            var events = AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));
+            if (events.GetName().Version?.Major != 9 || (sharedEvents is not null && !ReferenceEquals(sharedEvents, events)))
+                throw new InvalidOperationException($"Cycle {cycle}: SystemEvents was not shared across reloads.");
+            sharedEvents = events;
             var window = new IntPtr((long)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedWindowHandle")!);
             if (!IsWindowVisible(window) || Read("IsVisible") is not true)
                 throw new InvalidOperationException($"Cycle {cycle}: re-enabled island is not visible.");

@@ -4,6 +4,8 @@
 
 源包 SHA-256：`d85c3b3d2db42aa2800f17c30685c3f491cead06d11357666507a759cdc54fee`。
 
+后续变更（2026-10-24）：生命周期回归另修改 Windows 平台 `Services/SystemEventsService.cs`，增加可取消的系统时间事件订阅；`ClassIsland.Desktop/Program.cs` 在停止时清理该订阅。下方文件计数保留为 2026-10-17 的来源审计快照，不作为后续提交的实时差异统计。
+
 上游共 1179 个源码/界面文件：1168 个一致，11 个修改，0 个缺失；另增加 1 个 ExusiAI 安装边界辅助文件。所有已导入 AXAML/XAML 均一致。
 
 | 修改文件 | 改动用途 |

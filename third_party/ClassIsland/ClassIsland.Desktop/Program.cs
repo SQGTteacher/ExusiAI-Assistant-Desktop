@@ -150,6 +150,7 @@ public class Program
         finally
         {
             Volatile.Write(ref embeddedApp, null);
+            stopTokenSource.Cancel();
             stopTokenSource.Dispose();
         }
     }
@@ -279,7 +280,9 @@ public class Program
         PlatformServices.WindowPlatformService = new WindowPlatformService();
         PlatformServices.LocationService = new LocationService();
         PlatformServices.DesktopService = new DesktopService();
-        PlatformServices.SystemEventsService = new SystemEventsService();
+        var systemEventsService = new SystemEventsService();
+        PlatformServices.SystemEventsService = systemEventsService;
+        stopToken.Register(systemEventsService.Dispose);
         PlatformServices.DesktopToastService = new DesktopToastService();
         postInitCallback = () =>
         {
