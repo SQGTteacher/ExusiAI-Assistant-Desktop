@@ -5,7 +5,7 @@ using ExusiAI.Extension.Wpf;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
-public sealed class ClassIslandPlugin : ExtensionPluginBase, ISuspendablePlugin, IDisposable, IWpfNavigationExtension, IWpfHostThemeExtension, IWpfTrayExtension
+public sealed class ClassIslandPlugin : ExtensionPluginBase, IWpfNavigationExtension, IWpfHostThemeExtension, IWpfTrayExtension
 {
     private ClassIslandHost host = null!;
 
@@ -28,16 +28,9 @@ public sealed class ClassIslandPlugin : ExtensionPluginBase, ISuspendablePlugin,
 
     public override Task StopAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         host.Dispose();
         return Task.CompletedTask;
     }
-
-    public Task SuspendAsync(CancellationToken cancellationToken) => host.SuspendAsync(cancellationToken);
-
-    public Task ResumeAsync(CancellationToken cancellationToken) => StartAsync(cancellationToken);
-
-    public void Dispose() => host?.Dispose();
 
     /// <summary>
     /// Forwards the shell theme to the embedded island. The host keeps the last

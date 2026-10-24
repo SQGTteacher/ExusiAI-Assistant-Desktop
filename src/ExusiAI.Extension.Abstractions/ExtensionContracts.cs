@@ -25,15 +25,3 @@ public interface IExusiAIPlugin
     Task StartAsync(CancellationToken cancellationToken);
     Task StopAsync(CancellationToken cancellationToken);
 }
-
-/// <summary>
-/// Optional lifecycle for plugins that own process-scoped state which cannot be
-/// recreated safely after a normal disable. The runtime retains the initialized
-/// instance while disabled, then resumes it without calling InitializeAsync again.
-/// StopAsync remains the terminal shutdown used for removal and host exit.
-/// </summary>
-public interface ISuspendablePlugin : IExusiAIPlugin
-{
-    Task SuspendAsync(CancellationToken cancellationToken);
-    Task ResumeAsync(CancellationToken cancellationToken);
-}

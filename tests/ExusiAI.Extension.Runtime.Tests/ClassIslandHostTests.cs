@@ -32,12 +32,6 @@ public sealed class ClassIslandHostTests
     }
 
     [Fact]
-    public void PluginUsesSuspendableLifecycleForProcessScopedAvalonia()
-    {
-        Assert.IsAssignableFrom<ISuspendablePlugin>(new ClassIslandPlugin());
-    }
-
-    [Fact]
     public async Task ActivationHonorsCancellationWithoutLaunchingGui()
     {
         var plugin = new ClassIslandPlugin();

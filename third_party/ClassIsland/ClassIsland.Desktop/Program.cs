@@ -50,19 +50,6 @@ public class Program
         else if (!visible && window.IsVisible) window.Hide();
     });
 
-    /// <summary>
-    /// Hides every native window while retaining Avalonia's process-scoped
-    /// dispatcher and renderer for a later plugin resume.
-    /// </summary>
-    public static void SuspendEmbedded() => Dispatcher.UIThread.Invoke(() =>
-    {
-        var app = Volatile.Read(ref embeddedApp);
-        if (app is null) return;
-        App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible = false;
-        foreach (var window in app.DesktopLifetime?.Windows.ToArray() ?? [])
-            if (window.IsVisible) window.Hide();
-    });
-
     public static bool GetEmbeddedVisible() => Dispatcher.UIThread.Invoke(() =>
         Volatile.Read(ref embeddedApp)?.MainWindow is { IsVisible: true } &&
         App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible);
@@ -143,7 +130,10 @@ public class Program
                 // process. A second WinUIComposition chain can leave this
                 // transparent top-level visible but with an empty surface.
                 CompositionMode = [Win32CompositionMode.RedirectionSurface],
-                RenderingMode = BuildRenderingMode(0)
+                // ANGLE does not reliably release its process-wide EGL state
+                // between plugin activations. Software Skia preserves the same
+                // Avalonia visual tree while allowing a complete service stop.
+                RenderingMode = [Win32RenderingMode.Software]
             })
             .UsePlatformDetect()
             .AfterPlatformServicesSetup(_ =>
