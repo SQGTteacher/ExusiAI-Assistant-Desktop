@@ -149,8 +149,11 @@ public class Program
                 // transparent top-level visible but with an empty surface.
                 CompositionMode = [Win32CompositionMode.RedirectionSurface],
                 // Avalonia's Win32 platform remains process-scoped while plugin
-                // sessions stop and rebuild their managed service graph.
-                RenderingMode = BuildRenderingMode(0)
+                // sessions stop and rebuild their managed service graph, but
+                // ANGLE cannot allocate a new EGL surface for windows created
+                // after a previous session was torn down (EGL_BAD_ALLOC). Keep
+                // window recreation independent of the GPU.
+                RenderingMode = [Win32RenderingMode.Software]
             })
             .UsePlatformDetect()
             .AfterPlatformServicesSetup(_ =>
