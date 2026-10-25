@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -119,10 +119,18 @@ internal static partial class ClassIslandVerification
             if (IsWindowVisible(window) || Read("IsVisible") is not false)
                 throw new InvalidOperationException($"Cycle {cycle}: settings revealed a hidden island.");
             var windows = await GetNativeWindowsAsync(hostType!, activeHost!);
+            var services = GetEmbeddedServices(entryPoint);
+            var core = SharedAssembly(entryPoint, "ClassIsland.Core");
+            var exactTime = services.GetService(core.GetType("ClassIsland.Core.Abstractions.Services.IExactTimeService", throwOnError: true)!)!;
+            var windowRule = services.GetService(core.GetType("ClassIsland.Core.Abstractions.Services.IWindowRuleService", throwOnError: true)!)!;
+            var platform = GetPlatformService(entryPoint);
+            if (CountPlatformHandlers(platform) != 1)
+                throw new InvalidOperationException($"Cycle {cycle}: expected exactly one process-wide foreground-window callback.");
             var oldShow = tray.Menus.Single().Commands.Single(command => command.Id == "show");
             await Task.Run(() => runtime.SetEnabledAsync(id, false));
             RequireState(PackageState.Disabled);
             VerifySuspended(hostType!, activeHost!, windows);
+            VerifySuspendedServices(entryPoint, exactTime, windowRule, platform);
             if (InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceHostActive") is not false)
                 throw new InvalidOperationException($"Cycle {cycle}: managed service host survived disable.");
             if (tray.IsRegistered(id, oldShow))
@@ -192,6 +200,68 @@ internal static partial class ClassIslandVerification
         var entry = (Type)type.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
         if (entry.GetProperty("IsEmbeddedRunning")!.GetValue(null) is not true)
             throw new InvalidOperationException("ClassIsland suspension released its process-scoped Avalonia application.");
+    }
+
+    private static Assembly SharedAssembly(Type entryPoint, string name) =>
+        AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!.LoadFromAssemblyName(new AssemblyName(name));
+
+    private static IServiceProvider GetEmbeddedServices(Type entryPoint)
+    {
+        var appHost = SharedAssembly(entryPoint, "ClassIsland.Shared").GetType("ClassIsland.Shared.IAppHost", throwOnError: true)!;
+        var host = appHost.GetField("Host", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+        return (IServiceProvider)host.GetType().GetProperty("Services")!.GetValue(host)!;
+    }
+
+    private static object GetPlatformService(Type entryPoint)
+    {
+        var services = SharedAssembly(entryPoint, "ClassIsland.Platforms.Abstractions")
+            .GetType("ClassIsland.Platforms.Abstraction.PlatformServices", throwOnError: true)!;
+        return services.GetProperty("WindowPlatformService", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+    }
+
+    private static int CountPlatformHandlers(object platform)
+    {
+        var handlers = (ICollection)platform.GetType()
+            .GetField("_changedEventHandlers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(platform)!;
+        return handlers.Count;
+    }
+
+    private static void VerifySuspendedServices(Type entryPoint, object exactTime, object windowRule, object platform)
+    {
+        var timer = exactTime.GetType().GetProperty("UpdateTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(exactTime)!;
+        if (timer.GetType().GetProperty("IsEnabled")!.GetValue(timer) is true)
+            throw new InvalidOperationException("ClassIsland suspension left the exact-time synchronization timer enabled.");
+
+        var platformServices = SharedAssembly(entryPoint, "ClassIsland.Platforms.Abstractions")
+            .GetType("ClassIsland.Platforms.Abstraction.PlatformServices", throwOnError: true)!;
+        var systemEvents = platformServices.GetProperty("SystemEventsService", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+        if (HasHandlerTarget(systemEvents, "TimeChanged", exactTime))
+            throw new InvalidOperationException("ClassIsland suspension retained the process-wide system time subscription.");
+
+        if (CountPlatformHandlers(platform) != 0)
+            throw new InvalidOperationException("ClassIsland suspension retained a process-wide foreground-window callback.");
+
+        var ruleset = SharedAssembly(entryPoint, "ClassIsland.Core")
+            .GetType("ClassIsland.Core.Abstractions.Services.IRulesetService", throwOnError: true)!;
+        var rules = (IDictionary)ruleset.GetProperty("Rules", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+        foreach (string id in rules.Keys)
+        {
+            if (!id.StartsWith("classisland.windows.", StringComparison.Ordinal)) continue;
+            var handle = rules[id]!.GetType().GetField("Handle", BindingFlags.Instance | BindingFlags.Public)!.GetValue(rules[id]) as Delegate;
+            if (handle?.GetInvocationList().Any(item => ReferenceEquals(item.Target, windowRule)) == true)
+                throw new InvalidOperationException($"ClassIsland suspension retained rule handler {id}.");
+        }
+    }
+
+    private static bool HasHandlerTarget(object source, string eventName, object target)
+    {
+        for (var type = source.GetType(); type is not null; type = type.BaseType)
+        {
+            var field = type.GetField(eventName, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            if (field?.GetValue(source) is Delegate handler)
+                return handler.GetInvocationList().Any(item => ReferenceEquals(item.Target, target));
+        }
+        return false;
     }
 
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
