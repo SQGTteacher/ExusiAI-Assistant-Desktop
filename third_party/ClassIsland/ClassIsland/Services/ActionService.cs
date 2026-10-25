@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -208,7 +208,7 @@ public class ActionService : IActionService
     public ActionService(ILogger<ActionService> logger)
     {
         Logger = logger;
-        ActionMenuTree.Add(
+        AddDefaultActionGroup(
             new ActionMenuTreeGroup("应用设置", "\uef27",
             SettingItem("选择应用设置…", "\ue454", ""),
             SettingItem("组件配置方案", "\ue06f", "CurrentComponentConfig"),
@@ -217,7 +217,7 @@ public class ActionService : IActionService
         ));
 
 
-        ActionMenuTree.Add(
+        AddDefaultActionGroup(
             new ActionMenuTreeGroup("运行", "\uec2e",
             new ActionMenuTreeItem<RunActionSettings>("classisland.os.run", "应用程序", "\uf4b1",
                 s => s.RunType = RunActionSettings.RunActionRunType.Application),
@@ -233,7 +233,7 @@ public class ActionService : IActionService
                 s => s.RunType = RunActionSettings.RunActionRunType.Url)
         ));
 
-        ActionMenuTree.Add(
+        AddDefaultActionGroup(
             new ActionMenuTreeGroup("提醒", "\ue025",
             new ActionMenuTreeItem<NotificationActionSettings>("classisland.showNotification", "显示提醒…", "\ue02f",
                 s => s.IsWaitForCompleteEnabled = false),
@@ -247,7 +247,7 @@ public class ActionService : IActionService
                 s => s.NotificationKind = 2)
         ));
 
-        ActionMenuTree.Add(
+        AddDefaultActionGroup(
             new ActionMenuTreeGroup("ClassIsland", "\ue454",
             new ActionMenuTreeItem("classisland.app.quit", "退出 ClassIsland", "\ue0df"),
             new ActionMenuTreeItem("classisland.app.restart", "重启 ClassIsland", "\ue0bd")
@@ -257,6 +257,14 @@ public class ActionService : IActionService
 
         static ActionMenuTreeItem<ModifyAppSettingsActionSettings> SettingItem(string displayName, string icon, string name) =>
             new("classisland.settings", displayName, icon, s => s.Name = name);
+    }
+
+    private static void AddDefaultActionGroup(ActionMenuTreeGroup group)
+    {
+        if (!ActionMenuTree.Contains(group.Name))
+        {
+            ActionMenuTree.Add(group);
+        }
     }
 
     [Obsolete("注意！行动 v2 注册方法已过时，请参阅 ClassIsland 开发文档进行迁移。")]
