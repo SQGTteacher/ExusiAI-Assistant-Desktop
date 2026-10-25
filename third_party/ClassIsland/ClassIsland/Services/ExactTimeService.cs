@@ -15,9 +15,13 @@ using Microsoft.Win32;
 
 namespace ClassIsland.Services;
 
-public class ExactTimeService : ObservableRecipient, IExactTimeService
+public class ExactTimeService : ObservableRecipient, IExactTimeService, IDisposable
 {
     private string _syncStatusMessage = "时间尚未同步。";
+
+    private bool _disposed;
+
+    private readonly object _timerLock = new();
 
     private DateTime PrevDateTime { get; set; } = DateTime.MinValue;
 
@@ -75,12 +79,11 @@ public class ExactTimeService : ObservableRecipient, IExactTimeService
             Logger.LogError(ex, "初始化NtpClient失败。");
             SyncStatusMessage = ex.Message;
         }
-        Task.Run(() => {
+        PlatformServices.SystemEventsService.TimeChanged += SystemEventsOnTimeChanged;
+        Task.Run(() =>
+        {
             Sync();
             UpdateTimerStatus();
-            PlatformServices.SystemEventsService.TimeChanged += SystemEventsOnTimeChanged;
-            AppBase.Current.AppStopping += (sender, args) => PlatformServices.SystemEventsService.TimeChanged -= SystemEventsOnTimeChanged; ;
-            
         });
 
         if (SettingsService.Settings.IsTimeAutoAdjustEnabled)
@@ -124,14 +127,40 @@ public class ExactTimeService : ObservableRecipient, IExactTimeService
 
     private void UpdateTimerStatus()
     {
-        if (SettingsService.Settings.IsExactTimeEnabled)
+        lock (_timerLock)
         {
-            UpdateTimer.Start();
+            if (_disposed)
+            {
+                UpdateTimer.Stop();
+                return;
+            }
+
+            if (SettingsService.Settings.IsExactTimeEnabled)
+            {
+                UpdateTimer.Start();
+            }
+            else
+            {
+                UpdateTimer.Stop();
+            }
         }
-        else
+    }
+
+    public void Dispose()
+    {
+        lock (_timerLock)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
             UpdateTimer.Stop();
         }
+
+        SettingsService.Settings.PropertyChanged -= SettingsOnPropertyChanged;
+        PlatformServices.SystemEventsService.TimeChanged -= SystemEventsOnTimeChanged;
     }
 
     public void Sync()

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -6,6 +6,7 @@ using System.Linq;
 using Avalonia.Threading;
 using ClassIsland.Core.Abstractions.Services;
 using ClassIsland.Core.Extensions;
+using ClassIsland.Core.Models.Ruleset;
 using ClassIsland.Models;
 using ClassIsland.Models.Rules;
 using ClassIsland.Shared.Enums;
@@ -18,7 +19,7 @@ using Microsoft.Extensions.Logging;
 
 namespace ClassIsland.Services;
 
-public class LessonsService : ObservableRecipient, ILessonsService
+public class LessonsService : ObservableRecipient, ILessonsService, IDisposable
 {
     private ClassPlan? _currentClassPlan;
     private int _currentSelectedIndex = -1;
@@ -217,6 +218,8 @@ public class LessonsService : ObservableRecipient, ILessonsService
     public IRulesetService RulesetService { get; }
     public IIpcService IpcService { get; }
 
+    private readonly Dictionary<string, RuleRegistryInfo.HandleDelegate> _ruleHandlers;
+
     private Profile Profile => ProfileService.Profile;
     private Settings Settings => SettingsService.Settings;
 
@@ -231,10 +234,17 @@ public class LessonsService : ObservableRecipient, ILessonsService
         IpcService = ipcService;
 
         IpcService.IpcProvider.CreateIpcJoint<IPublicLessonsService>(this);
-        RulesetService.RegisterRuleHandler("classisland.lessons.timeState", TimeStateHandler);
-        RulesetService.RegisterRuleHandler("classisland.lessons.currentSubject", CurrentSubjectHandler);
-        RulesetService.RegisterRuleHandler("classisland.lessons.nextSubject", NextSubjectHandler);
-        RulesetService.RegisterRuleHandler("classisland.lessons.previousSubject", PreviousSubjectHandler);
+        _ruleHandlers = new()
+        {
+            ["classisland.lessons.timeState"] = TimeStateHandler,
+            ["classisland.lessons.currentSubject"] = CurrentSubjectHandler,
+            ["classisland.lessons.nextSubject"] = NextSubjectHandler,
+            ["classisland.lessons.previousSubject"] = PreviousSubjectHandler
+        };
+        foreach (var (ruleId, handler) in _ruleHandlers)
+        {
+            RulesetService.RegisterRuleHandler(ruleId, handler);
+        }
         CurrentTimeStateChanged += (sender, args) => RulesetService.NotifyStatusChanged();
         PropertyChanged += OnPropertyChanged;
         PropertyChanging += OnPropertyChanging;
@@ -642,5 +652,16 @@ public class LessonsService : ObservableRecipient, ILessonsService
     public void StopMainTimer()
     {
         MainTimer.Stop();
+    }
+
+    public void Dispose()
+    {
+        foreach (var (ruleId, handler) in _ruleHandlers)
+        {
+            if (IRulesetService.Rules.TryGetValue(ruleId, out var info))
+            {
+                info.Handle -= handler;
+            }
+        }
     }
 }

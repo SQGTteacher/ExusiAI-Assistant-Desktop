@@ -137,7 +137,10 @@ public class AudioService(ILogger<AudioService> logger) : IAudioService
 
     public void Dispose()
     {
-        AudioEngine.Dispose();
+        if (OperatingSystem.IsWindows() && Thread.CurrentThread.GetApartmentState() != ApartmentState.MTA)
+            Task.Run(_audioEngine.Dispose).GetAwaiter().GetResult();
+        else
+            _audioEngine.Dispose();
         GC.SuppressFinalize(this);
     }
 }

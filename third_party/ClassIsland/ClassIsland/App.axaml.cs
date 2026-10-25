@@ -90,6 +90,15 @@ public partial class App : AppBase, IAppHost
     public bool IsSentryEnabled { get; set; } = false;
 
     private bool _isStartedCompleted = false;
+    private bool _embeddedPlatformInitialized;
+    private bool _embeddedSessionSuspended;
+    private bool _embeddedLifecycleBaselineCaptured;
+    private IReadOnlyList<ServiceDescriptor>? _embeddedServiceDescriptors;
+    private EventHandler? _embeddedPersistentAppStarted;
+    private EventHandler? _embeddedPersistentAppStopping;
+
+    public int EmbeddedServiceGeneration { get; private set; }
+    public bool IsEmbeddedServiceHostActive => IAppHost.Host is not null;
 
     internal static bool IsCrashed { get; set; } = false;
 
@@ -510,12 +519,39 @@ public partial class App : AppBase, IAppHost
         }
     }
 
-    private async void DesktopLifetimeOnStartup(object? sender, ControlledApplicationLifetimeStartupEventArgs e)
-    {
+    private async void DesktopLifetimeOnStartup(object? sender, ControlledApplicationLifetimeStartupEventArgs e) =>
+        await StartSessionAsync();
 
+    public async Task ResumeEmbeddedAsync()
+    {
+        if (EmbeddedOptions is null)
+            throw new InvalidOperationException("Only an embedded application can resume a service session.");
+        if (!_embeddedSessionSuspended)
+            return;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler handler = (_, _) => started.TrySetResult();
+        EmbeddedStarted += handler;
+        _embeddedSessionSuspended = false;
+        try
+        {
+            await StartSessionAsync();
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            EmbeddedStarted -= handler;
+        }
+    }
+
+    private async Task StartSessionAsync()
+    {
         CreatePhonyRootWindow();
         PlatformServices.WindowPlatformService.SetWindowFeature(PhonyRootWindow, WindowFeatures.ToolWindow | WindowFeatures.SkipManagement | WindowFeatures.Transparent, true);
-        Initialized?.Invoke(this, EventArgs.Empty);
+        if (!_embeddedPlatformInitialized)
+        {
+            Initialized?.Invoke(this, EventArgs.Empty);
+            _embeddedPlatformInitialized = true;
+        }
         var transaction = SentrySdk.StartTransaction(
             "startup",
             "startup"
@@ -523,7 +559,8 @@ public partial class App : AppBase, IAppHost
         SentrySdk.ConfigureScope(s => s.Transaction = transaction);
         var spanPreInit = transaction.StartChild("startup-init");
         AppBase.CurrentLifetime = ClassIsland.Core.Enums.ApplicationLifetime.Initializing;
-        Dispatcher.UIThread.UnhandledException += App_OnDispatcherUnhandledException;
+        if (!_embeddedLifecycleBaselineCaptured)
+            Dispatcher.UIThread.UnhandledException += App_OnDispatcherUnhandledException;
         MyWindow.ShowOssWatermark = ApplicationCommand.ShowOssWatermark;
         //DependencyPropertyHelper.ForceOverwriteDependencyPropertyDefaultValue(FrameworkElement.FocusVisualStyleProperty,
         //    Resources[SystemParameters.FocusVisualStyleKey]);
@@ -640,7 +677,8 @@ public partial class App : AppBase, IAppHost
 
 
         await File.WriteAllTextAsync(startupCountFilePath, startupCount.ToString());
-        AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
+        if (EmbeddedOptions is null)
+            AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
 
         var spanProcessUpdate = spanPreInit.StartChild("startup-process-update");
         
@@ -654,15 +692,23 @@ public partial class App : AppBase, IAppHost
         FileFolderService.CreateFolders();
         // Embedded mode has its own isolated data root, but queued packages are
         // still installed by ClassIsland itself on the next host startup.
-        PluginService.ProcessPluginsInstall();
+        // The embedded process reuses plugin instances and registry descriptors
+        // across managed service sessions. Apply queued plugin changes only when
+        // building that catalog for the first time; later changes need host restart.
+        if (EmbeddedOptions is null || _embeddedServiceDescriptors is null)
+            PluginService.ProcessPluginsInstall();
         bool isSystemSpeechSystemExist = false;
         var spanHostBuilding = spanPreInit.StartChild("startup-host-building");
 
-        IAppHost.Host = Microsoft.Extensions.Hosting.Host
-            .CreateDefaultBuilder()
-            .UseContentRoot(EmbeddedOptions?.PackageDirectory ?? AppContext.BaseDirectory)
-            .ConfigureServices(ConfigureServices)
-            .Build();
+        IAppHost.Host = BuildServiceHost();
+        if (EmbeddedOptions is not null)
+            EmbeddedServiceGeneration++;
+        if (EmbeddedOptions is not null && !_embeddedLifecycleBaselineCaptured)
+        {
+            _embeddedPersistentAppStarted = AppStarted;
+            _embeddedPersistentAppStopping = AppStopping;
+            _embeddedLifecycleBaselineCaptured = true;
+        }
         AppBase.CurrentLifetime = ClassIsland.Core.Enums.ApplicationLifetime.StartingOffline;
         Logger = GetService<ILogger<App>>();
         Logger.LogInformation("ClassIsland {}", AppVersionLong);
@@ -793,7 +839,7 @@ public partial class App : AppBase, IAppHost
         }
         // _ = GetService<WallpaperPickingService>().GetWallpaperAsync();
         
-        _ = IAppHost.Host.StartAsync();
+        await IAppHost.Host.StartAsync();
         if (EmbeddedOptions is null)
             IAppHost.GetService<IPluginMarketService>().LoadPluginSource();
         
@@ -900,6 +946,7 @@ public partial class App : AppBase, IAppHost
                 });
             }
             AppStarted?.Invoke(this, EventArgs.Empty);
+            EmbeddedStarted?.Invoke(this, EventArgs.Empty);
             if (EmbeddedOptions is null)
             {
                 GetService<IIpcService>().IpcProvider.StartServer();
@@ -1026,6 +1073,28 @@ public partial class App : AppBase, IAppHost
             Stop();
             return;
         }
+    }
+
+    private IHost BuildServiceHost()
+    {
+        var builder = Microsoft.Extensions.Hosting.Host
+            .CreateDefaultBuilder()
+            .UseContentRoot(EmbeddedOptions?.PackageDirectory ?? AppContext.BaseDirectory);
+        if (EmbeddedOptions is null)
+            return builder.ConfigureServices(ConfigureServices).Build();
+
+        return builder.ConfigureServices((context, services) =>
+        {
+            if (_embeddedServiceDescriptors is null)
+            {
+                var firstAppDescriptor = services.Count;
+                ConfigureServices(context, services);
+                _embeddedServiceDescriptors = services.Skip(firstAppDescriptor).ToArray();
+                return;
+            }
+            foreach (var descriptor in _embeddedServiceDescriptors)
+                services.Add(descriptor);
+        }).Build();
     }
 
     private void CreatePhonyRootWindow()
@@ -1162,11 +1231,32 @@ public partial class App : AppBase, IAppHost
         {
             return;
         }
-        _ = Dispatcher.UIThread.InvokeAsync(() =>
+        _ = Dispatcher.UIThread.InvokeAsync<Task>(() => StopSessionAsync(shutdownAvalonia: true));
+    }
+
+    public Task SuspendEmbeddedAsync()
+    {
+        if (EmbeddedOptions is null)
+            throw new InvalidOperationException("Only an embedded application can suspend its service session.");
+        if (_embeddedSessionSuspended)
+            return Task.CompletedTask;
+        return StopSessionAsync(shutdownAvalonia: false);
+    }
+
+    private async Task StopSessionAsync(bool shutdownAvalonia)
+    {
+        if (CurrentLifetime == ClassIsland.Core.Enums.ApplicationLifetime.Stopping)
+            return;
+
+        Exception? lifecycleFailure = null;
+        var partial = CurrentLifetime < Core.Enums.ApplicationLifetime.StartingOnline;
+        CurrentLifetime = ClassIsland.Core.Enums.ApplicationLifetime.Stopping;
+        Logger?.LogInformation(shutdownAvalonia ? "正在停止应用" : "正在挂起内嵌应用服务");
+        var host = IAppHost.Host;
+        if (shutdownAvalonia)
+            EmbeddedFinalStopping?.Invoke(this, EventArgs.Empty);
+        try
         {
-            var partial = CurrentLifetime < Core.Enums.ApplicationLifetime.StartingOnline;
-            CurrentLifetime = ClassIsland.Core.Enums.ApplicationLifetime.Stopping;
-            Logger?.LogInformation("正在停止应用");
             if (IAppHost.TryGetService<IManagementService>() is { IsManagementEnabled: true, Connection: ManagementServerConnection connection })
             {
                 connection.LogAuditEvent(AuditEvents.AppExited, new Empty());
@@ -1174,37 +1264,102 @@ public partial class App : AppBase, IAppHost
             AppStopping?.Invoke(this, EventArgs.Empty);
             if (!partial)
             {
-                IAppHost.Host?.Services.GetService<ILessonsService>()?.StopMainTimer();
-                IAppHost.Host?.StopAsync(TimeSpan.FromSeconds(5));
-                IAppHost.Host?.Services.GetService<SettingsService>()?.SaveSettings("停止当前应用程序。");
-                IAppHost.Host?.Services.GetService<IAutomationService>()?.SaveConfig("停止当前应用程序。");
-                IAppHost.Host?.Services.GetService<IProfileService>()?.SaveProfile();
-                IAppHost.Host?.Services.GetService<IComponentsService>()?.SaveConfig();
+                host?.Services.GetService<ILessonsService>()?.StopMainTimer();
+                host?.Services.GetService<SettingsService>()?.SaveSettings("停止当前应用程序。");
+                host?.Services.GetService<IAutomationService>()?.SaveConfig("停止当前应用程序。");
+                host?.Services.GetService<IProfileService>()?.SaveProfile();
+                host?.Services.GetService<IComponentsService>()?.SaveConfig();
             }
-            if (PlatformServices.WindowPlatformService is IDisposable d)
+        }
+        catch (Exception exception)
+        {
+            Logger?.LogError(exception, "保存应用会话时发生错误");
+        }
+        try
+        {
+            if (host is not null)
+                await host.StopAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception exception)
+        {
+            Logger?.LogError(exception, "停止应用服务时发生错误");
+            lifecycleFailure = exception;
+        }
+        finally
+        {
+            if (!shutdownAvalonia)
             {
-                d.Dispose();
+                foreach (var window in DesktopLifetime?.Windows.ToArray() ?? [])
+                {
+                    try
+                    {
+                        AvaloniaUnsafeAccessorHelpers.CloseForEmbeddedSession(window);
+                    }
+                    catch (Exception exception)
+                    {
+                        Logger?.LogError(exception, "关闭内嵌应用窗口时发生错误");
+                        lifecycleFailure ??= exception;
+                    }
+                }
             }
-            if (PlatformServices.DesktopToastService is IDisposable toastService)
-            {
-                toastService.Dispose();
-            }
-            DesktopLifetime?.Shutdown();
             try
             {
-                //ReleaseLock();
+                host?.Dispose();
             }
-            catch (Exception e)
+            catch (Exception exception)
             {
-                Logger?.LogError(e, "无法释放 Mutex。");
+                Logger?.LogError(exception, "释放应用服务时发生错误");
+                lifecycleFailure ??= exception;
             }
-        });
+            if (ReferenceEquals(IAppHost.Host, host))
+                IAppHost.Host = null;
+
+            if (EmbeddedOptions is not null)
+            {
+                AppStarted = _embeddedPersistentAppStarted;
+                AppStopping = _embeddedPersistentAppStopping;
+                MainWindow = null;
+                _isStartedCompleted = false;
+            }
+
+            if (shutdownAvalonia)
+            {
+                try
+                {
+                    if (PlatformServices.WindowPlatformService is IDisposable d)
+                        d.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    Logger?.LogError(exception, "释放窗口平台服务时发生错误");
+                }
+                try
+                {
+                    if (PlatformServices.DesktopToastService is IDisposable toastService)
+                        toastService.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    Logger?.LogError(exception, "释放桌面通知服务时发生错误");
+                }
+                DesktopLifetime?.Shutdown();
+            }
+            else
+            {
+                _embeddedSessionSuspended = true;
+                CurrentLifetime = Core.Enums.ApplicationLifetime.None;
+                if (lifecycleFailure is not null)
+                    throw new InvalidOperationException("The embedded ClassIsland service session did not stop cleanly.", lifecycleFailure);
+            }
+        }
     }
 
     // 2.0 不再发布资源裁剪版本，此方法恒返回 false
     public override bool IsAssetsTrimmed() => false;
     public override event EventHandler? AppStarted;
     public override event EventHandler? AppStopping;
+    public event EventHandler? EmbeddedStarted;
+    public event EventHandler? EmbeddedFinalStopping;
     public event EventHandler? EmbeddedRestartRequested;
 
     public event EventHandler<Exception>? EmbeddedFailure;

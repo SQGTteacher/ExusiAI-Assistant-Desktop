@@ -8,10 +8,16 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" GeneratePathProperty="true" ExcludeAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+    <ProjectReference Include="../../src/ExusiAI.Extension.Runtime/ExusiAI.Extension.Runtime.csproj" />
     <Compile Include="../../plugins/ExusiAI.Plugin.ClassIsland/ClassIslandDataImporter.cs" Link="ClassIslandDataImporter.cs" />
     <Compile Include="../../third_party/ClassIsland/ClassIsland/Helpers/PluginPackageInstaller.cs" Link="PluginPackageInstaller.cs" />
+    <Compile Include="../../src/ExusiAI.Extension.Wpf/SystemEventsAssemblyProvider.cs" Link="SystemEventsAssemblyProvider.cs" />
+    <Compile Include="../../plugins/ExusiAI.Plugin.ClassIsland/ClassIslandRuntimeLoadContext.cs" Link="ClassIslandRuntimeLoadContext.cs" />
+    <None Include="$(PkgMicrosoft_Win32_SystemEvents)/runtimes/win/lib/net8.0/Microsoft.Win32.SystemEvents.dll"
+          Link="DependencyProbes/Microsoft.Win32.SystemEvents.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

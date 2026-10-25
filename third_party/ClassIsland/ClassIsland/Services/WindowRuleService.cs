@@ -10,31 +10,55 @@ using ClassIsland.Models.Rules;
 using Avalonia.Threading;
 using ClassIsland.Platforms.Abstraction;
 using ClassIsland.Platforms.Abstraction.Models;
+using ClassIsland.Platforms.Abstraction.Services;
 
 namespace ClassIsland.Services;
 
-public class WindowRuleService : IWindowRuleService
+public class WindowRuleService : IWindowRuleService, IDisposable
 {
     public ILogger<WindowRuleService> Logger { get; }
     public IRulesetService RulesetService { get; }
 
     public event EventHandler<ForegroundWindowChangedEventArgs>? ForegroundWindowChanged;
 
-
+    private readonly IWindowPlatformService _windowPlatformService;
+    private readonly EventHandler<ForegroundWindowChangedEventArgs> _foregroundWindowChangedHandler;
+    private readonly Dictionary<string, RuleRegistryInfo.HandleDelegate> _ruleHandlers;
     private bool _isMoving = false;
 
     public WindowRuleService(ILogger<WindowRuleService> logger, IRulesetService rulesetService)
     {
         Logger = logger;
         RulesetService = rulesetService;
-        
-        ForegroundWindowChanged += ((_, _) => RulesetService.NotifyStatusChanged());
-        PlatformServices.WindowPlatformService.RegisterForegroundWindowChangedEvent((_, e) => ForegroundWindowChanged?.Invoke(this, e));
+        _windowPlatformService = PlatformServices.WindowPlatformService;
+        _foregroundWindowChangedHandler = (_, e) => ForegroundWindowChanged?.Invoke(this, e);
+        _ruleHandlers = new()
+        {
+            ["classisland.windows.className"] = ClassNameHandler,
+            ["classisland.windows.text"] = TextHandler,
+            ["classisland.windows.status"] = StatusHandler,
+            ["classisland.windows.processName"] = ProcessNameHandler
+        };
 
-        RulesetService.RegisterRuleHandler("classisland.windows.className", ClassNameHandler);
-        RulesetService.RegisterRuleHandler("classisland.windows.text", TextHandler);
-        RulesetService.RegisterRuleHandler("classisland.windows.status", StatusHandler);
-        RulesetService.RegisterRuleHandler("classisland.windows.processName", ProcessNameHandler);
+        ForegroundWindowChanged += ((_, _) => RulesetService.NotifyStatusChanged());
+        _windowPlatformService.RegisterForegroundWindowChangedEvent(_foregroundWindowChangedHandler);
+
+        foreach (var (id, handler) in _ruleHandlers)
+        {
+            RulesetService.RegisterRuleHandler(id, handler);
+        }
+    }
+
+    public void Dispose()
+    {
+        _windowPlatformService.UnregisterForegroundWindowChangedEvent(_foregroundWindowChangedHandler);
+        foreach (var (id, handler) in _ruleHandlers)
+        {
+            if (IRulesetService.Rules.TryGetValue(id, out var info))
+            {
+                info.Handle -= handler;
+            }
+        }
     }
 
     private unsafe bool ProcessNameHandler(object? settings)

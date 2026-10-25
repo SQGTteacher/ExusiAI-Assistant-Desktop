@@ -1,6 +1,7 @@
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
+using ExusiAI.Extension.Wpf;
 
 namespace ExusiAI.Plugin.ClassIsland;
 
@@ -29,6 +30,8 @@ internal sealed class ClassIslandRuntimeLoadContext : AssemblyLoadContext
             if (string.Equals(Path.GetDirectoryName(candidate), directory, StringComparison.OrdinalIgnoreCase) && File.Exists(candidate))
                 path = candidate;
         }
+        if (path is not null && name.Name == "Microsoft.Win32.SystemEvents")
+            return SystemEventsAssemblyProvider.Load(path);
         // Framework assemblies absent from the package are shared with the .NET host.
         return path is null ? null : LoadFromAssemblyPath(path);
     }

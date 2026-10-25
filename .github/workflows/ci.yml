@@ -35,13 +35,13 @@ jobs:
         run: dotnet restore ExusiAI.sln
       - name: Build
         run: dotnet build ExusiAI.sln --no-restore --configuration Release -p:BuildNumber=${{ github.run_number }} -p:EnableClassIslandNative=true
-      - name: Verify ClassIsland startup inside WPF
+      - name: Verify ClassIsland startup and lifecycle inside WPF
         shell: pwsh
         run: |
           $output = Join-Path $PWD "artifacts/classisland-build"
           $app = Join-Path $PWD "src/ExusiAI.Desktop/bin/Release/net8.0-windows/ExusiAI.Desktop.exe"
           $process = Start-Process $app -ArgumentList @("--verify-classisland", "`"$output`"") -PassThru
-          if (!$process.WaitForExit(90000)) { $process.Kill(); throw "ClassIsland startup verification timed out" }
+          if (!$process.WaitForExit(180000)) { $process.Kill(); throw "ClassIsland lifecycle verification timed out" }
           if (Test-Path "$output/failure.txt") { Get-Content "$output/failure.txt" }
           Get-ChildItem $output -Recurse -File -Filter *.log | ForEach-Object { Get-Content $_.FullName -Tail 100 }
           if ($process.ExitCode -ne 0 -or !(Test-Path "$output/result.txt")) { throw "ClassIsland startup verification failed" }
@@ -106,7 +106,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Host and viewer publish failed" }
           $islandOutput = Join-Path $publishDir "classisland-probe"
           $island = Start-Process (Join-Path $publishDir "ExusiAI.Desktop.exe") -ArgumentList @("--verify-classisland", "`"$islandOutput`"") -PassThru
-          if (!$island.WaitForExit(90000)) { $island.Kill(); throw "Published ClassIsland startup timed out" }
+          if (!$island.WaitForExit(180000)) { $island.Kill(); throw "Published ClassIsland lifecycle timed out" }
           if (Test-Path "$islandOutput/failure.txt") { Get-Content "$islandOutput/failure.txt" }
           Get-ChildItem $islandOutput -Recurse -File -Filter *.log | ForEach-Object { Get-Content $_.FullName -Tail 100 }
           if ($island.ExitCode -ne 0 -or !(Test-Path "$islandOutput/result.txt")) { throw "Published ClassIsland startup failed" }

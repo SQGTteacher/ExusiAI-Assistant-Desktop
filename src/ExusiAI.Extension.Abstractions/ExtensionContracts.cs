@@ -25,3 +25,13 @@ public interface IExusiAIPlugin
     Task StartAsync(CancellationToken cancellationToken);
     Task StopAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Optional lifecycle for plugins that must retain process-scoped native state
+/// while disabling all user-visible and background behavior.
+/// </summary>
+public interface ISuspendablePlugin : IExusiAIPlugin
+{
+    Task SuspendAsync(CancellationToken cancellationToken);
+    Task ResumeAsync(CancellationToken cancellationToken);
+}

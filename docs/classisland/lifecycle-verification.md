@@ -1,0 +1,25 @@
+# ClassIsland 生命周期验证
+
+`ExusiAI.Desktop.exe --verify-classisland <输出目录>` 在真实 Windows WPF 进程中验证打包后的原版 Avalonia 窗口。请使用新的输出目录；探针使用其中的隔离数据，不替换用户的 ClassIsland 配置。
+
+首次启动检查与热启停检查分别运行在两个真实 WPF 进程中，避免“先终止 Avalonia、再在同一进程重建平台”污染热启停结果。除原有启动、真实窗口渲染、插件安装与程序集隔离检查外，生命周期探针还会：
+
+1. 通过 `ExtensionRuntime` 启用尚未打开 GUI 的插件，再停用，检查页面和托盘贡献移除，且未启动 Avalonia。
+2. 连续三轮执行重新启用、托盘显示、原生窗口捕获、隐藏、打开设置、停用。每轮验证真实窗口像素、隐藏状态、旧窗口销毁和贡献移除。
+3. 每轮停用后确认托管 `IHost` 已停止并释放；下一轮确认服务代次只增加一次、创建新的服务图，同时进程级 Avalonia 线程保持运行。
+4. 修改隔离数据中的原版启动画面偏好，检查停用时保存、下一轮启动时读回。内嵌模式不显示启动画面，因此这个标记不影响窗口验证。
+5. 三轮结束后执行最终停止，确认 Avalonia 线程结束、窗口销毁且内嵌应用引用释放。
+
+探针使用真实插件管理器和 WPF 贡献协调器。在插件进入 Initialized、尚未 StartAsync 时，通过反射替换为使用隔离目录的宿主。后续启用、停用和卸载仍走生产代码路径。输出包括 `lifecycle.log`、每轮窗口 PNG 和最终 `result.txt`；任一检查失败则进程以非零状态退出。
+
+CI 在框架依赖构建和 Windows x64 自包含发布中都运行该探针，单次进程总超时为 180 秒。
+
+首次执行发现：停止第一个原版实例后，再启用会报 `Failed to create system events window thread`。SystemEvents 9 的窗口类名称仅包含 AppDomain 标识，每个插件私有加载上下文各自创建一份时会重复注册同名窗口类。修复将此依赖交由共享 WPF 契约程序集中的进程级提供器加载，保留与 WPF 自带旧版本的隔离，后续插件实例复用同一程序集。Windows 平台服务在停止时取消 TimeChanged 订阅；其他原版依赖仍按原方案隔离。回归另外断言各轮 SystemEvents 9 的程序集引用相同。
+
+第二次 Windows 执行确认 SystemEvents 修复有效，第一轮重新启用完整渲染；第二轮重新初始化 Avalonia 时，ANGLE 的 EGL 窗口表面返回 `EGL_BAD_ALLOC`，窗口存在但捕获结果全透明。固定改用软件 Skia 后端后，第二轮仍出现透明窗口，确认问题是进程内重新初始化 Avalonia 平台，而不只是 ANGLE。只隐藏窗口虽然能保留渲染器，却会让通知、语音和音频等服务在插件停用后继续运行。
+
+最终方案将两类生命周期分开：Avalonia Win32 平台、dispatcher 和渲染器在进程内保留一次；每次停用则等待完整托管 `IHost` 停止、释放服务提供器、保存设置并强制销毁所有会话窗口。重新启用在同一 Avalonia 平台上重建服务图和窗口，最终卸载才关闭平台线程。这样既不重复初始化 Avalonia，也不让后台服务越过禁用边界。原版 AXAML、控件、透明窗口、动画逻辑和优先渲染后端保持不变。
+
+根因可对照 [.NET 9.0.7 SystemEvents 源码](https://github.com/dotnet/runtime/blob/v9.0.7/src/libraries/Microsoft.Win32.SystemEvents/src/Microsoft/Win32/SystemEvents.cs) 中的 `Initialize` 和 `EnsureSystemEvents`；本地并发测试加载同版本的 Windows 实现 DLL，仅检查加载身份，不在 Linux 上调用 Windows 事件 API。
+
+这些是有限次数的生命周期回归，不代表长期运行内存、全部原版动画、DPI、通知和焦点行为已经验收。原版运行上下文目前不可回收；探针通过服务宿主状态检查停用边界，不以“窗口已关闭”推断所有服务或程序集内存已释放。任何启停或渲染策略调整仍需结合 Windows 结果和具体资源行为。

@@ -228,6 +228,34 @@ internal sealed class ClassIslandHost : IDisposable
         }
     }
 
+    internal Task SuspendAsync(CancellationToken cancellationToken) => TransitionAsync("SuspendEmbedded", cancellationToken);
+
+    internal Task ResumeAsync(CancellationToken cancellationToken) => TransitionAsync("ResumeEmbedded", cancellationToken);
+
+    private async Task TransitionAsync(string method, CancellationToken cancellationToken)
+    {
+        await operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        NotifyStateChanged();
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Task transition;
+            lock (lifecycleGate)
+            {
+                if (disposed || !ready.Task.IsCompletedSuccessfully || !ready.Task.Result)
+                    return;
+                transition = InvokeControl(method) as Task
+                    ?? throw new InvalidOperationException($"ClassIsland.Desktop.Program.{method} did not return a task.");
+            }
+            await transition.ConfigureAwait(false);
+        }
+        finally
+        {
+            operationGate.Release();
+            NotifyStateChanged();
+        }
+    }
+
     internal bool OpenSettings() => OpenPage("settings");
 
     internal bool OpenPage(string page) => OpenPageWithCancellation(page, CancellationToken.None);
@@ -336,8 +364,8 @@ internal sealed class ClassIslandHost : IDisposable
                     }));
                 app.GetType().GetEvent("EmbeddedVisibilityChanged")?.AddEventHandler(app,
                     new EventHandler((_, _) => NotifyStateChanged()));
-                var started = app.GetType().GetEvent("AppStarted")
-                    ?? throw new MissingMemberException("ClassIsland.App.AppStarted");
+                var started = app.GetType().GetEvent("EmbeddedStarted")
+                    ?? throw new MissingMemberException("ClassIsland.App.EmbeddedStarted");
                 started.AddEventHandler(app, new EventHandler((_, _) =>
                 {
                     lock (themeGate)
