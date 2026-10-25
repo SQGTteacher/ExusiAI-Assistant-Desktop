@@ -26,15 +26,18 @@ internal static partial class ClassIslandVerification
         var tray = new WpfTrayRegistry();
         using var theme = new ThemeService();
         IDisposable? activeHost = null;
+        object? activePlugin = null;
         Type? hostType = null;
-        // Replace the still-dormant host at Initialized, before StartAsync can use
-        // the user's startup preference. The real manager still creates/stops/unloads
-        // every packaged plugin instance; all native reads/writes use isolated data.
+        // Replace the still-dormant host on first initialization, before StartAsync
+        // can use the user's startup preference. The manager owns all later
+        // suspend/resume/final-stop transitions; native reads/writes use isolated data.
         runtime.EntriesChanged += (_, _) =>
         {
             var initialized = runtime.Entries.SingleOrDefault(entry => entry.Package.Manifest.Id == id &&
                 entry.State == PackageState.Initialized);
             if (initialized?.Instance is not { } plugin) return;
+            if (ReferenceEquals(activePlugin, plugin)) return;
+            activePlugin = plugin;
             var field = plugin.GetType().GetField("host", BindingFlags.Instance | BindingFlags.NonPublic)!;
             ((IDisposable)field.GetValue(plugin)!).Dispose();
             hostType = plugin.GetType().Assembly.GetType("ExusiAI.Plugin.ClassIsland.ClassIslandHost", throwOnError: true)!;
@@ -65,6 +68,11 @@ internal static partial class ClassIslandVerification
             if (Read("IsStopped") is not true || Read("RequiresRestart") is not false)
                 throw new InvalidOperationException("ClassIsland activation unexpectedly initialized or stopped its native runtime.");
         }
+        void RequireResumedHidden()
+        {
+            if (Read("IsStopped") is not false || Read("RequiresRestart") is not false || Read("IsVisible") is not false)
+                throw new InvalidOperationException("ClassIsland resume did not retain a healthy hidden native runtime.");
+        }
 
         RequireState(PackageState.Running);
         RequireDormant();
@@ -73,18 +81,23 @@ internal static partial class ClassIslandVerification
         Log("PASS: dormant plugin disabled; page and tray removed.");
 
         Assembly? sharedEvents = null;
+        IntPtr[]? finalWindows = null;
         for (var cycle = 1; cycle <= 3; cycle++)
         {
             Log($"Starting cycle {cycle}.");
             await runtime.SetEnabledAsync(id, true);
             RequireState(PackageState.Running);
-            RequireDormant();
+            if (cycle == 1) RequireDormant();
+            else RequireResumedHidden();
             await Command("show");
             var entryPoint = (Type)hostType!.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(activeHost)!;
             var events = AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));
             if (events.GetName().Version?.Major != 9 || (sharedEvents is not null && !ReferenceEquals(sharedEvents, events)))
-                throw new InvalidOperationException($"Cycle {cycle}: SystemEvents was not shared across reloads.");
+                throw new InvalidOperationException($"Cycle {cycle}: SystemEvents was not shared across service sessions.");
             sharedEvents = events;
+            if ((int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != cycle ||
+                InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceHostActive") is not true)
+                throw new InvalidOperationException($"Cycle {cycle}: managed service host was not rebuilt exactly once.");
             var window = new IntPtr((long)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedWindowHandle")!);
             if (!IsWindowVisible(window) || Read("IsVisible") is not true)
                 throw new InvalidOperationException($"Cycle {cycle}: re-enabled island is not visible.");
@@ -92,7 +105,7 @@ internal static partial class ClassIslandVerification
             if (!render.HasVisibleContent)
                 throw new InvalidOperationException($"Cycle {cycle}: re-enabled island did not render: {render}");
             // Embedded startup suppresses the splash, so this persisted native
-            // preference is a harmless marker for checking reload rather than defaults.
+            // preference is a harmless marker for checking session reload.
             NativeUi(hostType!, activeHost!, app =>
             {
                 var settings = app.GetType().GetProperty("Settings")!.GetValue(app)!;
@@ -109,15 +122,23 @@ internal static partial class ClassIslandVerification
             var oldShow = tray.Menus.Single().Commands.Single(command => command.Id == "show");
             await Task.Run(() => runtime.SetEnabledAsync(id, false));
             RequireState(PackageState.Disabled);
-            VerifyStopped(hostType!, activeHost!, windows);
+            VerifySuspended(hostType!, activeHost!, windows);
+            if (InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceHostActive") is not false)
+                throw new InvalidOperationException($"Cycle {cycle}: managed service host survived disable.");
             if (tray.IsRegistered(id, oldShow))
                 throw new InvalidOperationException($"Cycle {cycle}: old tray command remains registered.");
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(data, "Settings.json")));
             if (saved.RootElement.GetProperty("IsMainWindowVisible").GetBoolean() ||
                 saved.RootElement.GetProperty("IsSplashEnabled").GetBoolean() != (cycle % 2 == 0))
-                throw new InvalidOperationException($"Cycle {cycle}: shutdown did not preserve native settings.");
-            Log($"PASS: cycle {cycle}; rendered {render}; destroyed {windows.Length} windows; settings saved; page and tray removed.");
+                throw new InvalidOperationException($"Cycle {cycle}: suspension did not preserve native settings.");
+            finalWindows = windows;
+            Log($"PASS: cycle {cycle}; rendered {render}; stopped service host; destroyed {windows.Length} windows; settings saved; page and tray removed.");
         }
+
+        await runtime.StopAsync();
+        RequireState(PackageState.Stopped);
+        VerifyStopped(hostType!, activeHost!, finalWindows!);
+        Log("PASS: final shutdown stopped the retained Avalonia runtime.");
     }
 
     private static void NativeUi(Type hostType, IDisposable host, Action<object> action)
@@ -160,6 +181,17 @@ internal static partial class ClassIslandVerification
         var entry = (Type)type.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
         if (entry.GetProperty("IsEmbeddedRunning")!.GetValue(null) is not false)
             throw new InvalidOperationException("ClassIsland shutdown retained its embedded app.");
+    }
+
+    private static void VerifySuspended(Type type, IDisposable host, IntPtr[] windows)
+    {
+        if (type.GetProperty("IsStopped", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is true ||
+            type.GetProperty("RequiresRestart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host) is true ||
+            windows.Any(IsWindow))
+            throw new InvalidOperationException("ClassIsland suspension stopped Avalonia or retained a native window.");
+        var entry = (Type)type.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+        if (entry.GetProperty("IsEmbeddedRunning")!.GetValue(null) is not true)
+            throw new InvalidOperationException("ClassIsland suspension released its process-scoped Avalonia application.");
     }
 
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);

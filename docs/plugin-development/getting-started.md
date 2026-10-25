@@ -11,3 +11,11 @@ composition layer reads these contributions only after the plugin reaches the
 `Running` state. Core lifecycle contracts therefore remain independent from
 WPF. Do not retain static host objects or subscribe to events without removing
 subscriptions in `StopAsync`.
+
+Plugins whose native UI platform cannot be recreated safely in one process may
+implement `ISuspendablePlugin`. `SuspendAsync` must still stop and dispose every
+user-visible or background service and remove its native session resources;
+only the explicitly process-scoped platform may remain. `ResumeAsync` rebuilds
+the session. `StopAsync` remains the terminal path and must release the retained
+platform. The runtime keeps such an instance private while its package is
+disabled and exposes no WPF contributions until resume succeeds.

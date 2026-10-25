@@ -54,6 +54,18 @@ public class Program
         Volatile.Read(ref embeddedApp)?.MainWindow is { IsVisible: true } &&
         App.GetService<ClassIsland.Services.SettingsService>().Settings.IsMainWindowVisible);
 
+    public static Task SuspendEmbedded() => RunEmbeddedTransition(app => app.SuspendEmbeddedAsync());
+
+    public static Task ResumeEmbedded() => RunEmbeddedTransition(app => app.ResumeEmbeddedAsync());
+
+    private static async Task RunEmbeddedTransition(Func<App, Task> transition)
+    {
+        var app = Volatile.Read(ref embeddedApp);
+        if (app is null) return;
+        var task = await Dispatcher.UIThread.InvokeAsync<Task>(() => transition(app));
+        await task;
+    }
+
     /// <summary>Returns the real Win32 top-level used by host render verification.</summary>
     public static long GetEmbeddedWindowHandle() => Dispatcher.UIThread.Invoke(() =>
         Volatile.Read(ref embeddedApp)?.MainWindow?.TryGetPlatformHandle()?.Handle.ToInt64()
@@ -61,6 +73,12 @@ public class Program
 
     public static string GetEmbeddedCompositionMode() => Dispatcher.UIThread.Invoke(() =>
         AvaloniaUnsafeAccessorHelpers.GetActiveWin32CompositionMode()?.ToString() ?? "Unknown");
+
+    public static int GetEmbeddedServiceGeneration() => Dispatcher.UIThread.Invoke(() =>
+        Volatile.Read(ref embeddedApp)?.EmbeddedServiceGeneration ?? 0);
+
+    public static bool GetEmbeddedServiceHostActive() => Dispatcher.UIThread.Invoke(() =>
+        Volatile.Read(ref embeddedApp)?.IsEmbeddedServiceHostActive is true);
 
     public static void OpenEmbeddedPage(string page)
     {
@@ -114,7 +132,7 @@ public class Program
                 var app = createApp();
                 app.OperatingSystem = "windows";
                 app.Initialized += (_, _) => postInit();
-                app.AppStopping += (_, _) => stopTokenSource.Cancel();
+                app.EmbeddedFinalStopping += (_, _) => stopTokenSource.Cancel();
                 Volatile.Write(ref embeddedApp, app);
                 onCreated?.Invoke(app);
                 return app;
@@ -130,10 +148,9 @@ public class Program
                 // process. A second WinUIComposition chain can leave this
                 // transparent top-level visible but with an empty surface.
                 CompositionMode = [Win32CompositionMode.RedirectionSurface],
-                // ANGLE does not reliably release its process-wide EGL state
-                // between plugin activations. Software Skia preserves the same
-                // Avalonia visual tree while allowing a complete service stop.
-                RenderingMode = [Win32RenderingMode.Software]
+                // Avalonia's Win32 platform remains process-scoped while plugin
+                // sessions stop and rebuild their managed service graph.
+                RenderingMode = BuildRenderingMode(0)
             })
             .UsePlatformDetect()
             .AfterPlatformServicesSetup(_ =>

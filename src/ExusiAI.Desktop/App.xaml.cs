@@ -45,6 +45,21 @@ public partial class App : Application
             }
             return;
         }
+        if (e.Args is ["--verify-classisland-lifecycle", var classIslandLifecycleOutput])
+        {
+            try
+            {
+                await ClassIslandVerification.RunLifecycleAsync(classIslandLifecycleOutput);
+                Shutdown(0);
+            }
+            catch (Exception exception)
+            {
+                Directory.CreateDirectory(classIslandLifecycleOutput);
+                File.WriteAllText(Path.Combine(classIslandLifecycleOutput, "failure.txt"), exception.ToString());
+                Shutdown(1);
+            }
+            return;
+        }
         if (e.Args is ["--verify-ui", var outputDirectory])
         {
             try

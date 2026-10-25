@@ -40,7 +40,8 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (slots.Any(x => x.Snapshot.State is PackageState.Loaded or PackageState.Initialized or PackageState.Running))
+            if (slots.Any(x => x.SuspendedInstance is not null ||
+                x.Snapshot.State is PackageState.Loaded or PackageState.Initialized or PackageState.Running))
                 throw new InvalidOperationException("Stop loaded extensions before running discovery again.");
 
             var packages = new List<DiscoveredPackage>();
@@ -128,7 +129,7 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         {
             var slot = slots.FirstOrDefault(x => string.Equals(x.Snapshot.Package.Manifest.Id, packageId, StringComparison.OrdinalIgnoreCase))
                 ?? throw new KeyNotFoundException($"Extension '{packageId}' was not discovered.");
-            if (slot.Snapshot.State != PackageState.Disabled)
+            if (slot.Snapshot.State != PackageState.Disabled || slot.SuspendedInstance is not null)
                 await StopOneAsync(slot, PackageState.Stopped, cancellationToken).ConfigureAwait(false);
             slots.Remove(slot);
             EntriesChanged?.Invoke(this, EventArgs.Empty);
@@ -171,7 +172,7 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             for (var index = slots.Count - 1; index >= 0; index--)
             {
                 var slot = slots[index];
-                if (slot.Snapshot.State == PackageState.Disabled) continue;
+                if (slot.Snapshot.State == PackageState.Disabled && slot.SuspendedInstance is null) continue;
                 await StopOneAsync(slot, PackageState.Stopped, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -189,6 +190,27 @@ public sealed class ExtensionRuntime : IAsyncDisposable
 
     private async Task StartOneAsync(RuntimeSlot slot, CancellationToken cancellationToken)
     {
+        if (slot.SuspendedInstance is { } suspended)
+        {
+            slot.SuspendedInstance = null;
+            slot.Snapshot = slot.Snapshot with { State = PackageState.Initialized, Instance = suspended };
+            EntriesChanged?.Invoke(this, EventArgs.Empty);
+            try
+            {
+                await ((ISuspendablePlugin)suspended).ResumeAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                slot.SuspendedInstance = suspended;
+                slot.Snapshot = slot.Snapshot with { State = PackageState.Disabled, Instance = null };
+                EntriesChanged?.Invoke(this, EventArgs.Empty);
+                throw;
+            }
+            slot.Snapshot = slot.Snapshot with { State = PackageState.Running };
+            EntriesChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         var package = slot.Snapshot.Package;
         var entryPoint = package.Manifest.EntryPoint ?? throw new InvalidOperationException("A plugin entry point is required.");
         if (!PackagePathResolver.TryResolve(package.RootPath, entryPoint.Assembly, out var assemblyPath) || !File.Exists(assemblyPath))
@@ -237,8 +259,59 @@ public sealed class ExtensionRuntime : IAsyncDisposable
 
     private async Task StopOneAsync(RuntimeSlot slot, PackageState finalState, CancellationToken cancellationToken)
     {
-        if (slot.Snapshot.Instance is null)
+        var instance = slot.Snapshot.Instance;
+        if (instance is null)
         {
+            if (slot.SuspendedInstance is { } suspended)
+            {
+                slot.Snapshot = slot.Snapshot with { State = PackageState.Stopping };
+                EntriesChanged?.Invoke(this, EventArgs.Empty);
+                var unload = false;
+                try
+                {
+                    await suspended.StopAsync(cancellationToken).ConfigureAwait(false);
+                    await DisposeInstanceAsync(suspended).ConfigureAwait(false);
+                    slot.SuspendedInstance = null;
+                    slot.Snapshot = slot.Snapshot with
+                    {
+                        State = finalState,
+                        Instance = null,
+                        FailureCode = null,
+                        FailureMessage = null
+                    };
+                    unload = true;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    slot.Snapshot = slot.Snapshot with { State = PackageState.Disabled, Instance = null };
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    logger.LogError(exception, "Extension {PackageId} failed during shutdown.", slot.Snapshot.Package.Manifest.Id);
+                    await CleanupInstanceAsync(suspended).ConfigureAwait(false);
+                    slot.SuspendedInstance = null;
+                    slot.Snapshot = slot.Snapshot with
+                    {
+                        State = PackageState.Failed,
+                        Instance = null,
+                        FailureCode = "plugin-stop-failed",
+                        FailureMessage = exception.Message
+                    };
+                    unload = true;
+                }
+                finally
+                {
+                    if (unload)
+                    {
+                        slot.LoadContext?.Unload();
+                        slot.LoadContext = null;
+                    }
+                    EntriesChanged?.Invoke(this, EventArgs.Empty);
+                }
+                return;
+            }
+
             slot.Snapshot = slot.Snapshot with { State = finalState, FailureCode = null, FailureMessage = null };
             EntriesChanged?.Invoke(this, EventArgs.Empty);
             slot.LoadContext?.Unload();
@@ -248,22 +321,49 @@ public sealed class ExtensionRuntime : IAsyncDisposable
 
         slot.Snapshot = slot.Snapshot with { State = PackageState.Stopping };
         EntriesChanged?.Invoke(this, EventArgs.Empty);
+        var suspend = finalState == PackageState.Disabled && instance is ISuspendablePlugin;
+        var unloadContext = false;
         try
         {
-            await slot.Snapshot.Instance.StopAsync(cancellationToken).ConfigureAwait(false);
-            await DisposeInstanceAsync(slot.Snapshot.Instance).ConfigureAwait(false);
-            slot.Snapshot = slot.Snapshot with { State = finalState, Instance = null, FailureCode = null, FailureMessage = null };
+            if (suspend)
+            {
+                await ((ISuspendablePlugin)instance).SuspendAsync(cancellationToken).ConfigureAwait(false);
+                slot.SuspendedInstance = instance;
+            }
+            else
+            {
+                await instance.StopAsync(cancellationToken).ConfigureAwait(false);
+                await DisposeInstanceAsync(instance).ConfigureAwait(false);
+                unloadContext = true;
+            }
+            slot.Snapshot = slot.Snapshot with
+            {
+                State = finalState,
+                Instance = null,
+                FailureCode = null,
+                FailureMessage = null
+            };
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            slot.Snapshot = slot.Snapshot with { State = PackageState.Running, Instance = instance };
+            throw;
+        }
         catch (Exception exception)
         {
             logger.LogError(exception, "Extension {PackageId} failed during shutdown.", slot.Snapshot.Package.Manifest.Id);
+            await CleanupInstanceAsync(instance).ConfigureAwait(false);
+            slot.SuspendedInstance = null;
+            unloadContext = true;
             slot.Snapshot = slot.Snapshot with { State = PackageState.Failed, Instance = null, FailureCode = "plugin-stop-failed", FailureMessage = exception.Message };
         }
         finally
         {
-            slot.LoadContext?.Unload();
-            slot.LoadContext = null;
+            if (unloadContext)
+            {
+                slot.LoadContext?.Unload();
+                slot.LoadContext = null;
+            }
             EntriesChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -272,9 +372,13 @@ public sealed class ExtensionRuntime : IAsyncDisposable
     {
         if (slot.Snapshot.Instance is not null)
         {
-            try { await slot.Snapshot.Instance.StopAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
-            try { await DisposeInstanceAsync(slot.Snapshot.Instance).ConfigureAwait(false); } catch { }
+            await CleanupInstanceAsync(slot.Snapshot.Instance).ConfigureAwait(false);
         }
+        else if (slot.SuspendedInstance is { } suspended)
+        {
+            await CleanupInstanceAsync(suspended).ConfigureAwait(false);
+        }
+        slot.SuspendedInstance = null;
         slot.LoadContext?.Unload();
         slot.LoadContext = null;
     }
@@ -285,10 +389,17 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         else if (plugin is IDisposable disposable) disposable.Dispose();
     }
 
+    private static async Task CleanupInstanceAsync(IExusiAIPlugin plugin)
+    {
+        try { await plugin.StopAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
+        try { await DisposeInstanceAsync(plugin).ConfigureAwait(false); } catch { }
+    }
+
     private sealed class RuntimeSlot(ExtensionRuntimeEntry snapshot)
     {
         public ExtensionRuntimeEntry Snapshot { get; set; } = snapshot;
         public PackageLoadContext? LoadContext { get; set; }
+        public IExusiAIPlugin? SuspendedInstance { get; set; }
     }
 
     private sealed record ExtensionContext(string PackageId, IExtensionLogger Logger, string PackageDirectory) : IExtensionPackageContext;

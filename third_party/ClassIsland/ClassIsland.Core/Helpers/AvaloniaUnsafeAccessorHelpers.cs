@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Platform;
 using Avalonia.Rendering;
 using Avalonia.Vulkan;
@@ -9,6 +10,9 @@ namespace ClassIsland.Core.Helpers;
 
 internal static class AvaloniaUnsafeAccessorHelpers
 {
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "CloseCore")]
+    private static extern void CloseWindowCore(Window window, WindowCloseReason reason, bool isProgrammatic, bool ignoreCancel);
+
     [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "get_Current")]
     static extern IAvaloniaDependencyResolver? GetCurrentAvaloniaLocator(AvaloniaLocator? nullLocator);
 
@@ -39,6 +43,9 @@ internal static class AvaloniaUnsafeAccessorHelpers
         };
         return win32CompositionMode;
     }
+
+    public static void CloseForEmbeddedSession(Window window) =>
+        CloseWindowCore(window, WindowCloseReason.ApplicationShutdown, true, true);
 
     public static Win32ActiveRenderingMode? GetActiveWin32RenderingMode()
     {

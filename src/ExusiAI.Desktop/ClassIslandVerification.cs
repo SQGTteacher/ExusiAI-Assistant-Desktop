@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 using System.Collections;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
@@ -199,14 +200,51 @@ internal static partial class ClassIslandVerification
             await Task.Run(host.Dispose);
             VerifyStopped(type, host, windows);
             host = null;
-            await VerifyLifecycleAsync(package, outputDirectory);
+            await RunLifecycleProcessAsync(outputDirectory);
             File.WriteAllText(Path.Combine(outputDirectory, "result.txt"),
-                $"PASS: packaged ClassIsland rendered via {compositionMode} ({renderStatus}); settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified; dormant disable and three plugin enable/render/disable cycles passed.");
+                $"PASS: packaged ClassIsland rendered via {compositionMode} ({renderStatus}); settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified; dormant disable and three retained-Avalonia service-session cycles passed.");
         }
         finally
         {
             if (host is not null) await Task.Run(host.Dispose);
             context.Unload();
+        }
+    }
+
+    internal static Task RunLifecycleAsync(string outputDirectory)
+    {
+        Directory.CreateDirectory(outputDirectory);
+        var package = Path.Combine(AppContext.BaseDirectory, "packages", "exusiai.classisland");
+        return VerifyLifecycleAsync(package, outputDirectory);
+    }
+
+    private static async Task RunLifecycleProcessAsync(string outputDirectory)
+    {
+        var executable = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Could not locate the ExusiAI executable for lifecycle verification.");
+        var startInfo = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false
+        };
+        startInfo.ArgumentList.Add("--verify-classisland-lifecycle");
+        startInfo.ArgumentList.Add(outputDirectory);
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Could not start the isolated ClassIsland lifecycle verifier.");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(150));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException("The isolated ClassIsland lifecycle verifier did not finish within 150 seconds.");
+        }
+        if (process.ExitCode != 0)
+        {
+            var failurePath = Path.Combine(outputDirectory, "failure.txt");
+            var detail = File.Exists(failurePath) ? File.ReadAllText(failurePath) : "No failure report was produced.";
+            throw new InvalidOperationException($"The isolated ClassIsland lifecycle verifier exited with code {process.ExitCode}.{Environment.NewLine}{detail}");
         }
     }
 
