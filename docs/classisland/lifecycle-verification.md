@@ -23,3 +23,15 @@ CI 在框架依赖构建和 Windows x64 自包含发布中都运行该探针，�
 根因可对照 [.NET 9.0.7 SystemEvents 源码](https://github.com/dotnet/runtime/blob/v9.0.7/src/libraries/Microsoft.Win32.SystemEvents/src/Microsoft/Win32/SystemEvents.cs) 中的 `Initialize` 和 `EnsureSystemEvents`；本地并发测试加载同版本的 Windows 实现 DLL，仅检查加载身份，不在 Linux 上调用 Windows 事件 API。
 
 这些是有限次数的生命周期回归，不代表长期运行内存、全部原版动画、DPI、通知和焦点行为已经验收。原版运行上下文目前不可回收；探针通过服务宿主状态检查停用边界，不以“窗口已关闭”推断所有服务或程序集内存已释放。任何启停或渲染策略调整仍需结合 Windows 结果和具体资源行为。
+
+## PR90 后续验收范围
+
+下一轮以停用后的后台静默和状态一致性为目标，先建立草稿 PR，再实现和验证以下项目：
+
+- 停用时停止、释放 HangService 定时器；重复启用不得留下旧会话检查任务。
+- 自动化停用时中断动作、卸载所有工作流与触发器，包含 Cron 调度；重新启用不得重复执行旧计划。
+- 挂起或恢复在部分执行后取消时，进行终止清理，不能直接将不确定实例标记为 Running 或 Disabled。
+- 内置动作合并到插件预先创建的菜单组，保留插件条目；重复建立会话不产生重复项。
+- 为 PR90 已加入的 ExactTimeService 计时器清理和 WindowRuleService 回调注销补充行为验证。
+
+本地完成相关回归、宿主和原版 Windows 目标编译与差异检查后，集中推送实现。Windows runner 负责当前 Linux 环境无法执行的真实窗口、启停和自包含发布验证。验收结论须区分已执行测试和待执行平台检查。
