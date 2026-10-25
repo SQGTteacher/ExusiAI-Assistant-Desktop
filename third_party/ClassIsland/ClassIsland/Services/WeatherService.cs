@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
@@ -25,9 +25,11 @@ using Microsoft.Extensions.Logging;
 
 namespace ClassIsland.Services;
 
-public class WeatherService : ObservableRecipient, IHostedService, IWeatherService
+public class WeatherService : ObservableRecipient, IHostedService, IWeatherService, IDisposable
 {
     private IDataTemplate? _selectedWeatherIconTemplate;
+    private readonly Dictionary<string, RuleRegistryInfo.HandleDelegate> _ruleHandlers;
+    private bool _disposed;
     private SettingsService SettingsService { get; }
 
     private Settings Settings => SettingsService.Settings;
@@ -61,11 +63,18 @@ public class WeatherService : ObservableRecipient, IHostedService, IWeatherServi
         SettingsService.Settings.PropertyChanged += SettingsOnPropertyChanged;
         LoadData();
         LoadWeatherIconTemplate();
-        RulesetService.RegisterRuleHandler("classisland.weather.currentWeather", CurrentWeatherRuleHandler);
-        RulesetService.RegisterRuleHandler("classisland.weather.tomorrowWeather", TomorrowWeatherRuleHandler);
-        RulesetService.RegisterRuleHandler("classisland.weather.hasWeatherAlert", HasAlertRuleHandler);
-        RulesetService.RegisterRuleHandler("classisland.weather.rainTime", RainTimeRuleHandler);
-        RulesetService.RegisterRuleHandler("classisland.weather.sunRiseSet", SunRiseSetRuleHandler);
+        _ruleHandlers = new()
+        {
+            ["classisland.weather.currentWeather"] = CurrentWeatherRuleHandler,
+            ["classisland.weather.tomorrowWeather"] = TomorrowWeatherRuleHandler,
+            ["classisland.weather.hasWeatherAlert"] = HasAlertRuleHandler,
+            ["classisland.weather.rainTime"] = RainTimeRuleHandler,
+            ["classisland.weather.sunRiseSet"] = SunRiseSetRuleHandler
+        };
+        foreach (var (ruleId, handler) in _ruleHandlers)
+        {
+            RulesetService.RegisterRuleHandler(ruleId, handler);
+        }
         UpdateTimer.Tick += UpdateTimerOnTick;
         UpdateTimer.Start();
         _ = QueryWeatherAsync();
@@ -454,7 +463,28 @@ public class WeatherService : ObservableRecipient, IHostedService, IWeatherServi
     {
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public Task StopAsync(CancellationToken cancellationToken)
     {
+        Dispose();
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        UpdateTimer.Stop();
+        SettingsService.Settings.PropertyChanged -= SettingsOnPropertyChanged;
+        foreach (var (ruleId, handler) in _ruleHandlers)
+        {
+            if (IRulesetService.Rules.TryGetValue(ruleId, out var info))
+            {
+                info.Handle -= handler;
+            }
+        }
     }
 }

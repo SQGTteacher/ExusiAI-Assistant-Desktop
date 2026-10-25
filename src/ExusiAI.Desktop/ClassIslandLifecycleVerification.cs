@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -246,9 +246,18 @@ internal static partial class ClassIslandVerification
         var rules = (IDictionary)ruleset.GetProperty("Rules", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
         foreach (string id in rules.Keys)
         {
-            if (!id.StartsWith("classisland.windows.", StringComparison.Ordinal)) continue;
             var handle = rules[id]!.GetType().GetField("Handle", BindingFlags.Instance | BindingFlags.Public)!.GetValue(rules[id]) as Delegate;
-            if (handle?.GetInvocationList().Any(item => ReferenceEquals(item.Target, windowRule)) == true)
+            if (handle is null) continue;
+            if (id.StartsWith("classisland.windows.", StringComparison.Ordinal))
+            {
+                if (handle.GetInvocationList().Any(item => ReferenceEquals(item.Target, windowRule)))
+                    throw new InvalidOperationException($"ClassIsland suspension retained rule handler {id}.");
+                continue;
+            }
+
+            if ((id.StartsWith("classisland.lessons.", StringComparison.Ordinal) ||
+                 id.StartsWith("classisland.weather.", StringComparison.Ordinal)) &&
+                handle.GetInvocationList().Any(item => item.Target?.GetType().Name is "LessonsService" or "WeatherService"))
                 throw new InvalidOperationException($"ClassIsland suspension retained rule handler {id}.");
         }
     }
