@@ -264,6 +264,15 @@ public class ActionService : IActionService
         if (!ActionMenuTree.Contains(group.Name))
         {
             ActionMenuTree.Add(group);
+            return;
+        }
+
+        if (ActionMenuTree.TryGetValue(group.Name, out var existing) && existing is ActionMenuTreeGroup target)
+        {
+            foreach (var child in group.Children)
+            {
+                if (!target.Children.Contains(child.Name)) target.Children.Add(child);
+            }
         }
     }
 
