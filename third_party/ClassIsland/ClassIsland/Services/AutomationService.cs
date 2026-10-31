@@ -12,6 +12,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Shared;
 using System.Text.Json;
+using System.Threading.Tasks;
+using Avalonia.Threading;
 using ClassIsland.Core;
 using ClassIsland.Core.Abstractions.Automation;
 using ClassIsland.Core.Models.Automation;
@@ -22,8 +24,14 @@ using ClassIsland.Shared.Models.Automation;
 namespace ClassIsland.Services;
 
 /// <inheritdoc cref="IAutomationService"/>
-public class AutomationService : ObservableRecipient, IAutomationService
+public class AutomationService : ObservableRecipient, IAutomationService, IAsyncDisposable
 {
+    private bool _stopping;
+    private Task? _stopTask;
+    private readonly HashSet<ActionSet> _runningActionSets = [];
+    private readonly HashSet<Workflow> _loadedWorkflows = [];
+    private readonly Dictionary<TriggerSettings, Workflow> _loadedTriggers = [];
+
     public static readonly string AutomationConfigsFolderPath =
         Path.Combine(CommonDirectories.AppConfigPath, "Automations");
 
@@ -56,22 +64,8 @@ public class AutomationService : ObservableRecipient, IAutomationService
         LoadConfig();
         RefreshConfigs();
 
-        SettingsService.Settings.PropertyChanging += (_, e) =>
-        {
-            if (e.PropertyName == nameof(Settings.CurrentAutomationConfig))
-            {
-                InterruptAllWorkflows();
-                SaveConfig("切换自动化配置文件。");
-            }
-        };
-        SettingsService.Settings.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(Settings.CurrentAutomationConfig))
-                LoadConfig();
-            else if (e.PropertyName == nameof(Settings.IsAutomationEnabled) &&
-                     !SettingsService.Settings.IsAutomationEnabled)
-                InterruptAllWorkflows();
-        };
+        SettingsService.Settings.PropertyChanging += SettingsOnPropertyChanging;
+        SettingsService.Settings.PropertyChanged += SettingsOnPropertyChanged;
 
         if (App.ApplicationCommand.Safe) return;
         // 注意：以下代码在安全模式下不会运行。
@@ -81,6 +75,85 @@ public class AutomationService : ObservableRecipient, IAutomationService
         RulesetService.StatusUpdated += RulesetServiceOnStatusUpdated;
     }
 
+    private void SettingsOnPropertyChanging(object? sender, PropertyChangingEventArgs e)
+    {
+        if (_stopping) return;
+        if (e.PropertyName == nameof(Settings.CurrentAutomationConfig))
+        {
+            InterruptAllWorkflows();
+            SaveConfig("切换自动化配置文件。");
+        }
+    }
+
+    private void SettingsOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_stopping) return;
+        if (e.PropertyName == nameof(Settings.CurrentAutomationConfig)) LoadConfig();
+        else if (e.PropertyName == nameof(Settings.IsAutomationEnabled) && !SettingsService.Settings.IsAutomationEnabled)
+            InterruptAllWorkflows();
+    }
+
+    public Task StopAsync() => _stopTask ??= StopSessionAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await StopAsync(); }
+        catch (Exception exception)
+        {
+            // App awaits StopAsync and reports failure before DI disposal. Do not
+            // let a failed action prevent DI from disposing the other services.
+            Logger.LogError(exception, "释放自动化会话时发生错误。");
+        }
+    }
+
+    private async Task StopSessionAsync()
+    {
+        _stopping = true;
+        SettingsService.Settings.PropertyChanging -= SettingsOnPropertyChanging;
+        SettingsService.Settings.PropertyChanged -= SettingsOnPropertyChanged;
+        LessonsService.PostMainTimerTicked -= LessonsServiceOnPostMainTimerTicked;
+        RulesetService.StatusUpdated -= RulesetServiceOnStatusUpdated;
+        Workflows.CollectionChanged -= WorkflowsOnCollectionChanged;
+        var workflows = _loadedWorkflows.Concat(Workflows).Distinct().ToArray();
+        var actions = workflows.Select(x => x.ActionSet).Concat(_runningActionSets).Distinct().ToArray();
+        var triggers = _loadedTriggers.Keys.Select(x => x.TriggerInstance).OfType<IAsyncDisposable>().ToArray();
+        var failures = new List<Exception>();
+        foreach (var workflow in workflows)
+        {
+            try { UnloadWorkflow(workflow); }
+            catch (Exception exception) { failures.Add(exception); }
+        }
+        // Cancel every action before awaiting any one. Keep the UI dispatcher
+        // free while actions and queued cron callbacks drain.
+        var pending = actions.Select(ActionService.InterruptActionSetAsync)
+            .Concat(triggers.Select(async trigger => await trigger.DisposeAsync())).ToArray();
+        try { await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(5)); }
+        catch (Exception exception) { failures.Add(exception); }
+        if (failures.Count > 0) throw new AggregateException("自动化会话未能完全停止。", failures);
+    }
+
+    private async Task RunActionAsync(ActionSet actionSet, bool revert = false, bool isRevertable = true)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            var pending = await Dispatcher.UIThread.InvokeAsync<Task>(() => RunActionAsync(actionSet, revert, isRevertable));
+            await pending;
+            return;
+        }
+        if (_stopping) return;
+        _runningActionSets.Add(actionSet);
+        try
+        {
+            if (revert) await ActionService.RevertActionSetAsync(actionSet);
+            else await ActionService.InvokeActionSetAsync(actionSet, isRevertable);
+        }
+        catch (Exception exception) { Logger.LogError(exception, "运行自动化行动时发生错误。"); }
+        finally
+        {
+            if (!actionSet.IsWorking) _runningActionSets.Remove(actionSet);
+        }
+    }
+
 #region 时间点行动
 
     /// <summary>
@@ -88,7 +161,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
     /// </summary>
     void LessonsServiceOnPostMainTimerTicked(object? sender, EventArgs e)
     {
-        if (!ProfileService.IsCurrentProfileTrusted) return;
+        if (_stopping || !ProfileService.IsCurrentProfileTrusted) return;
 
         var currentTime = ExactTimeService.GetCurrentLocalDateTime();
         var triggerActions = LessonsService.CurrentClassPlan?.TimeLayout?.Layouts
@@ -103,7 +176,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
             if (i.ActionSet == null) continue;
 
             Logger.LogInformation("触发时间点行动：{}/[{}]", LessonsService.CurrentClassPlan?.TimeLayout?.Name, i.StartTime);
-            ActionService.InvokeActionSetAsync(i.ActionSet, false);
+            _ = RunActionAsync(i.ActionSet, isRevertable: false);
         }
     }
 
@@ -116,7 +189,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
     /// </summary>
     void TriggerTriggered(object? sender, EventArgs e)
     {
-        if (!SettingsService.Settings.IsAutomationEnabled) return;
+        if (_stopping || !SettingsService.Settings.IsAutomationEnabled) return;
         if (sender is not TriggerBase trigger) return;
         var workflow = trigger.AssociatedWorkflow;
 
@@ -129,7 +202,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
         Logger.LogTrace("工作流 {} 由触发器 {} 触发", workflow.ActionSet.Name, trigger);
         if (workflow.IsConditionEnabled && !RulesetService.IsRulesetSatisfied(workflow.Ruleset))
             return;
-        ActionService.InvokeActionSetAsync(workflow.ActionSet);
+        _ = RunActionAsync(workflow.ActionSet);
     }
 
     /// <summary>
@@ -137,7 +210,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
     /// </summary>
     void TriggerTriggeredRevert(object? sender, EventArgs e)
     {
-        if (!SettingsService.Settings.IsAutomationEnabled) return;
+        if (_stopping || !SettingsService.Settings.IsAutomationEnabled) return;
         if (sender is not TriggerBase trigger) return;
         var workflow = trigger.AssociatedWorkflow;
 
@@ -147,7 +220,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
         }
 
         Logger.LogTrace("工作流 {} 由触发器 {} 触发恢复", workflow.ActionSet.Name, trigger);
-        ActionService.RevertActionSetAsync(workflow.ActionSet);
+        _ = RunActionAsync(workflow.ActionSet, revert: true);
     }
 
     /// <summary>
@@ -155,14 +228,14 @@ public class AutomationService : ObservableRecipient, IAutomationService
     /// </summary>
     void RulesetServiceOnStatusUpdated(object? sender, EventArgs e)
     {
-        if (!SettingsService.Settings.IsAutomationEnabled) return;
+        if (_stopping || !SettingsService.Settings.IsAutomationEnabled) return;
 
         foreach (var workflow in Workflows.Where(x => x is
                      { ActionSet: { Status: ActionSetStatus.IsOn, IsRevertEnabled: true }, IsConditionEnabled: true }))
         {
             if (RulesetService.IsRulesetSatisfied(workflow.Ruleset) || workflow.ActionSet.Status != ActionSetStatus.IsOn)
                 continue;
-            ActionService.RevertActionSetAsync(workflow.ActionSet);
+            _ = RunActionAsync(workflow.ActionSet, revert: true);
         }
     }
 
@@ -173,10 +246,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
     void LoadConfig()
     {
         // 释放当前加载的工作流
-        foreach (var i in Workflows)
-        {
-            UnloadWorkflow(i);
-        }
+        foreach (var i in _loadedWorkflows.ToArray()) UnloadWorkflow(i);
 
         Workflows.CollectionChanged -= WorkflowsOnCollectionChanged;
 
@@ -236,47 +306,32 @@ public class AutomationService : ObservableRecipient, IAutomationService
 
     void WorkflowsOnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        switch (e.Action)
-        {
-            case NotifyCollectionChangedAction.Add:
-                foreach (Workflow workflow in e.NewItems!)
-                {
-                    LoadWorkflow(workflow);
-                }
-
-                break;
-            case NotifyCollectionChangedAction.Remove:
-                foreach (Workflow workflow in e.OldItems!)
-                {
-                    UnloadWorkflow(workflow);
-                }
-
-                break;
-            case NotifyCollectionChangedAction.Replace:
-                break;
-            case NotifyCollectionChangedAction.Move:
-                break;
-            case NotifyCollectionChangedAction.Reset:
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
+        if (_stopping) return;
+        foreach (var workflow in _loadedWorkflows.Except(Workflows).ToArray()) UnloadWorkflow(workflow);
+        foreach (var workflow in Workflows.Except(_loadedWorkflows).ToArray()) LoadWorkflow(workflow);
     }
 
     void UnloadWorkflow(Workflow workflow)
     {
-        // Logger.LogInformation("卸载工作流 {}", workflow.ActionSet.Name);
-        workflow.Unload();
-        foreach (var trigger in workflow.Triggers)
+        _loadedWorkflows.Remove(workflow);
+        var failures = new List<Exception>();
+        try { workflow.Unload(); }
+        catch (Exception exception) { failures.Add(exception); }
+        var triggers = _loadedTriggers.Where(x => ReferenceEquals(x.Value, workflow)).Select(x => x.Key)
+            .Concat(workflow.Triggers).Distinct().ToArray();
+        foreach (var trigger in triggers)
         {
-            UnloadTrigger(workflow, trigger);
+            try { UnloadTrigger(workflow, trigger); }
+            catch (Exception exception) { failures.Add(exception); }
         }
+        if (failures.Count > 0) throw new AggregateException(failures);
 
         Logger.LogDebug("成功卸载工作流 {}", workflow.ActionSet.Name);
     }
 
     void LoadWorkflow(Workflow workflow)
     {
+        if (_stopping || !_loadedWorkflows.Add(workflow)) return;
         // Logger.LogInformation("加载工作流 {}", workflow.ActionSet.Name);
         workflow.Triggers.CollectionChanged += TriggersOnCollectionChanged;
         workflow.ActionSet.PropertyChanged += ActionSetOnPropertyChanged;
@@ -299,31 +354,10 @@ public class AutomationService : ObservableRecipient, IAutomationService
 
         void TriggersOnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            switch (e.Action)
-            {
-                case NotifyCollectionChangedAction.Add:
-                    foreach (TriggerSettings trigger in e.NewItems!)
-                    {
-                        LoadTrigger(workflow, trigger);
-                    }
-
-                    break;
-                case NotifyCollectionChangedAction.Remove:
-                    foreach (TriggerSettings trigger in e.OldItems!)
-                    {
-                        UnloadTrigger(workflow, trigger);
-                    }
-
-                    break;
-                case NotifyCollectionChangedAction.Replace:
-                    break;
-                case NotifyCollectionChangedAction.Move:
-                    break;
-                case NotifyCollectionChangedAction.Reset:
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
+            if (_stopping) return;
+            var loaded = _loadedTriggers.Where(x => ReferenceEquals(x.Value, workflow)).Select(x => x.Key).ToArray();
+            foreach (var trigger in loaded.Except(workflow.Triggers)) UnloadTrigger(workflow, trigger);
+            foreach (var trigger in workflow.Triggers.Except(loaded).ToArray()) LoadTrigger(workflow, trigger);
         }
     }
 
@@ -331,8 +365,9 @@ public class AutomationService : ObservableRecipient, IAutomationService
 
 #region 加载触发器
 
-    void LoadTrigger(Workflow workflow, TriggerSettings trigger, bool registerUnloading = true)
+    void LoadTrigger(Workflow workflow, TriggerSettings trigger)
     {
+        if (_stopping) return;
         if (trigger.TriggerInstance != null)
         {
             return;
@@ -342,6 +377,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
         var settings = trigger.Settings;
         trigger.TriggerInstance = ActivateTrigger(trigger.AssociatedTriggerInfo, ref settings);
         trigger.Settings = settings;
+        _loadedTriggers[trigger] = workflow;
         trigger.PropertyChanged += TriggerOnPropertyChanged;
         trigger.Unloading += TriggerOnUnloading;
         if (trigger.TriggerInstance == null)
@@ -365,7 +401,7 @@ public class AutomationService : ObservableRecipient, IAutomationService
             }
 
             UnloadTrigger(workflow, trigger);
-            LoadTrigger(workflow, trigger, false);
+            LoadTrigger(workflow, trigger);
         }
 
         void TriggerOnUnloading(object? sender, EventArgs e)
@@ -377,17 +413,20 @@ public class AutomationService : ObservableRecipient, IAutomationService
 
     void UnloadTrigger(Workflow workflow, TriggerSettings trigger)
     {
-        if (trigger.TriggerInstance == null)
+        _loadedTriggers.Remove(trigger);
+        var instance = trigger.TriggerInstance;
+        // Detach before unloading so queued callbacks cannot schedule new work.
+        if (instance != null)
         {
-            return;
+            instance.Triggered -= TriggerTriggered;
+            instance.TriggeredRevert -= TriggerTriggeredRevert;
         }
-
-        // Logger.LogDebug("卸载触发器 {}/{}", workflow.ActionSet.Name, trigger.Id);
-        trigger.Unload();
-        trigger.TriggerInstance.UnLoaded();
-        trigger.TriggerInstance.Triggered -= TriggerTriggered;
-        trigger.TriggerInstance.TriggeredRevert -= TriggerTriggeredRevert;
-        trigger.TriggerInstance = null;
+        try { trigger.Unload(); }
+        finally
+        {
+            try { instance?.UnLoaded(); }
+            finally { trigger.TriggerInstance = null; }
+        }
         Logger.LogDebug("成功卸载触发器 {}/{}", workflow.ActionSet.Name, trigger.Id);
     }
 
