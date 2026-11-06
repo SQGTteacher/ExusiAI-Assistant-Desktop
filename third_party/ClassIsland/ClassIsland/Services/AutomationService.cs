@@ -18,6 +18,7 @@ using ClassIsland.Core;
 using ClassIsland.Core.Abstractions.Automation;
 using ClassIsland.Core.Models.Automation;
 using ClassIsland.Models;
+using ClassIsland.Services.Automation.Triggers;
 using Microsoft.Extensions.DependencyInjection;
 using ClassIsland.Shared.Enums;
 using ClassIsland.Shared.Models.Automation;
@@ -29,6 +30,7 @@ public class AutomationService : ObservableRecipient, IAutomationService, IAsync
     private bool _stopping;
     private Task? _stopTask;
     private readonly HashSet<ActionSet> _runningActionSets = [];
+    private readonly Dictionary<ActionSet, Task> _exitActions = [];
     private readonly HashSet<Workflow> _loadedWorkflows = [];
     private readonly Dictionary<TriggerSettings, Workflow> _loadedTriggers = [];
 
@@ -125,10 +127,25 @@ public class AutomationService : ObservableRecipient, IAutomationService, IAsync
         }
         // Cancel every action before awaiting any one. Keep the UI dispatcher
         // free while actions and queued cron callbacks drain.
-        var pending = actions.Select(ActionService.InterruptActionSetAsync)
-            .Concat(triggers.Select(async trigger => await trigger.DisposeAsync())).ToArray();
+        // AppStopping has just triggered exit workflows. Let their complete
+        // asynchronous sequences finish while interrupting ordinary work.
+        var pending = actions.Where(action => !_exitActions.ContainsKey(action))
+            .Select(ActionService.InterruptActionSetAsync)
+            .Concat(triggers.Select(async trigger => await trigger.DisposeAsync()))
+            .Concat(_exitActions.Values).ToArray();
         try { await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(5)); }
-        catch (Exception exception) { failures.Add(exception); }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+            // A slow or failed shutdown must still cancel exit actions before
+            // disposing their dependencies. Never report a timeout as Disabled.
+            try
+            {
+                await Task.WhenAll(_exitActions.Keys.Select(ActionService.InterruptActionSetAsync))
+                    .WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (Exception cleanupException) { failures.Add(cleanupException); }
+        }
         if (failures.Count > 0) throw new AggregateException("自动化会话未能完全停止。", failures);
     }
 
@@ -202,7 +219,9 @@ public class AutomationService : ObservableRecipient, IAutomationService, IAsync
         Logger.LogTrace("工作流 {} 由触发器 {} 触发", workflow.ActionSet.Name, trigger);
         if (workflow.IsConditionEnabled && !RulesetService.IsRulesetSatisfied(workflow.Ruleset))
             return;
-        _ = RunActionAsync(workflow.ActionSet);
+        var isNewExitAction = trigger is AppStoppingTrigger && !workflow.ActionSet.IsWorking;
+        var action = RunActionAsync(workflow.ActionSet);
+        if (isNewExitAction) _exitActions[workflow.ActionSet] = action;
     }
 
     /// <summary>

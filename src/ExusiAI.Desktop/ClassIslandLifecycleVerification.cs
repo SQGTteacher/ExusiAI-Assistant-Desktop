@@ -142,11 +142,12 @@ internal static partial class ClassIslandVerification
             if (tray.IsRegistered(id, oldShow))
                 throw new InvalidOperationException($"Cycle {cycle}: old tray command remains registered.");
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(data, "Settings.json")));
-            if (saved.RootElement.GetProperty("IsMainWindowVisible").GetBoolean() ||
-                saved.RootElement.GetProperty("IsSplashEnabled").GetBoolean() != (cycle % 2 == 0))
-                throw new InvalidOperationException($"Cycle {cycle}: suspension did not preserve native settings.");
+            var savedVisible = saved.RootElement.GetProperty("IsMainWindowVisible").GetBoolean();
+            var savedSplash = saved.RootElement.GetProperty("IsSplashEnabled").GetBoolean();
+            if (savedVisible || savedSplash != (cycle % 2 == 0))
+                throw new InvalidOperationException($"Cycle {cycle}: suspension did not preserve native settings: visible={savedVisible}; splash={savedSplash}; expected splash={cycle % 2 == 0}.");
             finalWindows = windows;
-            Log($"PASS: cycle {cycle}; rendered {render}; stopped service host, cron workers, in-flight action and hang timer; merged plugin action menu; destroyed {windows.Length} windows; settings saved; page and tray removed.");
+            Log($"PASS: cycle {cycle}; rendered {render}; stopped service host, cron workers, in-flight action and hang timer; completed async exit actions; rejected stale settings writes; merged plugin action menu; destroyed {windows.Length} windows; settings saved; page and tray removed.");
         }
 
         await runtime.StopAsync();

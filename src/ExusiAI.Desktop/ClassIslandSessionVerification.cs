@@ -5,8 +5,9 @@ namespace ExusiAI.Desktop;
 
 internal static partial class ClassIslandVerification
 {
-    private sealed record SessionProbe(object Automation, object Settings, object Hang, object Trigger,
-        object CronSettings, object TriggerSettings, object ActionSet, object Action, Task[] Workers);
+    private sealed record SessionProbe(object Automation, object SettingsService, object Settings, object Hang, object Trigger,
+        object CronSettings, object TriggerSettings, object ActionSet, object Action, Task[] Workers,
+        object ExitAction, bool ExitSplashValue);
 
     private static object? Property(object source, string name) => source.GetType()
         .GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(source);
@@ -27,6 +28,7 @@ internal static partial class ClassIslandVerification
         object Service(string name) => services.GetService(core.GetType("ClassIsland.Core.Abstractions.Services." + name, true)!)!;
         object New(Assembly assembly, string name) => Activator.CreateInstance(assembly.GetType(name, true)!)!;
         var automation = Service("IAutomationService");
+        var settingsService = services.GetService(native.GetType("ClassIsland.Services.SettingsService", true)!)!;
         var hang = Service("IHangService");
         var settings = Property(app, "Settings")!;
         SetProperty(settings, "IsAutomationEnabled", true);
@@ -64,11 +66,32 @@ internal static partial class ClassIslandVerification
         SetProperty(cronSettings, "CronExpression", "2 0 * * *");
         workers.AddRange(CronWorkers(trigger));
         FireTrigger(trigger);
+        var exitWorkflow = New(core, "ClassIsland.Core.Models.Automation.Workflow");
+        var exitTrigger = New(core, "ClassIsland.Core.Models.Automation.TriggerSettings");
+        SetProperty(exitTrigger, "Id", "classisland.lifetime.stopping");
+        ((IList)Property(exitWorkflow, "Triggers")!).Add(exitTrigger);
+        var exitActions = (IList)Property(Property(exitWorkflow, "ActionSet")!, "ActionItems")!;
+        var exitWait = New(shared, "ClassIsland.Shared.Models.Automation.ActionItem");
+        var exitSleep = New(native, "ClassIsland.Models.Actions.SleepActionSettings");
+        SetProperty(exitSleep, "Value", 0.25d);
+        SetProperty(exitWait, "Id", "classisland.action.sleep");
+        SetProperty(exitWait, "Settings", exitSleep);
+        exitActions.Add(exitWait);
+        var exitAction = New(shared, "ClassIsland.Shared.Models.Automation.ActionItem");
+        var exitSettings = New(native, "ClassIsland.Models.Actions.ModifyAppSettingsActionSettings");
+        var exitSplashValue = (bool)Property(settings, "IsSplashEnabled")!;
+        SetProperty(settings, "IsSplashEnabled", !exitSplashValue);
+        SetProperty(exitSettings, "Name", "IsSplashEnabled");
+        SetProperty(exitSettings, "Value", exitSplashValue);
+        SetProperty(exitAction, "Id", "classisland.settings");
+        SetProperty(exitAction, "Settings", exitSettings);
+        exitActions.Add(exitAction);
+        workflows.Add(exitWorkflow);
         hang.GetType().GetMethod("AssumeHang")!.Invoke(hang, null);
         if (Property(Property(hang, "Timer")!, "Enabled") is not true)
             throw new InvalidOperationException("Lifecycle hang timer was not running before disable.");
-        return new(automation, settings, hang, trigger, cronSettings, triggerSettings, actionSet, action,
-            workers.Distinct().ToArray());
+        return new(automation, settingsService, settings, hang, trigger, cronSettings, triggerSettings, actionSet, action,
+            workers.Distinct().ToArray(), exitAction, exitSplashValue);
     }
 
     private static void FireTrigger(object trigger) => trigger.GetType().GetMethod("Trigger",
@@ -91,8 +114,12 @@ internal static partial class ClassIslandVerification
             throw new InvalidOperationException("Suspended session retained a cron worker or loaded trigger.");
         if (Property(probe.ActionSet, "IsWorking") is not false || Property(probe.Action, "IsWorking") is not false)
             throw new InvalidOperationException("Suspended session retained an in-flight automation action.");
+        if (Property(probe.ExitAction, "IsCompleted") is not true || Property(probe.ExitAction, "Exception") is not null ||
+            !Equals(Property(probe.Settings, "IsSplashEnabled"), probe.ExitSplashValue))
+            throw new InvalidOperationException("Application-exit workflow did not finish its action after the asynchronous wait.");
         if (HasHandlerTarget(probe.Settings, "PropertyChanged", probe.Automation) ||
             HasHandlerTarget(probe.Settings, "PropertyChanging", probe.Automation) ||
+            HasHandlerTarget(probe.Settings, "PropertyChanged", probe.SettingsService) ||
             HasHandlerTarget(probe.CronSettings, "PropertyChanged", probe.Trigger))
             throw new InvalidOperationException("Suspended session retained automation settings subscriptions.");
         FireTrigger(probe.Trigger);
@@ -102,6 +129,10 @@ internal static partial class ClassIslandVerification
             CronWorkers(probe.Trigger).Any(task => !task.IsCompletedSuccessfully) ||
             Property(probe.Hang, "IsChecking") is not false)
             throw new InvalidOperationException("A stale callback restarted work after suspension.");
+        // Simulate a network request completing on an old session. Neither
+        // autosave nor an explicit save may overwrite the persisted marker.
+        SetProperty(probe.Settings, "IsSplashEnabled", !probe.ExitSplashValue);
+        probe.SettingsService.GetType().GetMethod("SaveSettings")!.Invoke(probe.SettingsService, ["stale session probe"]);
     }
 
     private static void VerifyDefaultActionMenus(Assembly core, object actionService)
