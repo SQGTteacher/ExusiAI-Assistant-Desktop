@@ -195,17 +195,7 @@ public sealed class ExtensionRuntime : IAsyncDisposable
             slot.SuspendedInstance = null;
             slot.Snapshot = slot.Snapshot with { State = PackageState.Initialized, Instance = suspended };
             EntriesChanged?.Invoke(this, EventArgs.Empty);
-            try
-            {
-                await ((ISuspendablePlugin)suspended).ResumeAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                slot.SuspendedInstance = suspended;
-                slot.Snapshot = slot.Snapshot with { State = PackageState.Disabled, Instance = null };
-                EntriesChanged?.Invoke(this, EventArgs.Empty);
-                throw;
-            }
+            await ((ISuspendablePlugin)suspended).ResumeAsync(cancellationToken).ConfigureAwait(false);
             slot.Snapshot = slot.Snapshot with { State = PackageState.Running };
             EntriesChanged?.Invoke(this, EventArgs.Empty);
             return;
@@ -241,7 +231,17 @@ public sealed class ExtensionRuntime : IAsyncDisposable
         {
             await StartOneAsync(slot, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+        {
+            await CleanupFailedSlotAsync(slot).ConfigureAwait(false);
+            slot.Snapshot = slot.Snapshot with
+            {
+                State = PackageState.Failed, Instance = null,
+                FailureCode = "plugin-start-cancelled", FailureMessage = exception.Message
+            };
+            EntriesChanged?.Invoke(this, EventArgs.Empty);
+            throw;
+        }
         catch (Exception exception)
         {
             logger.LogError(exception, "Extension {PackageId} failed during startup.", slot.Snapshot.Package.Manifest.Id);
@@ -281,9 +281,16 @@ public sealed class ExtensionRuntime : IAsyncDisposable
                     };
                     unload = true;
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                 {
-                    slot.Snapshot = slot.Snapshot with { State = PackageState.Disabled, Instance = null };
+                    await CleanupInstanceAsync(suspended).ConfigureAwait(false);
+                    slot.SuspendedInstance = null;
+                    unload = true;
+                    slot.Snapshot = slot.Snapshot with
+                    {
+                        State = PackageState.Failed, Instance = null,
+                        FailureCode = "plugin-stop-cancelled", FailureMessage = exception.Message
+                    };
                     throw;
                 }
                 catch (Exception exception)
@@ -344,9 +351,18 @@ public sealed class ExtensionRuntime : IAsyncDisposable
                 FailureMessage = null
             };
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
         {
-            slot.Snapshot = slot.Snapshot with { State = PackageState.Running, Instance = instance };
+            // Suspend/stop need not be transactional. Never republish a partially
+            // transitioned instance as healthy after cancellation.
+            await CleanupInstanceAsync(instance).ConfigureAwait(false);
+            slot.SuspendedInstance = null;
+            unloadContext = true;
+            slot.Snapshot = slot.Snapshot with
+            {
+                State = PackageState.Failed, Instance = null,
+                FailureCode = "plugin-stop-cancelled", FailureMessage = exception.Message
+            };
             throw;
         }
         catch (Exception exception)

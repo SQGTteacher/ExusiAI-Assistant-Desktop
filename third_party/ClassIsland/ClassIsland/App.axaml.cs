@@ -1257,11 +1257,29 @@ public partial class App : AppBase, IAppHost
             EmbeddedFinalStopping?.Invoke(this, EventArgs.Empty);
         try
         {
+            AppStopping?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception exception)
+        {
+            Logger?.LogError(exception, "通知应用停止时发生错误");
+            lifecycleFailure = exception;
+        }
+        try
+        {
+            if (!partial && host?.Services.GetService<IAutomationService>() is AutomationService automation)
+                await automation.StopAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger?.LogError(exception, "停止自动化会话时发生错误");
+            lifecycleFailure = exception;
+        }
+        try
+        {
             if (IAppHost.TryGetService<IManagementService>() is { IsManagementEnabled: true, Connection: ManagementServerConnection connection })
             {
                 connection.LogAuditEvent(AuditEvents.AppExited, new Empty());
             }
-            AppStopping?.Invoke(this, EventArgs.Empty);
             if (!partial)
             {
                 host?.Services.GetService<ILessonsService>()?.StopMainTimer();
@@ -1304,7 +1322,8 @@ public partial class App : AppBase, IAppHost
             }
             try
             {
-                host?.Dispose();
+                if (host is IAsyncDisposable asyncHost) await asyncHost.DisposeAsync();
+                else host?.Dispose();
             }
             catch (Exception exception)
             {

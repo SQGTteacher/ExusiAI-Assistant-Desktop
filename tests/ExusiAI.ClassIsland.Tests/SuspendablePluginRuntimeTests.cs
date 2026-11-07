@@ -86,8 +86,11 @@ public sealed class SuspendablePluginRuntimeTests
         finally { Directory.Delete(root, true); }
     }
 
-    [Fact]
-    public async Task CancellationRestoresRunningOrDisabledState()
+    [Theory]
+    [InlineData("Suspend")]
+    [InlineData("Resume")]
+    [InlineData("Stop")]
+    public async Task CancellationAfterPartialTransitionTerminatesInstance(string operation)
     {
         var root = await CreatePackageAsync();
         try
@@ -97,34 +100,94 @@ public sealed class SuspendablePluginRuntimeTests
             await runtime.StartAsync();
             var instance = Assert.Single(runtime.Entries).Instance!;
 
-            Set(instance, "BlockSuspend", true);
-            using (var cancellation = new CancellationTokenSource())
-            {
-                var disabling = runtime.SetEnabledAsync("test.suspendable", false, cancellation.Token);
-                await WaitForTrueAsync(instance, "SuspendEntered");
-                cancellation.Cancel();
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => disabling);
-            }
-            Assert.Equal(PackageState.Running, Assert.Single(runtime.Entries).State);
-            Assert.Same(instance, Assert.Single(runtime.Entries).Instance);
+            if (operation is "Resume" or "Stop")
+                await runtime.SetEnabledAsync("test.suspendable", false);
+            Set(instance, "Block" + operation, true);
+            if (operation == "Stop") Set(instance, "FailStop", true);
+            var states = new List<PackageState>();
+            runtime.EntriesChanged += (_, _) => states.Add(Assert.Single(runtime.Entries).State);
+            using var cancellation = new CancellationTokenSource();
+            var transition = operation == "Stop"
+                ? runtime.StopAsync(cancellation.Token)
+                : runtime.SetEnabledAsync("test.suspendable", operation == "Resume", cancellation.Token);
+            await WaitForTrueAsync(instance, operation + "Entered");
+            Assert.Equal(operation == "Resume", ReadBool(instance, "SessionActive"));
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transition);
 
-            Set(instance, "BlockSuspend", false);
-            await runtime.SetEnabledAsync("test.suspendable", false);
-            Set(instance, "BlockResume", true);
-            using (var cancellation = new CancellationTokenSource())
-            {
-                var enabling = runtime.SetEnabledAsync("test.suspendable", true, cancellation.Token);
-                await WaitForTrueAsync(instance, "ResumeEntered");
-                cancellation.Cancel();
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => enabling);
-            }
-            Assert.Equal(PackageState.Disabled, Assert.Single(runtime.Entries).State);
-            Assert.Null(Assert.Single(runtime.Entries).Instance);
-
-            Set(instance, "BlockResume", false);
+            var failed = Assert.Single(runtime.Entries);
+            Assert.Equal(PackageState.Failed, failed.State);
+            Assert.Null(failed.Instance);
+            Assert.Equal(operation == "Resume" ? "plugin-start-cancelled" : "plugin-stop-cancelled", failed.FailureCode);
+            Assert.DoesNotContain(PackageState.Running, states);
+            Assert.DoesNotContain(PackageState.Disabled, states);
+            Assert.True(Read(instance, "StopCount") >= 1);
+            Assert.Equal(1, Read(instance, "DisposeCount"));
+            Assert.False(ReadBool(instance, "SessionActive"));
             await runtime.SetEnabledAsync("test.suspendable", true);
             Assert.Equal(PackageState.Running, Assert.Single(runtime.Entries).State);
+            Assert.NotSame(instance, Assert.Single(runtime.Entries).Instance);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationBeforeTransitionPreservesExistingState(bool suspended)
+    {
+        var root = await CreatePackageAsync();
+        try
+        {
+            await using var runtime = CreateRuntime();
+            await runtime.DiscoverAsync(root);
+            await runtime.StartAsync();
+            var instance = Assert.Single(runtime.Entries).Instance!;
+            if (suspended) await runtime.SetEnabledAsync("test.suspendable", false);
+            var before = Assert.Single(runtime.Entries);
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                runtime.SetEnabledAsync("test.suspendable", suspended, cancellation.Token));
+            Assert.Equal(before, Assert.Single(runtime.Entries));
+            Assert.Equal(0, Read(instance, "StopCount"));
+            Assert.Equal(0, Read(instance, "DisposeCount"));
+            if (suspended) await runtime.SetEnabledAsync("test.suspendable", true);
             Assert.Same(instance, Assert.Single(runtime.Entries).Instance);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task CancellationDuringFirstStartCleansPartialInstance()
+    {
+        var root = await CreatePackageAsync();
+        try
+        {
+            await using var runtime = CreateRuntime();
+            await runtime.DiscoverAsync(root);
+            object? instance = null;
+            runtime.EntriesChanged += (_, _) =>
+            {
+                var entry = Assert.Single(runtime.Entries);
+                if (entry.State != PackageState.Initialized) return;
+                instance = entry.Instance!;
+                Set(instance, "BlockStart", true);
+            };
+            using var cancellation = new CancellationTokenSource();
+            var starting = runtime.StartAsync(cancellation.Token);
+            Assert.NotNull(instance);
+            await WaitForTrueAsync(instance!, "StartEntered");
+            Assert.True(ReadBool(instance!, "SessionActive"));
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+            var failed = Assert.Single(runtime.Entries);
+            Assert.Equal(PackageState.Failed, failed.State);
+            Assert.Equal("plugin-start-cancelled", failed.FailureCode);
+            Assert.Null(failed.Instance);
+            Assert.Equal(1, Read(instance!, "StopCount"));
+            Assert.Equal(1, Read(instance!, "DisposeCount"));
+            Assert.False(ReadBool(instance!, "SessionActive"));
         }
         finally { Directory.Delete(root, true); }
     }
@@ -183,6 +246,9 @@ public sealed class SuspendablePluginRuntimeTests
     private static int Read(object instance, string property) =>
         (int)instance.GetType().GetProperty(property, BindingFlags.Public | BindingFlags.Instance)!.GetValue(instance)!;
 
+    private static bool ReadBool(object instance, string property) =>
+        (bool)instance.GetType().GetProperty(property)!.GetValue(instance)!;
+
     private static void Set(object instance, string property, bool value) =>
         instance.GetType().GetProperty(property, BindingFlags.Public | BindingFlags.Instance)!.SetValue(instance, value);
 
@@ -239,6 +305,12 @@ public sealed class PortableSuspendablePlugin : ISuspendablePlugin, IDisposable
     public bool BlockResume { get; set; }
     public bool ResumeEntered { get; private set; }
     public bool FailResume { get; set; }
+    public bool SessionActive { get; private set; }
+    public bool BlockStart { get; set; }
+    public bool StartEntered { get; private set; }
+    public bool BlockStop { get; set; }
+    public bool StopEntered { get; private set; }
+    public bool FailStop { get; set; }
 
     public Task InitializeAsync(IExtensionContext context, CancellationToken cancellationToken)
     {
@@ -247,15 +319,18 @@ public sealed class PortableSuspendablePlugin : ISuspendablePlugin, IDisposable
         return Task.CompletedTask;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        SessionActive = true;
+        StartEntered = true;
+        if (BlockStart) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         StartCount++;
-        return Task.CompletedTask;
     }
 
     public async Task SuspendAsync(CancellationToken cancellationToken)
     {
+        SessionActive = false;
         SuspendEntered = true;
         if (BlockSuspend) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         if (FailSuspend) throw new InvalidOperationException("Suspend failed.");
@@ -264,18 +339,27 @@ public sealed class PortableSuspendablePlugin : ISuspendablePlugin, IDisposable
 
     public async Task ResumeAsync(CancellationToken cancellationToken)
     {
+        SessionActive = true;
         ResumeEntered = true;
         if (BlockResume) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         if (FailResume) throw new InvalidOperationException("Resume failed.");
         ResumeCount++;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         StopCount++;
-        return Task.CompletedTask;
+        SessionActive = false;
+        StopEntered = true;
+        if (BlockStop && cancellationToken.CanBeCanceled)
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        if (FailStop) throw new InvalidOperationException("Stop failed.");
     }
 
-    public void Dispose() => DisposeCount++;
+    public void Dispose()
+    {
+        DisposeCount++;
+        SessionActive = false;
+    }
 }

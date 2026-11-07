@@ -126,21 +126,28 @@ internal static partial class ClassIslandVerification
             var platform = GetPlatformService(entryPoint);
             if (CountPlatformHandlers(platform) != 1)
                 throw new InvalidOperationException($"Cycle {cycle}: expected exactly one process-wide foreground-window callback.");
+            SessionProbe? sessionProbe = null;
+            NativeUi(hostType!, activeHost!, app => sessionProbe = PrepareSessionProbe(entryPoint, app));
+            await Task.Delay(100);
+            NativeUi(hostType!, activeHost!, _ => VerifyActiveSessionProbe(sessionProbe!));
             var oldShow = tray.Menus.Single().Commands.Single(command => command.Id == "show");
             await Task.Run(() => runtime.SetEnabledAsync(id, false));
             RequireState(PackageState.Disabled);
             VerifySuspended(hostType!, activeHost!, windows);
             VerifySuspendedServices(entryPoint, exactTime, windowRule, platform);
+            await Task.Delay(650);
+            NativeUi(hostType!, activeHost!, _ => VerifyStoppedSessionProbe(sessionProbe!));
             if (InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceHostActive") is not false)
                 throw new InvalidOperationException($"Cycle {cycle}: managed service host survived disable.");
             if (tray.IsRegistered(id, oldShow))
                 throw new InvalidOperationException($"Cycle {cycle}: old tray command remains registered.");
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(data, "Settings.json")));
-            if (saved.RootElement.GetProperty("IsMainWindowVisible").GetBoolean() ||
-                saved.RootElement.GetProperty("IsSplashEnabled").GetBoolean() != (cycle % 2 == 0))
-                throw new InvalidOperationException($"Cycle {cycle}: suspension did not preserve native settings.");
+            var savedVisible = saved.RootElement.GetProperty("IsMainWindowVisible").GetBoolean();
+            var savedSplash = saved.RootElement.GetProperty("IsSplashEnabled").GetBoolean();
+            if (savedVisible || savedSplash != (cycle % 2 == 0))
+                throw new InvalidOperationException($"Cycle {cycle}: suspension did not preserve native settings: visible={savedVisible}; splash={savedSplash}; expected splash={cycle % 2 == 0}.");
             finalWindows = windows;
-            Log($"PASS: cycle {cycle}; rendered {render}; stopped service host; destroyed {windows.Length} windows; settings saved; page and tray removed.");
+            Log($"PASS: cycle {cycle}; rendered {render}; stopped service host, cron workers, in-flight action and hang timer; completed async exit actions; rejected stale settings writes; merged plugin action menu; destroyed {windows.Length} windows; settings saved; page and tray removed.");
         }
 
         await runtime.StopAsync();

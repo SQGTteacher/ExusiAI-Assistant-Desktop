@@ -8,8 +8,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ClassIsland.Services;
 
-public class HangService : ObservableRecipient, IHangService
+public class HangService : ObservableRecipient, IHangService, IDisposable
 {
+    private readonly object _gate = new();
+    private bool _disposed;
     private bool _isHang = false;
     private bool _isChecking = false;
     private const int CHECK_INTERVAL_MS = 500;
@@ -51,7 +53,11 @@ public class HangService : ObservableRecipient, IHangService
 
     public void AssumeHang()
     {
-        IsHang = true;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            IsHang = true;
+        }
         _ = CheckDispatcherHangAsync();
     }
 
@@ -62,18 +68,32 @@ public class HangService : ObservableRecipient, IHangService
 
     private async Task CheckDispatcherHangAsync()
     {
-        var dispatcher = Dispatcher.UIThread;
-        if (IsChecking)
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_gate)
         {
-            return;
+            if (_disposed || IsChecking) return;
+            IsChecking = true;
+            _ = Dispatcher.UIThread.InvokeAsync(() => completion.TrySetResult(true));
         }
-        var taskCompletionSource = new TaskCompletionSource<bool>();
-        _ = dispatcher.InvokeAsync(() => taskCompletionSource.TrySetResult(true));
-        IsChecking = true;
-        await Task.WhenAny(taskCompletionSource.Task, Task.Delay(TimeSpan.FromMilliseconds(HANG_MS)));
-        IsChecking = false;
-        // 如果任务还没完成，就是界面卡了
-        IsHang = taskCompletionSource.Task.IsCompleted is false;
-        Timer.Start();
+        await Task.WhenAny(completion.Task, Task.Delay(TimeSpan.FromMilliseconds(HANG_MS)));
+        lock (_gate)
+        {
+            if (_disposed) return;
+            IsChecking = false;
+            IsHang = !completion.Task.IsCompleted;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            Timer.Stop();
+            Timer.Elapsed -= TimerOnElapsed;
+            Timer.Dispose();
+            IsChecking = false;
+        }
     }
 }

@@ -25,16 +25,27 @@ using ClassIsland.Shared.Protobuf.Enum;
 namespace ClassIsland.Services;
 
 public class SettingsService(ILogger<SettingsService> Logger, IManagementService ManagementService)
-    : INotifyPropertyChanged
+    : INotifyPropertyChanged, IDisposable
 {
     private Settings _settings = new();
+    private readonly object _saveGate = new();
+    private bool _disposed;
 
     private bool SkipMigration { get; set; } = false;
 
     public Settings Settings
     {
         get => _settings;
-        set => SetField(ref _settings, value);
+        set
+        {
+            lock (_saveGate)
+            {
+                if (_disposed || ReferenceEquals(_settings, value)) return;
+                _settings.PropertyChanged -= SettingsOnPropertyChanged;
+                SetField(ref _settings, value);
+                _settings.PropertyChanged += SettingsOnPropertyChanged;
+            }
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -56,7 +67,6 @@ public class SettingsService(ILogger<SettingsService> Logger, IManagementService
         var url = ManagementService.Manifest.DefaultSettingsSource.Value!;
         var settings = await ManagementService.Connection.GetJsonAsync<Settings>(url);
         Settings = settings;
-        Settings.PropertyChanged += (sender, args) => SettingsChanged(args.PropertyName!);
         Logger.LogTrace("拉取集控默认设置成功！");
     }
 
@@ -70,6 +80,12 @@ public class SettingsService(ILogger<SettingsService> Logger, IManagementService
         }
         try
         {
+            lock (_saveGate)
+            {
+                if (_disposed) return;
+                Settings.PropertyChanged -= SettingsOnPropertyChanged;
+                Settings.PropertyChanged += SettingsOnPropertyChanged;
+            }
             if (!File.Exists(Path.Combine(CommonDirectories.AppRootFolderPath, "Settings.json")))
             {
                 SkipMigration = true; // 如果是新的配置文件，那么就需要跳过迁移。
@@ -80,7 +96,6 @@ public class SettingsService(ILogger<SettingsService> Logger, IManagementService
                 Logger.LogInformation("加载配置文件。");
                 var r = ConfigureFileHelper.LoadConfig<Settings>(Path.Combine(CommonDirectories.AppRootFolderPath, "Settings.json"));
                 Settings = r;
-                Settings.PropertyChanged += (sender, args) => SettingsChanged(args.PropertyName!);
             }
 
             // 当还没有初始化应用且启用集控时，从集控拉取设置。
@@ -170,14 +185,33 @@ public class SettingsService(ILogger<SettingsService> Logger, IManagementService
 
     public void SaveSettings(string note = "")
     {
-        if (Design.IsDesignMode)
+        lock (_saveGate)
         {
-            return;
+            if (_disposed || Design.IsDesignMode) return;
+            Logger.LogInformation(note == "" ? "写入配置文件。" : "写入配置文件：{}", note);
+            ConfigureFileHelper.SaveConfig(Path.Combine(CommonDirectories.AppRootFolderPath, "Settings.json"), Settings);
         }
-        Logger.LogInformation(note == "" ? "写入配置文件。" : "写入配置文件：{}", note);
-        ConfigureFileHelper.SaveConfig(Path.Combine(CommonDirectories.AppRootFolderPath, "Settings.json"), Settings);
     }
 
+    public void Dispose()
+    {
+        // Old network callbacks can still hold this settings object after the
+        // host is gone. They must not overwrite a newer session's config.
+        lock (_saveGate)
+        {
+            _disposed = true;
+            Settings.PropertyChanged -= SettingsOnPropertyChanged;
+        }
+    }
+
+    private void SettingsOnPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        lock (_saveGate)
+        {
+            if (_disposed || !ReferenceEquals(sender, Settings)) return;
+            SettingsChanged(args.PropertyName!);
+        }
+    }
 
     public const BindingFlags SettingsPropertiesFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
