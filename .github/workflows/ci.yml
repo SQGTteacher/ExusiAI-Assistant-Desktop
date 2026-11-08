@@ -16,6 +16,18 @@ on:
       - 'docs/**'
       - 'LICENSE'
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish the configured developer beta after validation (main only)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  AVALONIA_TELEMETRY_OPTOUT: '1'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -24,8 +36,27 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      release_requested: ${{ steps.release_request.outputs.enabled }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Detect release request
+        id: release_request
+        shell: pwsh
+        env:
+          MANUAL_RELEASE: ${{ inputs.publish_release }}
+        run: |
+          $changed = git diff --name-only HEAD^ HEAD -- .github/release.json
+          if ($LASTEXITCODE -ne 0) { throw "Unable to inspect release request changes" }
+          $enabled = ($changed -contains '.github/release.json') -or ($env:MANUAL_RELEASE -eq 'true')
+          "enabled=$($enabled.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Check release packaging and publication guards
+        run: |
+          python -m unittest discover -s .github/scripts -p "test_*.py"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test .github/scripts/publish_release.test.cjs
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
@@ -102,7 +133,7 @@ jobs:
           $viewerDir = Join-Path $publishDir "viewer"
           New-Item $viewerDir -ItemType Directory -Force | Out-Null
           Set-Content (Join-Path $viewerDir "stale-foreign.exe") "stale package marker"
-          dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=false -p:EnableClassIslandNative=true --output $publishDir
+          dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=false -p:EnableClassIslandNative=true -p:BuildNumber=${{ github.run_number }} --output $publishDir
           if ($LASTEXITCODE -ne 0) { throw "Host and viewer publish failed" }
           $islandOutput = Join-Path $publishDir "classisland-probe"
           $island = Start-Process (Join-Path $publishDir "ExusiAI.Desktop.exe") -ArgumentList @("--verify-classisland", "`"$islandOutput`"") -PassThru
@@ -135,3 +166,45 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Published viewer probe failed: $($process.ExitCode)" }
           $result = Get-Content $report -Raw | ConvertFrom-Json
           if (!$result.success -or $result.checks.Count -ne 6) { throw "Incomplete published viewer probe" }
+      - name: Package validated developer beta
+        if: steps.release_request.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP "exusiai-publish"
+          $release = Get-Content .github/release.json -Raw | ConvertFrom-Json
+          $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $publishDir "ExusiAI.Core.dll")).ProductVersion
+          if ($version -notlike "$($release.version)+build.${{ github.run_number }}*") { throw "Unexpected published product version: $version" }
+          python .github/scripts/package_release.py --publication $publishDir --output artifacts/release --source-sha $env:GITHUB_SHA --build-number $env:GITHUB_RUN_NUMBER
+          if ($LASTEXITCODE -ne 0) { throw "Release packaging failed" }
+      - uses: actions/upload-artifact@v4
+        if: steps.release_request.outputs.enabled == 'true'
+        with:
+          name: developer-beta-win-x64
+          path: artifacts/release/*
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: >-
+      needs.build.outputs.release_requested == 'true' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: developer-beta-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: developer-beta-win-x64
+          path: artifacts/release
+      - name: Publish verified prerelease
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const publish = require('./.github/scripts/publish_release.cjs');
+            await publish({ github, context, core });

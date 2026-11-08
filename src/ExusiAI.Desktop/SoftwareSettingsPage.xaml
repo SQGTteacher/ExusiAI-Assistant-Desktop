@@ -3,6 +3,7 @@
         <StackPanel MaxWidth="1120" Margin="0,0,8,8">
             <TextBlock Text="软件设置" Style="{StaticResource PageTitle}" />
             <TextBlock Text="检查版本、运行环境与本地数据位置。" Style="{StaticResource PageSubtitle}" />
+            <TextBlock Text="开发者 Beta：请勿使用此版本用于生产环境，仅做开发者参考。" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="0,0,0,12" />
             <TextBlock Text="应用信息" Style="{StaticResource SectionHeading}" />
             <Border Style="{StaticResource Card}">
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>

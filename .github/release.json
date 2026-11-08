@@ -1,0 +1,6 @@
+{
+  "version": "0.1.0-developer-beta",
+  "name": "ExusiAI Assistant Desktop 0.1.0developer beta",
+  "prerelease": true,
+  "notes": "docs/releases/0.1.0-developer-beta.md"
+}
