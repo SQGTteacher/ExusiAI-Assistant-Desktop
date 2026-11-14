@@ -7,6 +7,8 @@ namespace ExusiAI.Extension.Runtime;
 public sealed partial class ManifestValidator
 {
     public const int SupportedSchemaVersion = 1;
+    // Extension compatibility level, independent of the product's developer-beta release number.
+    // Keep accepting the built-in and existing preview.4 packages without lowering their requirements.
     public static readonly SemanticVersion CurrentHostVersion = new(0, 2, 0, "preview.4");
     public static readonly ExtensionApiVersion CurrentApiVersion = new(1);
 
