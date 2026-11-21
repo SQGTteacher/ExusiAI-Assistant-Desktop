@@ -191,6 +191,36 @@ internal static partial class ClassIslandVerification
         VerifySuspended(hostType!, activeHost!, finalWindows);
         Log("PASS: hidden import and visible backup restore rebuilt sessions without restarting Avalonia.");
 
+        await runtime.SetEnabledAsync(id, true);
+        hostType!.GetMethod("SetFollowHostTheme", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(activeHost, [true]);
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseStop = new ManualResetEventSlim();
+        EventHandler pauseStop = (_, _) =>
+        {
+            stopping.TrySetResult();
+            if (!releaseStop.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("Import stop probe was not released.");
+        };
+        NativeUi(hostType!, activeHost!, app => app.GetType().GetEvent("AppStopping")!.AddEventHandler(app, pauseStop));
+        var concurrentImport = Import(importSource);
+        await stopping.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task? disposal = null;
+        try
+        {
+            await Task.Run(() => hostType.GetMethod("ApplyTheme", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(activeHost, [new HostTheme(true, "#4488CC")])).WaitAsync(TimeSpan.FromSeconds(3));
+            disposal = Task.Run(() => activeHost!.Dispose());
+            await Task.Delay(100);
+            if (disposal.IsCompleted)
+                throw new InvalidOperationException("Final disposal bypassed the import transition.");
+        }
+        finally { releaseStop.Set(); }
+        await concurrentImport;
+        await disposal!.WaitAsync(TimeSpan.FromSeconds(20));
+        if (Read("IsStopped") is not true)
+            throw new InvalidOperationException("Concurrent import and final disposal left Avalonia running.");
+        Log("PASS: queued theme callback during suspension; final disposal waited for import and stopped Avalonia.");
+
         await runtime.StopAsync();
         RequireState(PackageState.Stopped);
         VerifyStopped(hostType!, activeHost!, finalWindows!);
