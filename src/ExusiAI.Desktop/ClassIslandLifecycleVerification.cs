@@ -121,7 +121,11 @@ internal static partial class ClassIslandVerification
             await runtime.SetEnabledAsync(id, true);
             RequireState(PackageState.Running);
             if (cycle == 1) RequireDormant();
-            else RequireResumedHidden();
+            else
+            {
+                RequireResumedHidden();
+                Sample(cycle, "resumed_hidden", phaseTimer.Elapsed.TotalMilliseconds);
+            }
             await Command("show");
             var entryPoint = (Type)hostType!.GetField("entryPoint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(activeHost)!;
             var events = AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!.LoadFromAssemblyName(new AssemblyName("Microsoft.Win32.SystemEvents"));
@@ -140,6 +144,7 @@ internal static partial class ClassIslandVerification
             var render = await CaptureNativeWindowAsync(window, Path.Combine(outputDirectory, $"classisland-cycle-{cycle}.png"));
             if (!render.HasVisibleContent)
                 throw new InvalidOperationException($"Cycle {cycle}: re-enabled island did not render: {render}");
+            Sample(cycle, "rendered");
             // Embedded startup suppresses the splash, so this persisted native
             // preference is a harmless marker for checking session reload.
             NativeUi(hostType!, activeHost!, app =>
@@ -157,6 +162,7 @@ internal static partial class ClassIslandVerification
             if (IsWindowVisible(window) || Read("IsVisible") is not false)
                 throw new InvalidOperationException($"Cycle {cycle}: settings revealed a hidden island.");
             var windows = await GetNativeWindowsAsync(hostType!, activeHost!);
+            Sample(cycle, "settings_open");
             var services = GetEmbeddedServices(entryPoint);
             var core = SharedAssembly(entryPoint, "ClassIsland.Core");
             var exactTime = services.GetService(core.GetType("ClassIsland.Core.Abstractions.Services.IExactTimeService", throwOnError: true)!)!;
@@ -174,6 +180,7 @@ internal static partial class ClassIslandVerification
             var disableMs = phaseTimer.Elapsed.TotalMilliseconds;
             RequireState(PackageState.Disabled);
             VerifySuspended(hostType!, activeHost!, windows);
+            Sample(cycle, "suspended");
             VerifySuspendedServices(entryPoint, exactTime, windowRule, platform);
             await Task.Delay(650);
             NativeUi(hostType!, activeHost!, _ => VerifyStoppedSessionProbe(sessionProbe!));
@@ -212,6 +219,7 @@ internal static partial class ClassIslandVerification
         File.Copy(Path.Combine(data, "Settings.json"), Path.Combine(importSource, "Settings.json"), overwrite: true);
         var backup = await Import(importSource);
         RequireResumedHidden();
+        Sample(cycles, "imported");
         if (!File.Exists(Path.Combine(backup, "Settings.json")) ||
             (int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation + 1)
             throw new InvalidOperationException("Hidden import did not back up data and rebuild the session.");
@@ -224,6 +232,7 @@ internal static partial class ClassIslandVerification
         var restoredRender = await CaptureNativeWindowAsync(restoredWindow, Path.Combine(outputDirectory, "classisland-restored.png"));
         if (!restoredRender.HasVisibleContent)
             throw new InvalidOperationException("Restored session did not render.");
+        Sample(cycles, "restored");
         await Command("hide");
         await Command("settings");
         finalWindows = await GetNativeWindowsAsync(hostType!, activeHost!);

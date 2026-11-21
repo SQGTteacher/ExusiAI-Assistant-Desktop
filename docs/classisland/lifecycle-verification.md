@@ -59,7 +59,7 @@ Start-Process .\ExusiAI.Desktop.exe -ArgumentList '--verify-classisland-soak', '
 
 长测在一个 ExusiAI 进程内执行 24 轮启停。最后一轮分别保持显示和隐藏 2 分 30 秒，每 30 秒采样并检查原生窗口和宿主状态是否一致。退出码为 0 且生成 `result.txt` 表示通过。失败时查看 `failure.txt` 和保留的采样记录。
 
-`lifecycle-resources.csv` 记录进程私有内存、工作集、线程、句柄、USER 和 GDI 对象数。启动耗时从发出启用指令计至确认信息岛可见，停用耗时计至插件运行时返回。对比预热后各轮的 `disabled` 样本，逐轮持续增长的指标可作为进一步定位的线索。CSV 采样包含整个测试进程的资源，且不会触发强制 GC。CI 分别上传框架依赖构建和自包含包的基线。
+`lifecycle-resources.csv` 记录进程私有内存、工作集、线程、句柄、USER 和 GDI 对象数。启动耗时从发出启用指令计至确认信息岛可见，停用耗时计至插件运行时返回。对比预热后各轮的 `disabled` 样本可观察持续增长。结合 `resumed_hidden`、`visible`、`rendered`、`settings_open` 和 `suspended` 可缩小分配发生的阶段。CSV 采样包含整个测试进程的资源，且不会触发强制 GC。CI 分别上传框架依赖构建和自包含包的基线。
 
 课堂设备验收还应单独记录以下结果：
 
