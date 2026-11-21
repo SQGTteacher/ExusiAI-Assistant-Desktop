@@ -150,6 +150,77 @@ internal static partial class ClassIslandVerification
             Log($"PASS: cycle {cycle}; rendered {render}; stopped service host, cron workers, in-flight action and hang timer; completed async exit actions; rejected stale settings writes; merged plugin action menu; destroyed {windows.Length} windows; settings saved; page and tray removed.");
         }
 
+        await runtime.SetEnabledAsync(id, true);
+        RequireResumedHidden();
+        var importSource = Path.Combine(outputDirectory, "ImportSource");
+        Directory.CreateDirectory(importSource);
+        File.Copy(Path.Combine(data, "Settings.json"), Path.Combine(importSource, "Settings.json"));
+        async Task<string> Import(string source) => await (Task<string>)hostType!.GetMethod("ImportDataAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(activeHost, [source, CancellationToken.None])!;
+        var generation = (int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")!;
+        File.WriteAllText(Path.Combine(importSource, "Settings.json"), "[]");
+        try
+        {
+            await Import(importSource);
+            throw new InvalidOperationException("Invalid import was accepted.");
+        }
+        catch (InvalidDataException) { }
+        RequireResumedHidden();
+        if ((int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation)
+            throw new InvalidOperationException("Invalid import interrupted the active session.");
+        File.Copy(Path.Combine(data, "Settings.json"), Path.Combine(importSource, "Settings.json"), overwrite: true);
+        var backup = await Import(importSource);
+        RequireResumedHidden();
+        if (!File.Exists(Path.Combine(backup, "Settings.json")) ||
+            (int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation + 1)
+            throw new InvalidOperationException("Hidden import did not back up data and rebuild the session.");
+        await Command("show");
+        await Import(backup);
+        if (Read("RequiresRestart") is not false || Read("IsVisible") is not true ||
+            (int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation + 2)
+            throw new InvalidOperationException("Backup restore did not rebuild the session and restore visibility.");
+        var restoredWindow = new IntPtr((long)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedWindowHandle")!);
+        var restoredRender = await CaptureNativeWindowAsync(restoredWindow, Path.Combine(outputDirectory, "classisland-restored.png"));
+        if (!restoredRender.HasVisibleContent)
+            throw new InvalidOperationException("Restored session did not render.");
+        await Command("hide");
+        await Command("settings");
+        finalWindows = await GetNativeWindowsAsync(hostType!, activeHost!);
+        await runtime.SetEnabledAsync(id, false);
+        RequireState(PackageState.Disabled);
+        VerifySuspended(hostType!, activeHost!, finalWindows);
+        Log("PASS: hidden import and visible backup restore rebuilt sessions without restarting Avalonia.");
+
+        await runtime.SetEnabledAsync(id, true);
+        hostType!.GetMethod("SetFollowHostTheme", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(activeHost, [true]);
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseStop = new ManualResetEventSlim();
+        EventHandler pauseStop = (_, _) =>
+        {
+            stopping.TrySetResult();
+            if (!releaseStop.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("Import stop probe was not released.");
+        };
+        NativeUi(hostType!, activeHost!, app => app.GetType().GetEvent("AppStopping")!.AddEventHandler(app, pauseStop));
+        var concurrentImport = Import(importSource);
+        await stopping.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task? disposal = null;
+        try
+        {
+            await Task.Run(() => hostType.GetMethod("ApplyTheme", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(activeHost, [new HostTheme(true, "#4488CC")])).WaitAsync(TimeSpan.FromSeconds(3));
+            disposal = Task.Run(() => activeHost!.Dispose());
+            await Task.Delay(100);
+            if (disposal.IsCompleted)
+                throw new InvalidOperationException("Final disposal bypassed the import transition.");
+        }
+        finally { releaseStop.Set(); }
+        await concurrentImport;
+        await disposal!.WaitAsync(TimeSpan.FromSeconds(20));
+        if (Read("IsStopped") is not true)
+            throw new InvalidOperationException("Concurrent import and final disposal left Avalonia running.");
+        Log("PASS: queued theme callback during suspension; final disposal waited for import and stopped Avalonia.");
+
         await runtime.StopAsync();
         RequireState(PackageState.Stopped);
         VerifyStopped(hostType!, activeHost!, finalWindows!);

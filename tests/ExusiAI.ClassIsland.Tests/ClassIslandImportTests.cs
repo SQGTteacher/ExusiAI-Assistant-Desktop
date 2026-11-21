@@ -5,6 +5,65 @@ namespace ExusiAI.ClassIsland.Tests;
 public sealed class ClassIslandImportTests
 {
     [Fact]
+    public async Task CancellationDuringAsyncStopLeavesDataUntouched()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "classisland-async-cancel-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(root, "source");
+        var destination = Path.Combine(root, "Data");
+        using var cancellation = new CancellationTokenSource();
+        try
+        {
+            Directory.CreateDirectory(source);
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(Path.Combine(source, "Settings.json"), "{\"Value\":2}");
+            File.WriteAllText(Path.Combine(destination, "Settings.json"), "{\"Value\":1}");
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                ClassIslandDataImporter.ImportAsync(source, destination, async () =>
+                {
+                    await Task.Yield();
+                    cancellation.Cancel();
+                }, () => true, cancellation.Token));
+            Assert.Contains("1", File.ReadAllText(Path.Combine(destination, "Settings.json")));
+            Assert.Empty(Directory.EnumerateDirectories(root, "ClassIsland-*"));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ImportWaitsForAsyncSessionStopBeforeReplacingData()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "classisland-async-import-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(root, "source");
+        var destination = Path.Combine(root, "Data");
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Directory.CreateDirectory(source);
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(Path.Combine(source, "Settings.json"), "{\"Value\":2}");
+            File.WriteAllText(Path.Combine(destination, "Settings.json"), "{\"Value\":1}");
+            var import = ClassIslandDataImporter.ImportAsync(source, destination, async () =>
+            {
+                entered.SetResult();
+                await stopped.Task;
+            }, () => stopped.Task.IsCompletedSuccessfully);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(import.IsCompleted);
+            Assert.Contains("1", File.ReadAllText(Path.Combine(destination, "Settings.json")));
+            stopped.SetResult();
+            var backup = await import;
+            Assert.Contains("2", File.ReadAllText(Path.Combine(destination, "Settings.json")));
+            Assert.Contains("1", File.ReadAllText(Path.Combine(backup, "Settings.json")));
+        }
+        finally
+        {
+            stopped.TrySetResult();
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task ImportCopiesOriginalDataAndPreservesPreviousFilesInBackup()
     {
         var root = Path.Combine(Path.GetTempPath(), "classisland-test-" + Guid.NewGuid().ToString("N"));

@@ -74,7 +74,7 @@ internal sealed class ClassIslandPage : UserControl
         {
             if (backups.SelectedItem is not DirectoryInfo backup)
                 throw new InvalidOperationException("请先选择一个备份。");
-            if (MessageBox.Show("恢复会替换当前设置、课表和 Config，并先备份当前数据。完成后需重启 ExusiAI。是否继续？",
+            if (MessageBox.Show("恢复会替换当前设置、课表和 Config，并先备份当前数据。完成后自动恢复当前会话。是否继续？",
                 "恢复 ClassIsland 备份", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                 await Import(backup.FullName, token);
         });
@@ -110,7 +110,7 @@ internal sealed class ClassIslandPage : UserControl
     private async Task Import(string source, CancellationToken token)
     {
         var backup = await host.ImportDataAsync(source, token);
-        message = $"数据已替换，请重启 ExusiAI 后加载。替换前备份：{backup}";
+        message = $"数据已替换。替换前备份：{backup}";
         LoadBackups();
     }
 

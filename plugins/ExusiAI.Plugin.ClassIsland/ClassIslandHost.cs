@@ -21,6 +21,7 @@ internal sealed class ClassIslandHost : IDisposable
     private readonly object themeGate = new();
     private readonly string themePreferencePath;
     private bool followHostTheme;
+    private bool sessionTransition;
     private readonly string startupPreferencePath;
     private bool showOnHostStartup;
     private volatile bool disposed;
@@ -54,12 +55,53 @@ internal sealed class ClassIslandHost : IDisposable
         if (!operationGate.Wait(0))
             throw new InvalidOperationException("ClassIsland 正在执行其他操作，请稍后再试。");
         NotifyStateChanged();
+        var suspended = false;
+        var wasVisible = false;
+        async Task SuspendForImport()
+        {
+            if (IsStopped) return;
+            wasVisible = IsVisible;
+            try
+            {
+                await SuspendSessionAsync().ConfigureAwait(false);
+                if (InvokeControl("GetEmbeddedServiceHostActive") is not false)
+                    throw new InvalidOperationException("ClassIsland 服务尚未停止，无法替换数据。");
+                suspended = true;
+            }
+            catch
+            {
+                DisposeCore();
+                throw;
+            }
+        }
         try
         {
             return await ClassIslandDataImporter.ImportAsync(source, dataDirectory,
-                Dispose, () => IsStopped, cancellationToken).ConfigureAwait(false);
+                SuspendForImport, () => IsStopped || suspended, cancellationToken).ConfigureAwait(false);
         }
-        finally { operationGate.Release(); NotifyStateChanged(); }
+        finally
+        {
+            try
+            {
+                // Recover the session even after cancellation or replacement rollback.
+                // The operation gate stays held until recovery finishes.
+                if (suspended && !disposed)
+                {
+                    try
+                    {
+                        await ResumeSessionAsync().ConfigureAwait(false);
+                        InvokeControl("SetEmbeddedVisible", [wasVisible]);
+                    }
+                    catch (Exception error)
+                    {
+                        LastStartupError = "数据操作后恢复 ClassIsland 会话失败：" + error.GetBaseException().Message;
+                        DisposeCore();
+                        throw new InvalidOperationException(LastStartupError, error);
+                    }
+                }
+            }
+            finally { operationGate.Release(); NotifyStateChanged(); }
+        }
     }
 
     internal ClassIslandHost(string dataDirectory, string packageDirectory)
@@ -228,6 +270,25 @@ internal sealed class ClassIslandHost : IDisposable
         }
     }
 
+    private async Task SuspendSessionAsync()
+    {
+        lock (themeGate) sessionTransition = true;
+        await InvokeTransitionAsync("SuspendEmbedded").ConfigureAwait(false);
+    }
+
+    private async Task ResumeSessionAsync()
+    {
+        await InvokeTransitionAsync("ResumeEmbedded").ConfigureAwait(false);
+        lock (themeGate)
+        {
+            sessionTransition = false;
+            InvokeTheme();
+        }
+    }
+
+    private Task InvokeTransitionAsync(string method) => InvokeControl(method) as Task
+        ?? throw new InvalidOperationException($"ClassIsland.Desktop.Program.{method} did not return a task.");
+
     internal Task SuspendAsync(CancellationToken cancellationToken) => TransitionAsync("SuspendEmbedded", cancellationToken);
 
     internal Task ResumeAsync(CancellationToken cancellationToken) => TransitionAsync("ResumeEmbedded", cancellationToken);
@@ -244,8 +305,7 @@ internal sealed class ClassIslandHost : IDisposable
             {
                 if (disposed || !ready.Task.IsCompletedSuccessfully || !ready.Task.Result)
                     return;
-                transition = InvokeControl(method) as Task
-                    ?? throw new InvalidOperationException($"ClassIsland.Desktop.Program.{method} did not return a task.");
+                transition = method == "SuspendEmbedded" ? SuspendSessionAsync() : ResumeSessionAsync();
             }
             await transition.ConfigureAwait(false);
         }
@@ -304,7 +364,7 @@ internal sealed class ClassIslandHost : IDisposable
             File.WriteAllText(temporary, System.Text.Json.JsonSerializer.Serialize(follow));
             File.Move(temporary, themePreferencePath, overwrite: true);
             followHostTheme = follow;
-            if (!disposed && ready.Task.IsCompletedSuccessfully && ready.Task.Result)
+            if (!disposed && !sessionTransition && ready.Task.IsCompletedSuccessfully && ready.Task.Result)
                 InvokeTheme();
         }
     }
@@ -314,7 +374,7 @@ internal sealed class ClassIslandHost : IDisposable
         lock (themeGate)
         {
             pendingTheme = theme;
-            if (!disposed && followHostTheme && ready.Task.IsCompletedSuccessfully && ready.Task.Result)
+            if (!disposed && !sessionTransition && followHostTheme && ready.Task.IsCompletedSuccessfully && ready.Task.Result)
                 InvokeTheme();
         }
     }
@@ -371,7 +431,7 @@ internal sealed class ClassIslandHost : IDisposable
                     lock (themeGate)
                     {
                         ready.TrySetResult(true);
-                        if (followHostTheme) InvokeTheme();
+                        if (followHostTheme && !sessionTransition) InvokeTheme();
                     }
                     if (Volatile.Read(ref stopRequested) != 0)
                         entryPoint?.GetMethod("StopEmbedded")?.Invoke(null, null);
@@ -408,6 +468,14 @@ internal sealed class ClassIslandHost : IDisposable
     }
 
     public void Dispose()
+    {
+        operationGate.Wait();
+        try { DisposeCore(); }
+        finally { operationGate.Release(); }
+    }
+
+    // Callers already holding operationGate must use this path.
+    private void DisposeCore()
     {
         Thread? stoppingThread;
         lock (lifecycleGate)
