@@ -268,13 +268,9 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
     private void PostInit()
     {
         IAppHost.GetService<ISplashService>().SetDetailedStatus("正在初始化托盘菜单");
-        if (AppBase.Current is App { EmbeddedOptions: not null })
-        {
-            // ExusiAI owns the process-level tray entry. The embedded island must
-            // not advertise itself as a second standalone application.
-            TaskBarIconService.MainTaskBarIcon.IsVisible = false;
-        }
-        else
+        // ExusiAI owns the tray entry in embedded mode. Accessing the upstream
+        // icon would create a native registration even when the icon is hidden.
+        if (AppBase.Current is not App { EmbeddedOptions: not null })
         {
             var menu = this.FindResource("AppMenu") as NativeMenu;
             TaskBarIconService.MainTaskBarIcon.Menu = menu;

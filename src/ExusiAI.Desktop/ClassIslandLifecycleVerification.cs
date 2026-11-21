@@ -163,6 +163,7 @@ internal static partial class ClassIslandVerification
                 throw new InvalidOperationException($"Cycle {cycle}: settings revealed a hidden island.");
             var windows = await GetNativeWindowsAsync(hostType!, activeHost!);
             Sample(cycle, "settings_open");
+            NativeUi(hostType!, activeHost!, _ => VerifyNoNativeTrayIcon(entryPoint));
             var services = GetEmbeddedServices(entryPoint);
             var core = SharedAssembly(entryPoint, "ClassIsland.Core");
             var exactTime = services.GetService(core.GetType("ClassIsland.Core.Abstractions.Services.IExactTimeService", throwOnError: true)!)!;
@@ -333,6 +334,14 @@ internal static partial class ClassIslandVerification
 
     private static Assembly SharedAssembly(Type entryPoint, string name) =>
         AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!.LoadFromAssemblyName(new AssemblyName(name));
+
+    private static void VerifyNoNativeTrayIcon(Type entryPoint)
+    {
+        var tray = SharedAssembly(entryPoint, "Avalonia.Win32").GetType("Avalonia.Win32.TrayIconImpl", throwOnError: true)!;
+        var registrations = (IDictionary)tray.GetField("s_trayIcons", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        if (registrations.Count != 0)
+            throw new InvalidOperationException($"The embedded ClassIsland runtime created {registrations.Count} native tray registrations.");
+    }
 
     private static IServiceProvider GetEmbeddedServices(Type entryPoint)
     {
