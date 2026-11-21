@@ -45,11 +45,14 @@ public partial class App : Application
             }
             return;
         }
-        if (e.Args is ["--verify-classisland-lifecycle", var classIslandLifecycleOutput])
+        if (e.Args is [var lifecycleMode, var classIslandLifecycleOutput] &&
+            lifecycleMode is "--verify-classisland-lifecycle" or "--verify-classisland-soak")
         {
             try
             {
-                await ClassIslandVerification.RunLifecycleAsync(classIslandLifecycleOutput);
+                classIslandLifecycleOutput = Path.GetFullPath(classIslandLifecycleOutput);
+                await ClassIslandVerification.RunLifecycleAsync(classIslandLifecycleOutput,
+                    soak: lifecycleMode == "--verify-classisland-soak");
                 Shutdown(0);
             }
             catch (Exception exception)

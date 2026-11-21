@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -14,12 +15,30 @@ namespace ExusiAI.Desktop;
 
 internal static partial class ClassIslandVerification
 {
-    private static async Task VerifyLifecycleAsync(string package, string outputDirectory)
+    private const int LifecycleCycles = 8;
+    private const int SoakCycles = 24;
+
+    private static async Task VerifyLifecycleAsync(string package, string outputDirectory, bool soak)
     {
         const string id = "exusiai.classisland";
         var data = Path.Combine(outputDirectory, "LifecycleData");
         var report = Path.Combine(outputDirectory, "lifecycle.log");
         void Log(string message) => File.AppendAllText(report, $"{DateTimeOffset.UtcNow:O} {message}{Environment.NewLine}");
+        var cycles = soak ? SoakCycles : LifecycleCycles;
+        var elapsed = Stopwatch.StartNew();
+        using var process = Process.GetCurrentProcess();
+        var metrics = Path.Combine(outputDirectory, "lifecycle-resources.csv");
+        File.WriteAllText(metrics, "cycle,phase,elapsed_ms,operation_ms,private_bytes,working_set_bytes,handles,threads,user_objects,gdi_objects"
+            + Environment.NewLine);
+        Log($"Windows {Environment.OSVersion.Version}, {RuntimeInformation.ProcessArchitecture}, {cycles} cycles.");
+        void Sample(int cycle, string phase, double? operationMs = null)
+        {
+            process.Refresh();
+            File.AppendAllText(metrics, FormattableString.Invariant(
+                $"{cycle},{phase},{elapsed.ElapsedMilliseconds},{operationMs:F1},{process.PrivateMemorySize64},{process.WorkingSet64},{process.HandleCount},{process.Threads.Count},{GetGuiResources(process.Handle, 1)},{GetGuiResources(process.Handle, 0)}")
+                + Environment.NewLine);
+        }
+
         await using var runtime = new ExtensionRuntime(
             new(new(), new(), NullLogger<PackageDiscoveryService>.Instance), NullLogger<ExtensionRuntime>.Instance);
         var navigation = new WpfNavigationRegistry();
@@ -80,11 +99,25 @@ internal static partial class ClassIslandVerification
         RequireState(PackageState.Disabled);
         Log("PASS: dormant plugin disabled; page and tray removed.");
 
+        Sample(0, "dormant");
+
+        async Task ObserveIdleAsync(int cycle, IntPtr window, bool visible)
+        {
+            for (var sample = 0; sample < 5; sample++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30));
+                if (!IsWindow(window) || IsWindowVisible(window) != visible || Read("IsVisible") is not bool status || status != visible)
+                    throw new InvalidOperationException($"ClassIsland did not retain visibility={visible} during the idle probe.");
+                Sample(cycle, visible ? "visible_idle" : "hidden_idle");
+            }
+        }
+
         Assembly? sharedEvents = null;
         IntPtr[]? finalWindows = null;
-        for (var cycle = 1; cycle <= 3; cycle++)
+        for (var cycle = 1; cycle <= cycles; cycle++)
         {
             Log($"Starting cycle {cycle}.");
+            var phaseTimer = Stopwatch.StartNew();
             await runtime.SetEnabledAsync(id, true);
             RequireState(PackageState.Running);
             if (cycle == 1) RequireDormant();
@@ -101,6 +134,9 @@ internal static partial class ClassIslandVerification
             var window = new IntPtr((long)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedWindowHandle")!);
             if (!IsWindowVisible(window) || Read("IsVisible") is not true)
                 throw new InvalidOperationException($"Cycle {cycle}: re-enabled island is not visible.");
+            Sample(cycle, "visible", phaseTimer.Elapsed.TotalMilliseconds);
+            if (soak && cycle == cycles)
+                await ObserveIdleAsync(cycle, window, visible: true);
             var render = await CaptureNativeWindowAsync(window, Path.Combine(outputDirectory, $"classisland-cycle-{cycle}.png"));
             if (!render.HasVisibleContent)
                 throw new InvalidOperationException($"Cycle {cycle}: re-enabled island did not render: {render}");
@@ -115,6 +151,8 @@ internal static partial class ClassIslandVerification
                 marker.SetValue(settings, cycle % 2 == 0);
             });
             await Command("hide");
+            if (soak && cycle == cycles)
+                await ObserveIdleAsync(cycle, window, visible: false);
             await Command("settings");
             if (IsWindowVisible(window) || Read("IsVisible") is not false)
                 throw new InvalidOperationException($"Cycle {cycle}: settings revealed a hidden island.");
@@ -131,7 +169,9 @@ internal static partial class ClassIslandVerification
             await Task.Delay(100);
             NativeUi(hostType!, activeHost!, _ => VerifyActiveSessionProbe(sessionProbe!));
             var oldShow = tray.Menus.Single().Commands.Single(command => command.Id == "show");
+            phaseTimer.Restart();
             await Task.Run(() => runtime.SetEnabledAsync(id, false));
+            var disableMs = phaseTimer.Elapsed.TotalMilliseconds;
             RequireState(PackageState.Disabled);
             VerifySuspended(hostType!, activeHost!, windows);
             VerifySuspendedServices(entryPoint, exactTime, windowRule, platform);
@@ -147,6 +187,7 @@ internal static partial class ClassIslandVerification
             if (savedVisible || savedSplash != (cycle % 2 == 0))
                 throw new InvalidOperationException($"Cycle {cycle}: suspension did not preserve native settings: visible={savedVisible}; splash={savedSplash}; expected splash={cycle % 2 == 0}.");
             finalWindows = windows;
+            Sample(cycle, "disabled", disableMs);
             Log($"PASS: cycle {cycle}; rendered {render}; stopped service host, cron workers, in-flight action and hang timer; completed async exit actions; rejected stale settings writes; merged plugin action menu; destroyed {windows.Length} windows; settings saved; page and tray removed.");
         }
 
@@ -224,6 +265,7 @@ internal static partial class ClassIslandVerification
         await runtime.StopAsync();
         RequireState(PackageState.Stopped);
         VerifyStopped(hostType!, activeHost!, finalWindows!);
+        Sample(cycles, "stopped");
         Log("PASS: final shutdown stopped the retained Avalonia runtime.");
     }
 
@@ -352,4 +394,7 @@ internal static partial class ClassIslandVerification
     }
 
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetGuiResources(IntPtr process, uint flags);
 }

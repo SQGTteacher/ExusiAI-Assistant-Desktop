@@ -202,7 +202,7 @@ internal static partial class ClassIslandVerification
             host = null;
             await RunLifecycleProcessAsync(outputDirectory);
             File.WriteAllText(Path.Combine(outputDirectory, "result.txt"),
-                $"PASS: packaged ClassIsland rendered via {compositionMode} ({renderStatus}); settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified; dormant disable and three retained-Avalonia service-session cycles passed.");
+                $"PASS: packaged ClassIsland rendered via {compositionMode} ({renderStatus}); settings opened and island hidden; transactional plugin install and retry verified; isolated SystemEvents 9 and nested plugin SDK identities verified; dormant disable and {LifecycleCycles} retained-Avalonia service-session cycles passed.");
         }
         finally
         {
@@ -211,11 +211,16 @@ internal static partial class ClassIslandVerification
         }
     }
 
-    internal static Task RunLifecycleAsync(string outputDirectory)
+    internal static async Task RunLifecycleAsync(string outputDirectory, bool soak)
     {
         Directory.CreateDirectory(outputDirectory);
+        if (soak && Directory.EnumerateFileSystemEntries(outputDirectory).Any())
+            throw new IOException("Choose a new or empty output directory for the ClassIsland soak check.");
         var package = Path.Combine(AppContext.BaseDirectory, "packages", "exusiai.classisland");
-        return VerifyLifecycleAsync(package, outputDirectory);
+        await VerifyLifecycleAsync(package, outputDirectory, soak);
+        if (soak)
+            File.WriteAllText(Path.Combine(outputDirectory, "result.txt"),
+                $"PASS: {SoakCycles} ClassIsland lifecycle cycles and five minutes of visible and hidden idle checks.");
     }
 
     private static async Task RunLifecycleProcessAsync(string outputDirectory)

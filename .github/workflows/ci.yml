@@ -76,6 +76,7 @@ jobs:
           if (!$process.WaitForExit(180000)) { $process.Kill(); throw "ClassIsland lifecycle verification timed out" }
           if (Test-Path "$output/failure.txt") { Get-Content "$output/failure.txt" }
           Get-ChildItem $output -Recurse -File -Filter *.log | ForEach-Object { Get-Content $_.FullName -Tail 100 }
+          if (Test-Path "$output/lifecycle-resources.csv") { Get-Content "$output/lifecycle-resources.csv" }
           if ($process.ExitCode -ne 0 -or !(Test-Path "$output/result.txt")) { throw "ClassIsland startup verification failed" }
           Get-Content "$output/result.txt"
       - uses: actions/upload-artifact@v4
@@ -136,11 +137,12 @@ jobs:
           Set-Content (Join-Path $viewerDir "stale-foreign.exe") "stale package marker"
           dotnet publish src/ExusiAI.Desktop/ExusiAI.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=false -p:EnableClassIslandNative=true -p:BuildNumber=${{ github.run_number }} --output $publishDir
           if ($LASTEXITCODE -ne 0) { throw "Host and viewer publish failed" }
-          $islandOutput = Join-Path $publishDir "classisland-probe"
+          $islandOutput = Join-Path $PWD "artifacts/classisland-publish"
           $island = Start-Process (Join-Path $publishDir "ExusiAI.Desktop.exe") -ArgumentList @("--verify-classisland", "`"$islandOutput`"") -PassThru
           if (!$island.WaitForExit(180000)) { $island.Kill(); throw "Published ClassIsland lifecycle timed out" }
           if (Test-Path "$islandOutput/failure.txt") { Get-Content "$islandOutput/failure.txt" }
           Get-ChildItem $islandOutput -Recurse -File -Filter *.log | ForEach-Object { Get-Content $_.FullName -Tail 100 }
+          if (Test-Path "$islandOutput/lifecycle-resources.csv") { Get-Content "$islandOutput/lifecycle-resources.csv" }
           if ($island.ExitCode -ne 0 -or !(Test-Path "$islandOutput/result.txt")) { throw "Published ClassIsland startup failed" }
           Get-Content "$islandOutput/result.txt"
           $allowedExecutables = @((Join-Path $publishDir "ExusiAI.Desktop.exe"), (Join-Path $viewerDir "ExusiAI.FileViewer.Desktop.exe"))
@@ -167,6 +169,16 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Published viewer probe failed: $($process.ExitCode)" }
           $result = Get-Content $report -Raw | ConvertFrom-Json
           if (!$result.success -or $result.checks.Count -ne 6) { throw "Incomplete published viewer probe" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: classisland-published-baseline
+          path: |
+            artifacts/classisland-publish/lifecycle-resources.csv
+            artifacts/classisland-publish/lifecycle.log
+            artifacts/classisland-publish/failure.txt
+            artifacts/classisland-publish/result.txt
+          if-no-files-found: ignore
       - name: Package validated developer beta
         if: steps.release_request.outputs.enabled == 'true'
         shell: pwsh
