@@ -20,10 +20,14 @@ internal static class ClassIslandDataImporter
 
     internal static Task<string> ImportAsync(string sourceDirectory, string dataDirectory,
         Action stopHost, Func<bool> isHostStopped, CancellationToken cancellationToken = default) =>
+        ImportAsync(sourceDirectory, dataDirectory, () => { stopHost(); return Task.CompletedTask; }, isHostStopped, cancellationToken);
+
+    internal static Task<string> ImportAsync(string sourceDirectory, string dataDirectory,
+        Func<Task> stopHost, Func<bool> isHostStopped, CancellationToken cancellationToken = default) =>
         Task.Run(() => Import(sourceDirectory, dataDirectory, stopHost, isHostStopped, cancellationToken), cancellationToken);
 
-    private static string Import(string sourceDirectory, string dataDirectory,
-        Action stopHost, Func<bool> isHostStopped, CancellationToken cancellationToken)
+    private static async Task<string> Import(string sourceDirectory, string dataDirectory,
+        Func<Task> stopHost, Func<bool> isHostStopped, CancellationToken cancellationToken)
     {
         var source = Path.GetFullPath(sourceDirectory);
         var destination = Path.GetFullPath(dataDirectory);
@@ -69,7 +73,7 @@ internal static class ClassIslandDataImporter
                     throw new InvalidDataException("Settings.json 的根节点必须是对象。");
 
             cancellationToken.ThrowIfCancellationRequested();
-            stopHost();
+            await stopHost().ConfigureAwait(false);
             if (!isHostStopped())
                 throw new IOException("原版信息岛尚未停止，导入已取消；请重启 ExusiAI 后再试。");
 

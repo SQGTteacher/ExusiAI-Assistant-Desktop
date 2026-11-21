@@ -54,12 +54,54 @@ internal sealed class ClassIslandHost : IDisposable
         if (!operationGate.Wait(0))
             throw new InvalidOperationException("ClassIsland 正在执行其他操作，请稍后再试。");
         NotifyStateChanged();
+        var suspended = false;
+        var wasVisible = false;
+        async Task SuspendForImport()
+        {
+            if (IsStopped) return;
+            wasVisible = IsVisible;
+            try
+            {
+                await InvokeTransitionAsync("SuspendEmbedded").ConfigureAwait(false);
+                if (InvokeControl("GetEmbeddedServiceHostActive") is not false)
+                    throw new InvalidOperationException("ClassIsland 服务尚未停止，无法替换数据。");
+                suspended = true;
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+        }
         try
         {
             return await ClassIslandDataImporter.ImportAsync(source, dataDirectory,
-                Dispose, () => IsStopped, cancellationToken).ConfigureAwait(false);
+                SuspendForImport, () => IsStopped || suspended, cancellationToken).ConfigureAwait(false);
         }
-        finally { operationGate.Release(); NotifyStateChanged(); }
+        finally
+        {
+            try
+            {
+                // Recover the session even after cancellation or replacement rollback.
+                // The operation gate stays held until recovery finishes.
+                if (suspended && !disposed)
+                {
+                    try
+                    {
+                        await InvokeTransitionAsync("ResumeEmbedded").ConfigureAwait(false);
+                        InvokeControl("SetEmbeddedVisible", [wasVisible]);
+                        lock (themeGate) InvokeTheme();
+                    }
+                    catch (Exception error)
+                    {
+                        LastStartupError = "数据操作后恢复 ClassIsland 会话失败：" + error.GetBaseException().Message;
+                        Dispose();
+                        throw new InvalidOperationException(LastStartupError, error);
+                    }
+                }
+            }
+            finally { operationGate.Release(); NotifyStateChanged(); }
+        }
     }
 
     internal ClassIslandHost(string dataDirectory, string packageDirectory)
@@ -227,6 +269,9 @@ internal sealed class ClassIslandHost : IDisposable
                 InvokeControl("SetEmbeddedVisible", [false]);
         }
     }
+
+    private Task InvokeTransitionAsync(string method) => InvokeControl(method) as Task
+        ?? throw new InvalidOperationException($"ClassIsland.Desktop.Program.{method} did not return a task.");
 
     internal Task SuspendAsync(CancellationToken cancellationToken) => TransitionAsync("SuspendEmbedded", cancellationToken);
 
