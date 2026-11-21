@@ -14,6 +14,12 @@ namespace ClassIsland.Services;
 
 public class TaskBarIconService : IHostedService, ITaskBarIconService
 {
+    private readonly Lazy<TrayIcon> mainTaskBarIcon = new(() => new TrayIcon
+    {
+        IsVisible = false,
+        ToolTipText = "ClassIsland"
+    });
+
     public TaskBarIconService(ILogger<TaskBarIconService> logger)
     {
         Logger = logger;
@@ -28,19 +34,13 @@ public class TaskBarIconService : IHostedService, ITaskBarIconService
 
     private void CurrentOnAppStopping(object? sender, EventArgs e)
     {
-        MainTaskBarIcon.IsVisible = false;
+        if (mainTaskBarIcon.IsValueCreated)
+            MainTaskBarIcon.IsVisible = false;
     }
 
     public ILogger<TaskBarIconService> Logger { get; }
 
-    public TrayIcon MainTaskBarIcon
-    {
-        get;
-    } = new()
-    {
-        IsVisible = false,
-        ToolTipText = "ClassIsland"
-    };
+    public TrayIcon MainTaskBarIcon => mainTaskBarIcon.Value;
 
     public IList<NativeMenuItemBase> MoreOptionsMenuItems => MoreOptionsMenu!.Items;
     
