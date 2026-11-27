@@ -178,28 +178,22 @@ public class ActionService : IActionService
 
     public void MigrateUnknownActionItem(ActionItem actionItem)
     {
-        // 1.7.107.0
-        // 迁移应用设置行动 classisland.settings
-        {
-            const string prefix = "classisland.settings.";
-            if (actionItem.Id.StartsWith(prefix))
-            {
-                Logger.LogInformation("迁移行动项 {} 到新应用设置行动", actionItem.Id);
+        // Older profiles stored the app setting name as part of the action ID.
+        const string prefix = "classisland.settings.";
+        var id = actionItem.Id;
+        if (id is null || id.Length <= prefix.Length || !id.StartsWith(prefix, StringComparison.Ordinal))
+            return;
+        if (actionItem.Settings is JsonElement malformed && malformed.ValueKind != JsonValueKind.Object)
+            return;
 
-                var suffix = actionItem.Id[prefix.Length..];
-                var processedName = $"{char.ToUpper(suffix[0])}{suffix[1..]}";
+        var suffix = id[prefix.Length..];
+        var settings = new ModifyAppSettingsActionSettings { Name = $"{char.ToUpperInvariant(suffix[0])}{suffix[1..]}" };
+        if (actionItem.Settings is JsonElement json && json.TryGetProperty("Value", out var value))
+            settings.Value = value.ToString();
 
-                actionItem.Id = "classisland.settings";
-
-                var settings = new ModifyAppSettingsActionSettings { Name = processedName };
-                if (actionItem.Settings is JsonElement jsonElement &&
-                    jsonElement.TryGetProperty("Value", out var value))
-                {
-                    settings.Value = value.ToString();
-                }
-                actionItem.Settings = settings;
-            }
-        }
+        Logger.LogInformation("迁移行动项 {} 到新应用设置行动", id);
+        actionItem.Id = "classisland.settings";
+        actionItem.Settings = settings;
     }
 
     readonly ILogger<ActionService> Logger;

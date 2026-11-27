@@ -298,14 +298,14 @@ public class MainWindowLine : ContentControl, INotificationConsumer
     public static FuncValueConverter<double, Thickness> DoubleToThicknessBottomConverter { get; } =
         new(x => new Thickness(0, 0, 0, x));
 
-    private ObservableCollection<ComponentSettings>? _prevSubscription;
+    private MainWindowLineSettings? _observedSettings;
+    private ObservableCollection<ComponentSettings>? _observedChildren;
 
     public MainWindowLine()
     {
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        ComponentPresenter.ComponentVisibilityChangedEvent.AddClassHandler(typeof(MainWindowLine), 
-            UpdateVisibilityState, RoutingStrategies.Bubble);
+        AddHandler(ComponentPresenter.ComponentVisibilityChangedEvent, UpdateVisibilityState, RoutingStrategies.Bubble);
         this.GetObservable(HidingRulesProperty).Subscribe(new AnonymousObserver<Core.Models.Ruleset.Ruleset?>(_ => UpdateRuleState()));
         this.GetObservable(HideOnRuleProperty).Subscribe(new AnonymousObserver<bool>(_ => UpdateRuleState()));
         this.GetObservable(WindowDockingLocationProperty)
@@ -317,20 +317,10 @@ public class MainWindowLine : ContentControl, INotificationConsumer
         this.GetObservable(PointerOverProperty)
             .Subscribe(_ => UpdateFadeStatus());
         this.GetObservable(SettingsProperty)
-            .Subscribe(_ =>
+            .Subscribe(settings =>
             {
-                if (Settings == null)
-                {
-                    return;
-                }
-
-                if (_prevSubscription != null)
-                {
-                    _prevSubscription.CollectionChanged -= ChildrenOnCollectionChanged;
-                }
-
-                _prevSubscription = Settings.Children;
-                Settings.Children.CollectionChanged += ChildrenOnCollectionChanged;
+                if (_isLoadCompleted)
+                    ObserveSettings(settings);
                 UpdateHiddenState();
             });
         this.GetObservable(IsVisibleProperty).Subscribe(_ =>
@@ -349,13 +339,14 @@ public class MainWindowLine : ContentControl, INotificationConsumer
         if (HideOnRule)
         {
             CheckHideRule();
-            RulesetService.StatusUpdated += RulesetServiceOnStatusUpdated;
         }
         else
         {
-            RulesetService.StatusUpdated -= RulesetServiceOnStatusUpdated;
             IsVisibleInternal = true;
         }
+        RulesetService.StatusUpdated -= RulesetServiceOnStatusUpdated;
+        if (_isLoadCompleted && HideOnRule)
+            RulesetService.StatusUpdated += RulesetServiceOnStatusUpdated;
         UpdateHiddenState();
     }
     private void RulesetServiceOnStatusUpdated(object? sender, EventArgs e)
@@ -439,28 +430,24 @@ public class MainWindowLine : ContentControl, INotificationConsumer
         UpdateHiddenState();
         UpdateFadeStatus();
         NotificationHostService.RegisterNotificationConsumer(this, Settings.IsMainLine ? -1 : LineNumber);
-        if (Settings != null)
-        {
-            Settings.PropertyChanged -= MySettingsOnPropertyChanged;
-            Settings.PropertyChanged += MySettingsOnPropertyChanged;
-        }
-        
-        UpdateStyles();
         _isLoadCompleted = true;
+        ObserveSettings(Settings);
+        UpdateRuleState();
+        UpdateStyles();
     }
 
     private void OnUnloaded(object? sender, RoutedEventArgs e)
     {
         _isUnloading = true;
+        _isLoadCompleted = false;
+        TouchInFadingTimer.Stop();
+        RulesetService.StatusUpdated -= RulesetServiceOnStatusUpdated;
+        ObserveSettings(null);
         MainWindow.MousePosChanged -= MainWindowOnMousePosChanged;
         MainWindow.RawInputEvent -= MainWindowOnRawInputEvent;
         MainWindow.MainWindowAnimationEvent -= MainWindowOnMainWindowAnimationEvent;
         SettingsService.Settings.PropertyChanged -= SettingsOnPropertyChanged;
         NotificationHostService.UnregisterNotificationConsumer(this);
-        if (Settings != null)
-        {
-            Settings.PropertyChanged -= MySettingsOnPropertyChanged;
-        }
         foreach (var ticket in _notificationPlayingTickets)
         {
             ticket.Cancel();
@@ -470,8 +457,35 @@ public class MainWindowLine : ContentControl, INotificationConsumer
         _notificationPlayingTickets.Clear();
     }
     
+    private void ObserveSettings(MainWindowLineSettings? settings)
+    {
+        if (!ReferenceEquals(_observedSettings, settings))
+        {
+            if (_observedSettings is not null)
+                _observedSettings.PropertyChanged -= MySettingsOnPropertyChanged;
+            _observedSettings = settings;
+            if (_observedSettings is not null)
+                _observedSettings.PropertyChanged += MySettingsOnPropertyChanged;
+        }
+
+        var children = settings?.Children;
+        if (ReferenceEquals(_observedChildren, children))
+            return;
+
+        if (_observedChildren is not null)
+            _observedChildren.CollectionChanged -= ChildrenOnCollectionChanged;
+        _observedChildren = children;
+        if (_observedChildren is not null)
+            _observedChildren.CollectionChanged += ChildrenOnCollectionChanged;
+    }
+
     private void MySettingsOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(MainWindowLineSettings.Children))
+        {
+            ObserveSettings(_observedSettings);
+            UpdateHiddenState();
+        }
         UpdateStyles();
     }
 

@@ -143,7 +143,6 @@ public abstract class ActionSettingsControlBase : UserControl
     }
 
 
-    static Lazy<IActionService?> ActionService { get; } = new(IAppHost.TryGetService<IActionService>);
 
     /// <summary>
     /// 获取行动设置控件实例。
@@ -154,11 +153,12 @@ public abstract class ActionSettingsControlBase : UserControl
         if (string.IsNullOrEmpty(actionItem?.Id)) return null;
 
         // Bug：过于简单的控件会在此开始加载 AXAML，此时 Settings 仍为 null。
-        var control = IAppHost.Host?.Services.GetKeyedService<ActionSettingsControlBase>(actionItem.Id);
+        var services = IAppHost.Host?.Services;
+        var control = services?.GetKeyedService<ActionSettingsControlBase>(actionItem.Id);
         if (control == null)
         {
-            ActionService.Value?.MigrateUnknownActionItem(actionItem);
-            control = IAppHost.Host?.Services.GetKeyedService<ActionSettingsControlBase>(actionItem.Id);
+            services?.GetService<IActionService>()?.MigrateUnknownActionItem(actionItem);
+            control = services?.GetKeyedService<ActionSettingsControlBase>(actionItem.Id);
             if (control == null) return null;
         }
 

@@ -114,6 +114,8 @@ internal static partial class ClassIslandVerification
 
         Assembly? sharedEvents = null;
         object? sharedWindowIcon = null;
+        WeakReference[] lineProbe = [];
+        var closedMainWindows = new List<WeakReference>();
         IntPtr[]? finalWindows = null;
         for (var cycle = 1; cycle <= cycles; cycle++)
         {
@@ -146,10 +148,20 @@ internal static partial class ClassIslandVerification
             if (!render.HasVisibleContent)
                 throw new InvalidOperationException($"Cycle {cycle}: re-enabled island did not render: {render}");
             Sample(cycle, "rendered");
+            LineSubscriptions? lineSubscriptions = null;
             // Embedded startup suppresses the splash, so this persisted native
             // preference is a harmless marker for checking session reload.
             NativeUi(hostType!, activeHost!, app =>
             {
+                var main = Property(app, "MainWindow")!;
+                closedMainWindows.Add(new WeakReference(main));
+                if (cycle == 1)
+                {
+                    lineProbe = VerifyLineVisibilityRouting(entryPoint);
+                    lineSubscriptions = PrepareLineSubscriptions(entryPoint, main);
+                }
+                if (cycle == 2 || cycle == cycles)
+                    VerifyLegacyActionResolution(entryPoint, sessionActive: true);
                 var settings = app.GetType().GetProperty("Settings")!.GetValue(app)!;
                 var marker = settings.GetType().GetProperty("IsSplashEnabled")!;
                 if (cycle > 1 && (bool)marker.GetValue(settings)! != ((cycle - 1) % 2 == 0))
@@ -214,7 +226,14 @@ internal static partial class ClassIslandVerification
             Sample(cycle, "suspended");
             VerifySuspendedServices(entryPoint, exactTime, windowRule, platform);
             await Task.Delay(650);
-            NativeUi(hostType!, activeHost!, _ => VerifyStoppedSessionProbe(sessionProbe!));
+            NativeUi(hostType!, activeHost!, _ =>
+            {
+                VerifyStoppedSessionProbe(sessionProbe!);
+                if (lineSubscriptions is not null)
+                    VerifyLineSubscriptionsRemoved(lineSubscriptions);
+                if (cycle == 1)
+                    VerifyLegacyActionResolution(entryPoint, sessionActive: false);
+            });
             if (InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceHostActive") is not false)
                 throw new InvalidOperationException($"Cycle {cycle}: managed service host survived disable.");
             if (tray.IsRegistered(id, oldShow))
@@ -331,7 +350,10 @@ internal static partial class ClassIslandVerification
             GC.WaitForPendingFinalizers();
         });
         Sample(cycles, "after_finalizers");
-        Log("PASS: final shutdown stopped the retained Avalonia runtime.");
+        if (lineProbe.Length != 2 || lineProbe.Any(line => line.IsAlive))
+            throw new InvalidOperationException("Closed ClassIsland line probes are still strongly referenced.");
+        Log($"Closed main windows still tracked after collection: {closedMainWindows.Count(window => window.IsAlive)}/{closedMainWindows.Count}.");
+        Log("PASS: isolated visibility events, action migration across sessions and final Avalonia shutdown.");
     }
 
     private static void NativeUi(Type hostType, IDisposable host, Action<object> action)
@@ -489,15 +511,18 @@ internal static partial class ClassIslandVerification
         }
     }
 
-    private static bool HasHandlerTarget(object source, string eventName, object target)
+    private static bool HasHandlerTarget(object source, string eventName, object target) =>
+        CountHandlerTargets(source, eventName, target) != 0;
+
+    private static int CountHandlerTargets(object source, string eventName, object target)
     {
         for (var type = source.GetType(); type is not null; type = type.BaseType)
         {
             var field = type.GetField(eventName, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
             if (field?.GetValue(source) is Delegate handler)
-                return handler.GetInvocationList().Any(item => ReferenceEquals(item.Target, target));
+                return handler.GetInvocationList().Count(item => ReferenceEquals(item.Target, target));
         }
-        return false;
+        return 0;
     }
 
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
