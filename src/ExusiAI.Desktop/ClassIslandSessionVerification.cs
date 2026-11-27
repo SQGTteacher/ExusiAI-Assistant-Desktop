@@ -135,6 +135,107 @@ internal static partial class ClassIslandVerification
         probe.SettingsService.GetType().GetMethod("SaveSettings")!.Invoke(probe.SettingsService, ["stale session probe"]);
     }
 
+    private sealed record LineSubscriptions(object Line, object Rules, object Settings, object Children);
+
+    private static LineSubscriptions PrepareLineSubscriptions(Type entry, object main)
+    {
+        var avalonia = SharedAssembly(entry, "Avalonia.Base");
+        var descendants = (IEnumerable)avalonia.GetType("Avalonia.VisualTree.VisualExtensions", true)!
+            .GetMethod("GetVisualDescendants", [avalonia.GetType("Avalonia.Visual", true)!])!.Invoke(null, [main])!;
+        var line = descendants.Cast<object>().FirstOrDefault(control =>
+            control.GetType().FullName == "ClassIsland.Controls.MainWindowLine" && Property(control, "IsLoaded") is true)
+            ?? throw new InvalidOperationException("The island did not load a line for subscription verification.");
+        var rulesService = Property(line, "RulesetService")!;
+        var settings = Property(line, "Settings")!;
+        var children = Property(settings, "Children")!;
+        var hidingRulesType = line.GetType().GetProperty("HidingRules")!.PropertyType;
+        SetProperty(line, "HideOnRule", true);
+        SetProperty(line, "HidingRules", Activator.CreateInstance(hidingRulesType)!);
+        SetProperty(line, "HidingRules", Activator.CreateInstance(hidingRulesType)!);
+        if (CountHandlerTargets(rulesService, "StatusUpdated", line) != 1 ||
+            !HasHandlerTarget(settings, "PropertyChanged", line) ||
+            !HasHandlerTarget(children, "CollectionChanged", line))
+            throw new InvalidOperationException("The loaded island line does not have exactly one active rule subscription.");
+        return new(line, rulesService, settings, children);
+    }
+
+    private static void VerifyLineSubscriptionsRemoved(LineSubscriptions subscriptions)
+    {
+        if (HasHandlerTarget(subscriptions.Rules, "StatusUpdated", subscriptions.Line) ||
+            HasHandlerTarget(subscriptions.Settings, "PropertyChanged", subscriptions.Line) ||
+            HasHandlerTarget(subscriptions.Children, "CollectionChanged", subscriptions.Line))
+            throw new InvalidOperationException("A suspended island line retained rule or settings subscriptions.");
+    }
+
+    private static WeakReference[] VerifyLineVisibilityRouting(Type entry)
+    {
+        var lineType = SharedAssembly(entry, "ClassIsland").GetType("ClassIsland.Controls.MainWindowLine", true)!;
+        var presenterType = SharedAssembly(entry, "ClassIsland.Core").GetType("ClassIsland.Core.Controls.ComponentPresenter", true)!;
+        var componentEvent = presenterType.GetField("ComponentVisibilityChangedEvent")!.GetValue(null);
+        var lineEvent = lineType.GetEvent("LineVisibilityChanged")!;
+        var eventArgsType = lineEvent.EventHandlerType!.GetGenericArguments()[0];
+        var first = Activator.CreateInstance(lineType)!;
+        var second = Activator.CreateInstance(lineType)!;
+        var firstNotifications = 0;
+        var secondNotifications = 0;
+        Subscribe(first, (_, _) => firstNotifications++);
+        Subscribe(second, (_, _) => secondNotifications++);
+        lineType.GetMethod("RaiseEvent", [eventArgsType])!.Invoke(first, [Activator.CreateInstance(eventArgsType, [componentEvent])]);
+        if (firstNotifications != 1 || secondNotifications != 0)
+            throw new InvalidOperationException("A component visibility event notified an unrelated island line.");
+        return [new WeakReference(first), new WeakReference(second)];
+
+        void Subscribe(object line, EventHandler handler) => lineEvent.AddEventHandler(line,
+            Delegate.CreateDelegate(lineEvent.EventHandlerType!, handler.Target, handler.Method));
+    }
+
+    private static void VerifyLegacyActionResolution(Type entry, bool sessionActive)
+    {
+        const string legacyId = "classisland.settings.isSplashEnabled";
+        var core = SharedAssembly(entry, "ClassIsland.Core");
+        var itemType = SharedAssembly(entry, "ClassIsland.Shared").GetType("ClassIsland.Shared.Models.Automation.ActionItem", true)!;
+        var json = SharedAssembly(entry, "System.Text.Json");
+        var jsonElementType = json.GetType("System.Text.Json.JsonElement", true)!;
+        var jsonOptionsType = json.GetType("System.Text.Json.JsonSerializerOptions", true)!;
+        var deserialize = json.GetType("System.Text.Json.JsonSerializer", true)!
+            .GetMethod("Deserialize", [typeof(string), typeof(Type), jsonOptionsType])!;
+        object Json(string payload) => deserialize.Invoke(null, [payload, jsonElementType, null])!;
+
+        foreach (var serviceType in new[] { "Abstractions.Automation.ActionBase", "Abstractions.Controls.ActionSettingsControlBase" })
+        {
+            var resolve = core.GetType("ClassIsland.Core." + serviceType, true)!.GetMethod("GetInstance", [itemType])!;
+            var action = Activator.CreateInstance(itemType)!;
+            SetProperty(action, "Id", legacyId);
+            SetProperty(action, "Settings", Json("{\"Value\":true}"));
+            var resolved = resolve.Invoke(null, [action]);
+            if (!sessionActive)
+            {
+                if (resolved is not null || !Equals(Property(action, "Id"), legacyId))
+                    throw new InvalidOperationException("A suspended session resolved an automation action.");
+                continue;
+            }
+
+            var settings = Property(action, "Settings")!;
+            if (resolved is null || !Equals(Property(action, "Id"), "classisland.settings") ||
+                !Equals(Property(settings, "Name"), "IsSplashEnabled") ||
+                !string.Equals(Property(settings, "Value") as string, "true", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The current session did not migrate a legacy automation action.");
+
+            VerifyInvalidAction("classisland.settings.", null);
+            VerifyInvalidAction(legacyId, Json("[]"));
+
+            void VerifyInvalidAction(string id, object? payload)
+            {
+                var invalidAction = Activator.CreateInstance(itemType)!;
+                SetProperty(invalidAction, "Id", id);
+                if (payload is not null)
+                    SetProperty(invalidAction, "Settings", payload);
+                if (resolve.Invoke(null, [invalidAction]) is not null || !Equals(Property(invalidAction, "Id"), id))
+                    throw new InvalidOperationException("An invalid legacy action was modified or resolved.");
+            }
+        }
+    }
+
     private static void VerifyDefaultActionMenus(Assembly core, object actionService)
     {
         var tree = (IEnumerable)core.GetType("ClassIsland.Core.Abstractions.Services.IActionService", true)!

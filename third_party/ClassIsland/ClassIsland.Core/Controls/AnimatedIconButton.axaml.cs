@@ -72,8 +72,6 @@ public class AnimatedIconButton : Button
         {
             return;
         }
-        _isKeepingExpandedSubscribe?.Dispose();
-        _isKeepingExpandedSubscribe = IsKeepingExpandedProperty.Changed.Subscribe(_ => UpdateStatus());
         MeasureWidths();
 
         PointerExited -= Leaved;
@@ -98,8 +96,14 @@ public class AnimatedIconButton : Button
         PointerExited -= Leaved;
         PointerEntered -= Entered;
 
-        _isKeepingExpandedSubscribe?.Dispose();
         CleanupCts();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == IsKeepingExpandedProperty)
+            UpdateStatus();
     }
 
     private void CleanupCts()
@@ -229,6 +233,5 @@ public class AnimatedIconButton : Button
     private IconText? _ghostIconOnlyIconText;
     private CancellationTokenSource? _cts;
     private CancellationToken CtsToken => (_cts ??= new CancellationTokenSource()).Token;
-    private IDisposable? _isKeepingExpandedSubscribe;
     private bool _isExpandedByMouse;
 }

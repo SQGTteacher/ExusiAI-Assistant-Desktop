@@ -109,7 +109,6 @@ public abstract class ActionBase
     internal object? SettingsInternal { get; set; }
     internal CancellationTokenSource InterruptCts { get; set; }
 
-    static Lazy<IActionService?> ActionService = new(IAppHost.TryGetService<IActionService>);
 
     /// 获取行动提供方实例。
     /// <param name="actionItem">要获取行动提供方的行动项。</param>
@@ -117,11 +116,12 @@ public abstract class ActionBase
     {
         if (string.IsNullOrEmpty(actionItem?.Id)) return null;
 
-        var provider = IAppHost.Host?.Services.GetKeyedService<ActionBase>(actionItem.Id);
+        var services = IAppHost.Host?.Services;
+        var provider = services?.GetKeyedService<ActionBase>(actionItem.Id);
         if (provider == null)
         {
-            ActionService.Value?.MigrateUnknownActionItem(actionItem);
-            provider = IAppHost.Host?.Services.GetKeyedService<ActionBase>(actionItem.Id);
+            services?.GetService<IActionService>()?.MigrateUnknownActionItem(actionItem);
+            provider = services?.GetKeyedService<ActionBase>(actionItem.Id);
             if (provider == null) return null;
         }
 
