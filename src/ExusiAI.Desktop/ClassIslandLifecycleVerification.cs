@@ -113,6 +113,7 @@ internal static partial class ClassIslandVerification
         }
 
         Assembly? sharedEvents = null;
+        object? sharedWindowIcon = null;
         IntPtr[]? finalWindows = null;
         for (var cycle = 1; cycle <= cycles; cycle++)
         {
@@ -163,7 +164,30 @@ internal static partial class ClassIslandVerification
                 throw new InvalidOperationException($"Cycle {cycle}: settings revealed a hidden island.");
             var windows = await GetNativeWindowsAsync(hostType!, activeHost!);
             Sample(cycle, "settings_open");
-            NativeUi(hostType!, activeHost!, _ => VerifyNoNativeTrayIcon(entryPoint));
+            object? settingsSourceIcon = null;
+            var effectHwnd = IntPtr.Zero;
+            object? topmostTimer = null;
+            NativeUi(hostType!, activeHost!, app =>
+            {
+                VerifyNoNativeTrayIcon(entryPoint);
+                (sharedWindowIcon, settingsSourceIcon) = ReadWindowIcons(app, sharedWindowIcon);
+                if (ReadWin32IconHandle(settingsSourceIcon) == IntPtr.Zero)
+                    throw new InvalidOperationException("ClassIsland settings have no native source icon.");
+                var main = app.GetType().GetProperty("MainWindow")!.GetValue(app)!;
+                var effect = main.GetType().GetProperty("TopmostEffectWindow")!.GetValue(main)!;
+                effectHwnd = GetNativeHandle(effect);
+                if (windows.Contains(effectHwnd) || !IsWindow(effectHwnd) || IsWindowVisible(effectHwnd))
+                    throw new InvalidOperationException("The probe requires a native effects window that has never opened.");
+                if (cycle == cycles)
+                {
+                    var settings = app.GetType().GetProperty("Settings")!.GetValue(app)!;
+                    settings.GetType().GetProperty("WindowTopmostRecheckMode")!.SetValue(settings, 3);
+                    topmostTimer = main.GetType().GetProperty("HighFreqTopmostRecheckTimer",
+                        BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(main)!;
+                    if (!IsTimerEnabled(topmostTimer))
+                        throw new InvalidOperationException("The high-frequency topmost timer did not start.");
+                }
+            });
             var services = GetEmbeddedServices(entryPoint);
             var core = SharedAssembly(entryPoint, "ClassIsland.Core");
             var exactTime = services.GetService(core.GetType("ClassIsland.Core.Abstractions.Services.IExactTimeService", throwOnError: true)!)!;
@@ -181,6 +205,12 @@ internal static partial class ClassIslandVerification
             var disableMs = phaseTimer.Elapsed.TotalMilliseconds;
             RequireState(PackageState.Disabled);
             VerifySuspended(hostType!, activeHost!, windows);
+            if (IsWindow(effectHwnd))
+                throw new InvalidOperationException("ClassIsland retained the unopened effects window after disabling.");
+            if (topmostTimer is not null && IsTimerEnabled(topmostTimer))
+                throw new InvalidOperationException("ClassIsland retained the high-frequency topmost timer after disabling.");
+            if (ReadWin32IconHandle(settingsSourceIcon!) != IntPtr.Zero)
+                throw new InvalidOperationException("ClassIsland settings retained a native source icon after closing.");
             Sample(cycle, "suspended");
             VerifySuspendedServices(entryPoint, exactTime, windowRule, platform);
             await Task.Delay(650);
@@ -201,6 +231,21 @@ internal static partial class ClassIslandVerification
 
         await runtime.SetEnabledAsync(id, true);
         RequireResumedHidden();
+        var previouslyShownEffect = IntPtr.Zero;
+        NativeUi(hostType!, activeHost!, app =>
+        {
+            var settings = app.GetType().GetProperty("Settings")!.GetValue(app)!;
+            settings.GetType().GetProperty("WindowTopmostRecheckMode")!.SetValue(settings, 0);
+            var main = app.GetType().GetProperty("MainWindow")!.GetValue(app)!;
+            var effect = main.GetType().GetProperty("TopmostEffectWindow")!.GetValue(main)!;
+            effect.GetType().GetMethod("Show", Type.EmptyTypes)!.Invoke(effect, null);
+            previouslyShownEffect = GetNativeHandle(effect);
+            if (!IsWindowVisible(previouslyShownEffect))
+                throw new InvalidOperationException("The effect window did not open.");
+            effect.GetType().GetMethod("Hide", Type.EmptyTypes)!.Invoke(effect, null);
+            if (!IsWindow(previouslyShownEffect) || IsWindowVisible(previouslyShownEffect))
+                throw new InvalidOperationException("The effect window did not hide for reuse.");
+        });
         var importSource = Path.Combine(outputDirectory, "ImportSource");
         Directory.CreateDirectory(importSource);
         File.Copy(Path.Combine(data, "Settings.json"), Path.Combine(importSource, "Settings.json"));
@@ -215,12 +260,15 @@ internal static partial class ClassIslandVerification
         }
         catch (InvalidDataException) { }
         RequireResumedHidden();
-        if ((int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation)
+        if ((int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation ||
+            !IsWindow(previouslyShownEffect))
             throw new InvalidOperationException("Invalid import interrupted the active session.");
         File.Copy(Path.Combine(data, "Settings.json"), Path.Combine(importSource, "Settings.json"), overwrite: true);
         var backup = await Import(importSource);
         RequireResumedHidden();
         Sample(cycles, "imported");
+        if (IsWindow(previouslyShownEffect))
+            throw new InvalidOperationException("ClassIsland import retained the previously shown effect window.");
         if (!File.Exists(Path.Combine(backup, "Settings.json")) ||
             (int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation + 1)
             throw new InvalidOperationException("Hidden import did not back up data and rebuild the session.");
@@ -276,6 +324,13 @@ internal static partial class ClassIslandVerification
         RequireState(PackageState.Stopped);
         VerifyStopped(hostType!, activeHost!, finalWindows!);
         Sample(cycles, "stopped");
+        // Keep the normal lifecycle samples independent of forced collection.
+        await Task.Run(() =>
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        });
+        Sample(cycles, "after_finalizers");
         Log("PASS: final shutdown stopped the retained Avalonia runtime.");
     }
 
@@ -291,25 +346,36 @@ internal static partial class ClassIslandVerification
     private static async Task<IntPtr[]> GetNativeWindowsAsync(Type hostType, IDisposable host)
     {
         var handles = new List<IntPtr>();
-        // Upstream settings navigation can finish asynchronously after the command
-        // returns. Wait for both real windows rather than accepting a no-op navigation.
+        // Settings navigation can return before the settings window appears.
+        // The hidden owner window alone is insufficient.
         for (var attempt = 0; attempt < 30; attempt++)
         {
             handles.Clear();
+            var hasSettingsWindow = false;
             NativeUi(hostType, host, app =>
             {
                 var lifetime = app.GetType().GetProperty("DesktopLifetime")!.GetValue(app)!;
                 foreach (var window in (IEnumerable)lifetime.GetType().GetProperty("Windows")!.GetValue(lifetime)!)
                 {
-                    var handle = window!.GetType().GetMethod("TryGetPlatformHandle")!.Invoke(window, null)!;
-                    handles.Add((IntPtr)handle.GetType().GetProperty("Handle")!.GetValue(handle)!);
+                    handles.Add(GetNativeHandle(window!));
+                    hasSettingsWindow |= window!.GetType().Name == "SettingsWindowNew";
                 }
             });
-            if (handles.Count >= 2 && handles.All(handle => handle != IntPtr.Zero)) return handles.ToArray();
+            if (hasSettingsWindow && handles.Count >= 2 && handles.All(handle => handle != IntPtr.Zero))
+                return handles.ToArray();
             await Task.Delay(100);
         }
         throw new InvalidOperationException("ClassIsland lifecycle expected native island and settings windows.");
     }
+
+    private static IntPtr GetNativeHandle(object window)
+    {
+        var handle = window.GetType().GetMethod("TryGetPlatformHandle")!.Invoke(window, null);
+        return handle is null ? IntPtr.Zero : (IntPtr)handle.GetType().GetProperty("Handle")!.GetValue(handle)!;
+    }
+
+    private static bool IsTimerEnabled(object timer) =>
+        timer.GetType().GetProperty("IsEnabled")!.GetValue(timer) is true;
 
     private static void VerifyStopped(Type type, IDisposable host, IntPtr[] windows)
     {
@@ -334,6 +400,29 @@ internal static partial class ClassIslandVerification
 
     private static Assembly SharedAssembly(Type entryPoint, string name) =>
         AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!.LoadFromAssemblyName(new AssemblyName(name));
+
+    private static (object MainIcon, object SettingsSourceIcon) ReadWindowIcons(object app, object? previousIcon)
+    {
+        var main = app.GetType().GetProperty("MainWindow")!.GetValue(app)!;
+        var lifetime = app.GetType().GetProperty("DesktopLifetime")!.GetValue(app)!;
+        var windows = (IEnumerable)lifetime.GetType().GetProperty("Windows")!.GetValue(lifetime)!;
+        var settings = windows.Cast<object>().Single(window => window.GetType().Name == "SettingsWindowNew");
+        // FluentAvalonia's AppWindow.Icon is the title-bar image. Use the
+        // underlying Avalonia Window property to check the native source.
+        var iconProperty = main.GetType().GetProperty("Icon")!;
+        var mainIcon = iconProperty.GetValue(main);
+        if (mainIcon is null || (previousIcon is not null && !ReferenceEquals(mainIcon, previousIcon)))
+            throw new InvalidOperationException("ClassIsland reallocated the information-island source icon.");
+        var settingsIcon = iconProperty.GetValue(settings)!;
+        var platformIcon = settingsIcon.GetType().GetProperty("PlatformImpl", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(settingsIcon)!;
+        var nativeIcon = platformIcon.GetType().GetField("_bigIcon", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(platformIcon)!;
+        return (mainIcon, nativeIcon);
+    }
+
+    private static IntPtr ReadWin32IconHandle(object icon) =>
+        (IntPtr)icon.GetType().GetProperty("Handle")!.GetValue(icon)!;
 
     private static void VerifyNoNativeTrayIcon(Type entryPoint)
     {

@@ -238,10 +238,7 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         
         IAppHost.GetService<ISplashService>().SetDetailedStatus("正在初始化主界面（步骤 1/2）");
         XamlThemeService.MainWindow = this;
-        SettingsService.PropertyChanged += (sender, args) =>
-        {
-            LoadSettings();
-        };
+        SettingsService.PropertyChanged += SettingsServiceOnPropertyChanged;
         LessonsService.PreMainTimerTicked += LessonsServiceOnPreMainTimerTicked;
         LessonsService.PostMainTimerTicked += LessonsServiceOnPostMainTimerTicked;
         ViewModel.PropertyChanged += ViewModelOnPropertyChanged;
@@ -340,6 +337,7 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
     }
 
     private bool embeddedShowInitialized;
+    private bool windowClosed;
 
     public override void Show()
     {
@@ -364,7 +362,6 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         base.OnInitialized();
         var span = SentrySdk.GetSpan()?.StartChild("startup-initialize-mainWindow");
         ViewModel.Profile.PropertyChanged += (sender, args) => SaveProfile();
-        ViewModel.Settings.PropertyChanged += SettingsOnPropertyChanged;
         LoadSettings();
         //ViewModel.CurrentProfilePath = ViewModel.Settings.SelectedProfile;
         LoadProfile();
@@ -405,10 +402,12 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         ViewModel.Settings.IsNotificationEffectRenderingScaleAutoSet = true;
     }
 
+    private void SettingsServiceOnPropertyChanged(object? sender, PropertyChangedEventArgs e) => LoadSettings();
+
     private void LoadSettings()
     {
-        var r = SettingsService.Settings;
-        ViewModel.Settings = r;
+        ViewModel.Settings.PropertyChanged -= SettingsOnPropertyChanged;
+        ViewModel.Settings = SettingsService.Settings;
         ViewModel.Settings.PropertyChanged += SettingsOnPropertyChanged;
     }
 
@@ -588,6 +587,22 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         UpdateTheme();
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        windowClosed = true;
+        HighFreqTopmostRecheckTimer.Stop();
+        TouchInFadingTimer.Stop();
+        ViewModel.Settings.PropertyChanged -= SettingsOnPropertyChanged;
+        ViewModel.PropertyChanged -= ViewModelOnPropertyChanged;
+        SettingsService.PropertyChanged -= SettingsServiceOnPropertyChanged;
+        LessonsService.PreMainTimerTicked -= LessonsServiceOnPreMainTimerTicked;
+        LessonsService.PreMainTimerTicked -= ProcessMousePos;
+        LessonsService.PostMainTimerTicked -= LessonsServiceOnPostMainTimerTicked;
+        RulesetService.StatusUpdated -= RulesetServiceOnStatusUpdated;
+        WindowRuleService.ForegroundWindowChanged -= WindowRuleServiceOnForegroundWindowChanged;
+        base.OnClosed(e);
+    }
+
     private void MainWindow_OnClosing(object? sender, WindowClosingEventArgs e)
     {
         if (!ViewModel.IsClosing && (e.CloseReason != WindowCloseReason.OSShutdown &&
@@ -743,6 +758,9 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
 
     private async void UpdateTheme()
     {
+        if (windowClosed)
+            return;
+
         HighFreqTopmostRecheckTimer.IsEnabled = ViewModel.Settings.WindowTopmostRecheckMode == 3;
         if (ViewModel.Settings.IsMouseClickingEnabled)
         {

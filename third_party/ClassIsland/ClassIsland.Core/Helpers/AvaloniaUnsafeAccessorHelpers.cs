@@ -13,6 +13,15 @@ internal static class AvaloniaUnsafeAccessorHelpers
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "CloseCore")]
     private static extern void CloseWindowCore(Window window, WindowCloseReason reason, bool isProgrammatic, bool ignoreCancel);
 
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_PlatformImpl")]
+    private static extern IWindowIconImpl GetWindowIconPlatformImpl(WindowIcon icon);
+
+    internal static void DisposeWin32WindowIcon(WindowIcon? icon)
+    {
+        if (icon is not null && GetWindowIconPlatformImpl(icon) is IDisposable nativeIcon)
+            nativeIcon.Dispose();
+    }
+
     [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "get_Current")]
     static extern IAvaloniaDependencyResolver? GetCurrentAvaloniaLocator(AvaloniaLocator? nullLocator);
 
