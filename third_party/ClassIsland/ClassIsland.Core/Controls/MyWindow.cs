@@ -40,6 +40,8 @@ public partial class MyWindow : AppWindow
     /// </summary>
     public static bool ShowOssWatermark { get; internal set; } = false;
 
+    private WindowIcon? _ownedTitleBarIcon;
+
     private bool _enableMicaWindow;
     
     /// <summary>
@@ -218,6 +220,33 @@ public partial class MyWindow : AppWindow
         Loaded += OnLoaded;
         SetupMyWindowExt(this);
         // PointerMoved += OnPointerUpdated;
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (!OperatingSystem.IsWindows() || change.Property != AppWindow.IconProperty)
+            return;
+
+        // FluentAvalonia creates a native source for each title-bar image.
+        // Track only that source since callers can set a shared Window.Icon.
+        var previousIcon = _ownedTitleBarIcon;
+        _ownedTitleBarIcon = GetValue(Window.IconProperty);
+        if (!ReferenceEquals(previousIcon, _ownedTitleBarIcon))
+            AvaloniaUnsafeAccessorHelpers.DisposeWin32WindowIcon(previousIcon);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        try
+        {
+            base.OnClosed(e);
+        }
+        finally
+        {
+            AvaloniaUnsafeAccessorHelpers.DisposeWin32WindowIcon(_ownedTitleBarIcon);
+            _ownedTitleBarIcon = null;
+        }
     }
 
     private void OnLoaded(object? sender, RoutedEventArgs e)

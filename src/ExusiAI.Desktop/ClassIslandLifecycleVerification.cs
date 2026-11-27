@@ -113,6 +113,7 @@ internal static partial class ClassIslandVerification
         }
 
         Assembly? sharedEvents = null;
+        object? sharedWindowIcon = null;
         IntPtr[]? finalWindows = null;
         for (var cycle = 1; cycle <= cycles; cycle++)
         {
@@ -163,7 +164,14 @@ internal static partial class ClassIslandVerification
                 throw new InvalidOperationException($"Cycle {cycle}: settings revealed a hidden island.");
             var windows = await GetNativeWindowsAsync(hostType!, activeHost!);
             Sample(cycle, "settings_open");
-            NativeUi(hostType!, activeHost!, _ => VerifyNoNativeTrayIcon(entryPoint));
+            object? settingsSourceIcon = null;
+            NativeUi(hostType!, activeHost!, app =>
+            {
+                VerifyNoNativeTrayIcon(entryPoint);
+                (sharedWindowIcon, settingsSourceIcon) = ReadWindowIcons(app, sharedWindowIcon);
+                if (ReadWin32IconHandle(settingsSourceIcon) == IntPtr.Zero)
+                    throw new InvalidOperationException("ClassIsland settings have no native source icon.");
+            });
             var services = GetEmbeddedServices(entryPoint);
             var core = SharedAssembly(entryPoint, "ClassIsland.Core");
             var exactTime = services.GetService(core.GetType("ClassIsland.Core.Abstractions.Services.IExactTimeService", throwOnError: true)!)!;
@@ -181,6 +189,8 @@ internal static partial class ClassIslandVerification
             var disableMs = phaseTimer.Elapsed.TotalMilliseconds;
             RequireState(PackageState.Disabled);
             VerifySuspended(hostType!, activeHost!, windows);
+            if (ReadWin32IconHandle(settingsSourceIcon!) != IntPtr.Zero)
+                throw new InvalidOperationException("ClassIsland settings retained a native source icon after closing.");
             Sample(cycle, "suspended");
             VerifySuspendedServices(entryPoint, exactTime, windowRule, platform);
             await Task.Delay(650);
@@ -276,6 +286,13 @@ internal static partial class ClassIslandVerification
         RequireState(PackageState.Stopped);
         VerifyStopped(hostType!, activeHost!, finalWindows!);
         Sample(cycles, "stopped");
+        // Keep the normal lifecycle samples independent of forced collection.
+        await Task.Run(() =>
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        });
+        Sample(cycles, "after_finalizers");
         Log("PASS: final shutdown stopped the retained Avalonia runtime.");
     }
 
@@ -291,11 +308,12 @@ internal static partial class ClassIslandVerification
     private static async Task<IntPtr[]> GetNativeWindowsAsync(Type hostType, IDisposable host)
     {
         var handles = new List<IntPtr>();
-        // Upstream settings navigation can finish asynchronously after the command
-        // returns. Wait for both real windows rather than accepting a no-op navigation.
+        // Settings navigation can return before the settings window appears.
+        // The hidden owner window alone is insufficient.
         for (var attempt = 0; attempt < 30; attempt++)
         {
             handles.Clear();
+            var hasSettingsWindow = false;
             NativeUi(hostType, host, app =>
             {
                 var lifetime = app.GetType().GetProperty("DesktopLifetime")!.GetValue(app)!;
@@ -303,9 +321,11 @@ internal static partial class ClassIslandVerification
                 {
                     var handle = window!.GetType().GetMethod("TryGetPlatformHandle")!.Invoke(window, null)!;
                     handles.Add((IntPtr)handle.GetType().GetProperty("Handle")!.GetValue(handle)!);
+                    hasSettingsWindow |= window.GetType().Name == "SettingsWindowNew";
                 }
             });
-            if (handles.Count >= 2 && handles.All(handle => handle != IntPtr.Zero)) return handles.ToArray();
+            if (hasSettingsWindow && handles.Count >= 2 && handles.All(handle => handle != IntPtr.Zero))
+                return handles.ToArray();
             await Task.Delay(100);
         }
         throw new InvalidOperationException("ClassIsland lifecycle expected native island and settings windows.");
@@ -334,6 +354,29 @@ internal static partial class ClassIslandVerification
 
     private static Assembly SharedAssembly(Type entryPoint, string name) =>
         AssemblyLoadContext.GetLoadContext(entryPoint.Assembly)!.LoadFromAssemblyName(new AssemblyName(name));
+
+    private static (object MainIcon, object SettingsSourceIcon) ReadWindowIcons(object app, object? previousIcon)
+    {
+        var main = app.GetType().GetProperty("MainWindow")!.GetValue(app)!;
+        var lifetime = app.GetType().GetProperty("DesktopLifetime")!.GetValue(app)!;
+        var windows = (IEnumerable)lifetime.GetType().GetProperty("Windows")!.GetValue(lifetime)!;
+        var settings = windows.Cast<object>().Single(window => window.GetType().Name == "SettingsWindowNew");
+        // FluentAvalonia's AppWindow.Icon is the title-bar image. Use the
+        // underlying Avalonia Window property to check the native source.
+        var iconProperty = main.GetType().GetProperty("Icon")!;
+        var mainIcon = iconProperty.GetValue(main);
+        if (mainIcon is null || (previousIcon is not null && !ReferenceEquals(mainIcon, previousIcon)))
+            throw new InvalidOperationException("ClassIsland reallocated the information-island source icon.");
+        var settingsIcon = iconProperty.GetValue(settings)!;
+        var platformIcon = settingsIcon.GetType().GetProperty("PlatformImpl", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(settingsIcon)!;
+        var nativeIcon = platformIcon.GetType().GetField("_bigIcon", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(platformIcon)!;
+        return (mainIcon, nativeIcon);
+    }
+
+    private static IntPtr ReadWin32IconHandle(object icon) =>
+        (IntPtr)icon.GetType().GetProperty("Handle")!.GetValue(icon)!;
 
     private static void VerifyNoNativeTrayIcon(Type entryPoint)
     {
