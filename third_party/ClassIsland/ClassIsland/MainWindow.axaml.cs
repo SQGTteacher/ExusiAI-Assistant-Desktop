@@ -340,6 +340,7 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
     }
 
     private bool embeddedShowInitialized;
+    private bool windowClosed;
 
     public override void Show()
     {
@@ -364,7 +365,6 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         base.OnInitialized();
         var span = SentrySdk.GetSpan()?.StartChild("startup-initialize-mainWindow");
         ViewModel.Profile.PropertyChanged += (sender, args) => SaveProfile();
-        ViewModel.Settings.PropertyChanged += SettingsOnPropertyChanged;
         LoadSettings();
         //ViewModel.CurrentProfilePath = ViewModel.Settings.SelectedProfile;
         LoadProfile();
@@ -407,8 +407,8 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
 
     private void LoadSettings()
     {
-        var r = SettingsService.Settings;
-        ViewModel.Settings = r;
+        ViewModel.Settings.PropertyChanged -= SettingsOnPropertyChanged;
+        ViewModel.Settings = SettingsService.Settings;
         ViewModel.Settings.PropertyChanged += SettingsOnPropertyChanged;
     }
 
@@ -588,6 +588,16 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         UpdateTheme();
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        windowClosed = true;
+        HighFreqTopmostRecheckTimer.Stop();
+        TouchInFadingTimer.Stop();
+        ViewModel.Settings.PropertyChanged -= SettingsOnPropertyChanged;
+        ViewModel.PropertyChanged -= ViewModelOnPropertyChanged;
+        base.OnClosed(e);
+    }
+
     private void MainWindow_OnClosing(object? sender, WindowClosingEventArgs e)
     {
         if (!ViewModel.IsClosing && (e.CloseReason != WindowCloseReason.OSShutdown &&
@@ -743,6 +753,9 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
 
     private async void UpdateTheme()
     {
+        if (windowClosed)
+            return;
+
         HighFreqTopmostRecheckTimer.IsEnabled = ViewModel.Settings.WindowTopmostRecheckMode == 3;
         if (ViewModel.Settings.IsMouseClickingEnabled)
         {

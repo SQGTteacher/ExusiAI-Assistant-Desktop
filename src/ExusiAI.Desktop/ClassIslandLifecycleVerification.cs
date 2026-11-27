@@ -165,12 +165,28 @@ internal static partial class ClassIslandVerification
             var windows = await GetNativeWindowsAsync(hostType!, activeHost!);
             Sample(cycle, "settings_open");
             object? settingsSourceIcon = null;
+            var effectHwnd = IntPtr.Zero;
+            object? topmostTimer = null;
             NativeUi(hostType!, activeHost!, app =>
             {
                 VerifyNoNativeTrayIcon(entryPoint);
                 (sharedWindowIcon, settingsSourceIcon) = ReadWindowIcons(app, sharedWindowIcon);
                 if (ReadWin32IconHandle(settingsSourceIcon) == IntPtr.Zero)
                     throw new InvalidOperationException("ClassIsland settings have no native source icon.");
+                var main = app.GetType().GetProperty("MainWindow")!.GetValue(app)!;
+                var effect = main.GetType().GetProperty("TopmostEffectWindow")!.GetValue(main)!;
+                effectHwnd = GetNativeHandle(effect);
+                if (windows.Contains(effectHwnd) || !IsWindow(effectHwnd) || IsWindowVisible(effectHwnd))
+                    throw new InvalidOperationException("The probe requires a native effects window that has never opened.");
+                if (cycle == cycles)
+                {
+                    var settings = app.GetType().GetProperty("Settings")!.GetValue(app)!;
+                    settings.GetType().GetProperty("WindowTopmostRecheckMode")!.SetValue(settings, 3);
+                    topmostTimer = main.GetType().GetProperty("HighFreqTopmostRecheckTimer",
+                        BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(main)!;
+                    if (!IsTimerEnabled(topmostTimer))
+                        throw new InvalidOperationException("The high-frequency topmost timer did not start.");
+                }
             });
             var services = GetEmbeddedServices(entryPoint);
             var core = SharedAssembly(entryPoint, "ClassIsland.Core");
@@ -189,6 +205,10 @@ internal static partial class ClassIslandVerification
             var disableMs = phaseTimer.Elapsed.TotalMilliseconds;
             RequireState(PackageState.Disabled);
             VerifySuspended(hostType!, activeHost!, windows);
+            if (IsWindow(effectHwnd))
+                throw new InvalidOperationException("ClassIsland retained the unopened effects window after disabling.");
+            if (topmostTimer is not null && IsTimerEnabled(topmostTimer))
+                throw new InvalidOperationException("ClassIsland retained the high-frequency topmost timer after disabling.");
             if (ReadWin32IconHandle(settingsSourceIcon!) != IntPtr.Zero)
                 throw new InvalidOperationException("ClassIsland settings retained a native source icon after closing.");
             Sample(cycle, "suspended");
@@ -211,6 +231,11 @@ internal static partial class ClassIslandVerification
 
         await runtime.SetEnabledAsync(id, true);
         RequireResumedHidden();
+        NativeUi(hostType!, activeHost!, app =>
+        {
+            var settings = app.GetType().GetProperty("Settings")!.GetValue(app)!;
+            settings.GetType().GetProperty("WindowTopmostRecheckMode")!.SetValue(settings, 0);
+        });
         var importSource = Path.Combine(outputDirectory, "ImportSource");
         Directory.CreateDirectory(importSource);
         File.Copy(Path.Combine(data, "Settings.json"), Path.Combine(importSource, "Settings.json"));
@@ -319,9 +344,8 @@ internal static partial class ClassIslandVerification
                 var lifetime = app.GetType().GetProperty("DesktopLifetime")!.GetValue(app)!;
                 foreach (var window in (IEnumerable)lifetime.GetType().GetProperty("Windows")!.GetValue(lifetime)!)
                 {
-                    var handle = window!.GetType().GetMethod("TryGetPlatformHandle")!.Invoke(window, null)!;
-                    handles.Add((IntPtr)handle.GetType().GetProperty("Handle")!.GetValue(handle)!);
-                    hasSettingsWindow |= window.GetType().Name == "SettingsWindowNew";
+                    handles.Add(GetNativeHandle(window!));
+                    hasSettingsWindow |= window!.GetType().Name == "SettingsWindowNew";
                 }
             });
             if (hasSettingsWindow && handles.Count >= 2 && handles.All(handle => handle != IntPtr.Zero))
@@ -330,6 +354,15 @@ internal static partial class ClassIslandVerification
         }
         throw new InvalidOperationException("ClassIsland lifecycle expected native island and settings windows.");
     }
+
+    private static IntPtr GetNativeHandle(object window)
+    {
+        var handle = window.GetType().GetMethod("TryGetPlatformHandle")!.Invoke(window, null);
+        return handle is null ? IntPtr.Zero : (IntPtr)handle.GetType().GetProperty("Handle")!.GetValue(handle)!;
+    }
+
+    private static bool IsTimerEnabled(object timer) =>
+        timer.GetType().GetProperty("IsEnabled")!.GetValue(timer) is true;
 
     private static void VerifyStopped(Type type, IDisposable host, IntPtr[] windows)
     {

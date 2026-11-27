@@ -3,12 +3,15 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
 using Avalonia.Rendering;
+using Avalonia.Threading;
 using ClassIsland.Core.Abstractions.Services;
+using ClassIsland.Core.Helpers;
 using ClassIsland.Core.Helpers.Native;
 using ClassIsland.Platforms.Abstraction;
 using ClassIsland.Platforms.Abstraction.Enums;
@@ -24,7 +27,7 @@ namespace ClassIsland.Views;
 /// <summary>
 /// TopmostEffectWindow.xaml 的交互逻辑
 /// </summary>
-public partial class TopmostEffectWindow : Window, ITopmostEffectPlayer
+public partial class TopmostEffectWindow : Window, ITopmostEffectPlayer, IAsyncDisposable
 {
     public TopmostEffectWindowViewModel ViewModel { get; } = new();
 
@@ -45,6 +48,17 @@ public partial class TopmostEffectWindow : Window, ITopmostEffectPlayer
 #if DEBUG
         // RendererDiagnostics.DebugOverlays = RendererDebugOverlays.Fps;
 #endif
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        // A window that has never been shown owns a platform window but
+        // is absent from the desktop lifetime's list of opened windows.
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (PlatformImpl is not null)
+                AvaloniaUnsafeAccessorHelpers.CloseForEmbeddedSession(this);
+        });
     }
 
     private void EffectControlsOnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

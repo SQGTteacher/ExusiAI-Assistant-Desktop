@@ -72,3 +72,5 @@ Start-Process .\ExusiAI.Desktop.exe -ArgumentList '--verify-classisland-soak', '
 内嵌默认路径延迟创建原版托盘对象，并由 ExusiAI 提供托盘。每轮 Windows 探针检查 Avalonia Win32 的托盘注册表，确保常规启停和打开设置不会累积隐藏托盘注册。
 
 信息岛跨会话复用原始 ICO，Avalonia 按窗口和 DPI 管理显示副本。FluentAvalonia 创建的标题栏原生源图标在替换或窗口关闭时释放。探针逐轮确认信息岛复用源图标，以及设置窗口关闭后其原生图标句柄归零。完成关闭和常规资源采样后，探针单独记录 `after_finalizers`，帮助区分尚未运行的终结器与仍被保留的资源。
+
+顶层特效窗口由会话的服务容器释放。即使会话从未播放通知特效、窗口从未显示，停用时也会销毁其 HWND。探针另外在最后一轮启用高频置顶检查，验证关闭信息岛后定时器停止。
