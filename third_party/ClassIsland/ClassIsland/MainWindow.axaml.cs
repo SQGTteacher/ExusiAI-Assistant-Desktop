@@ -238,10 +238,7 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         
         IAppHost.GetService<ISplashService>().SetDetailedStatus("正在初始化主界面（步骤 1/2）");
         XamlThemeService.MainWindow = this;
-        SettingsService.PropertyChanged += (sender, args) =>
-        {
-            LoadSettings();
-        };
+        SettingsService.PropertyChanged += SettingsServiceOnPropertyChanged;
         LessonsService.PreMainTimerTicked += LessonsServiceOnPreMainTimerTicked;
         LessonsService.PostMainTimerTicked += LessonsServiceOnPostMainTimerTicked;
         ViewModel.PropertyChanged += ViewModelOnPropertyChanged;
@@ -404,6 +401,8 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
 
         ViewModel.Settings.IsNotificationEffectRenderingScaleAutoSet = true;
     }
+
+    private void SettingsServiceOnPropertyChanged(object? sender, PropertyChangedEventArgs e) => LoadSettings();
 
     private void LoadSettings()
     {
@@ -595,6 +594,12 @@ public partial class MainWindow : Window, ITopmostEffectPlayer
         TouchInFadingTimer.Stop();
         ViewModel.Settings.PropertyChanged -= SettingsOnPropertyChanged;
         ViewModel.PropertyChanged -= ViewModelOnPropertyChanged;
+        SettingsService.PropertyChanged -= SettingsServiceOnPropertyChanged;
+        LessonsService.PreMainTimerTicked -= LessonsServiceOnPreMainTimerTicked;
+        LessonsService.PreMainTimerTicked -= ProcessMousePos;
+        LessonsService.PostMainTimerTicked -= LessonsServiceOnPostMainTimerTicked;
+        RulesetService.StatusUpdated -= RulesetServiceOnStatusUpdated;
+        WindowRuleService.ForegroundWindowChanged -= WindowRuleServiceOnForegroundWindowChanged;
         base.OnClosed(e);
     }
 

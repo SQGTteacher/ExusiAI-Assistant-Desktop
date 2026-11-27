@@ -231,10 +231,20 @@ internal static partial class ClassIslandVerification
 
         await runtime.SetEnabledAsync(id, true);
         RequireResumedHidden();
+        var previouslyShownEffect = IntPtr.Zero;
         NativeUi(hostType!, activeHost!, app =>
         {
             var settings = app.GetType().GetProperty("Settings")!.GetValue(app)!;
             settings.GetType().GetProperty("WindowTopmostRecheckMode")!.SetValue(settings, 0);
+            var main = app.GetType().GetProperty("MainWindow")!.GetValue(app)!;
+            var effect = main.GetType().GetProperty("TopmostEffectWindow")!.GetValue(main)!;
+            effect.GetType().GetMethod("Show", Type.EmptyTypes)!.Invoke(effect, null);
+            previouslyShownEffect = GetNativeHandle(effect);
+            if (!IsWindowVisible(previouslyShownEffect))
+                throw new InvalidOperationException("The effect window did not open.");
+            effect.GetType().GetMethod("Hide", Type.EmptyTypes)!.Invoke(effect, null);
+            if (!IsWindow(previouslyShownEffect) || IsWindowVisible(previouslyShownEffect))
+                throw new InvalidOperationException("The effect window did not hide for reuse.");
         });
         var importSource = Path.Combine(outputDirectory, "ImportSource");
         Directory.CreateDirectory(importSource);
@@ -250,12 +260,15 @@ internal static partial class ClassIslandVerification
         }
         catch (InvalidDataException) { }
         RequireResumedHidden();
-        if ((int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation)
+        if ((int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation ||
+            !IsWindow(previouslyShownEffect))
             throw new InvalidOperationException("Invalid import interrupted the active session.");
         File.Copy(Path.Combine(data, "Settings.json"), Path.Combine(importSource, "Settings.json"), overwrite: true);
         var backup = await Import(importSource);
         RequireResumedHidden();
         Sample(cycles, "imported");
+        if (IsWindow(previouslyShownEffect))
+            throw new InvalidOperationException("ClassIsland import retained the previously shown effect window.");
         if (!File.Exists(Path.Combine(backup, "Settings.json")) ||
             (int)InvokeEntryPoint(hostType!, activeHost!, "GetEmbeddedServiceGeneration")! != generation + 1)
             throw new InvalidOperationException("Hidden import did not back up data and rebuild the session.");
